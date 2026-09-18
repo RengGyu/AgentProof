@@ -195,6 +195,56 @@ describe("POST /api/github/comment", () => {
     expect(String(fetchMock.mock.calls.at(-1)?.[1]?.body)).not.toContain("write-token");
   });
 
+  it("posts the neutral change-summary body without mutating the submitted report", async () => {
+    const report = generateVerificationReportV2FromInput({
+      ...demoScenarios.clean,
+      url: "https://github.com/org/repo/pull/1",
+      title: "Maintenance",
+      taskText: "",
+      description: "",
+      checks: [{ name: "unit tests", status: "failed", summary: "1 failed" }],
+      logs: [],
+      limitations: ["Public GitHub metadata could not be fetched."]
+    });
+    report.generalPrAssessmentSummary = {
+      version: 1,
+      mode: "ordinary_pr",
+      sourceState: "missing",
+      overallConclusion: "no_assessable_claims",
+      counts: { evidence_supported: 0, evidence_partial: 0, not_demonstrated: 0, contradicted: 0, blocked: 0, not_assessable: 0 },
+      reasonCodes: ["source_missing"]
+    };
+    const before = structuredClone(report);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ login: "agentproof-user" }))
+      .mockResolvedValueOnce(jsonResponse([]))
+      .mockResolvedValueOnce(jsonResponse({ id: 101, html_url: "https://github.com/org/repo/pull/1#issuecomment-101" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      new Request("http://localhost/api/github/comment", {
+        method: "POST",
+        body: JSON.stringify({
+          prUrl: "https://github.com/org/repo/pull/1",
+          githubToken: "write-token",
+          report
+        })
+      })
+    );
+    const postedPayload = JSON.parse(String(fetchMock.mock.calls.at(-1)?.[1]?.body)) as { body: string };
+
+    expect(response.status).toBe(200);
+    expect(postedPayload.body).not.toContain("No original task text was provided");
+    expect(postedPayload.body).not.toContain("No approved verification contract");
+    expect(postedPayload.body).not.toContain("no assessable");
+    expect(postedPayload.body).not.toContain("Requirement Coverage");
+    expect(postedPayload.body).not.toContain("Requirement Proof Gaps");
+    expect(postedPayload.body).toContain("**FAILED**");
+    expect(postedPayload.body).toContain("Public GitHub metadata could not be fetched.");
+    expect(report).toEqual(before);
+  });
+
   it("rejects report source PR mismatches before calling GitHub", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);

@@ -1,3 +1,4 @@
+import { reviewCandidateErrors } from "./review-candidates";
 import { createHash } from "crypto";
 import { isOrdinaryDocumentationSummary } from "./general-pr-documentation-presentation";
 import { isOrdinaryStaticSummary } from "./general-pr-static-types-presentation";
@@ -322,7 +323,8 @@ function createTypedCriterionPlanV2(
     input.changedFiles,
     input.checks,
     input.logs,
-    input.taskSource
+    input.taskSource,
+    input.sourceProvenance
   ).items;
   const declaredPaths = materialized.objectives.flatMap((objective) => objective.criteria.flatMap((criterion) =>
     criterion.source.type === "artifact" && criterion.source.artifact.kind === "documentation_literal"
@@ -375,7 +377,8 @@ function transientReceiptEvidenceBindings(
     input.changedFiles,
     input.checks,
     input.logs,
-    input.taskSource
+    input.taskSource,
+    input.sourceProvenance
   ).items;
   const testBindings = evidence.flatMap((item): TransientTestEvidenceBindingV2[] => {
     if (item.kind !== "test") return [];
@@ -487,7 +490,7 @@ export function validateVerificationReport(report: unknown, options: ReportValid
     ],
     "report",
     errors,
-    ["analysisContext", "authenticity", "semantic", "semanticAnalysis", "planner", ...(isV2 ? ["reportSchemaVersion", "verificationContract", "generalPrAssessment", "generalPrAssessmentSummary", "ordinaryDocumentationSummary", "ordinaryStaticSummary", "ordinaryRequirementOutcomes"] : [])]
+    ["analysisContext", "authenticity", "semantic", "semanticAnalysis", "planner", ...(isV2 ? ["reportSchemaVersion", "reviewCandidates", "verificationContract", "generalPrAssessment", "generalPrAssessmentSummary", "ordinaryDocumentationSummary", "ordinaryStaticSummary", "ordinaryRequirementOutcomes"] : [])]
   );
 
   validateString(report.analysisId, "analysisId", LIMITS.analysisId, errors);
@@ -499,6 +502,10 @@ export function validateVerificationReport(report: unknown, options: ReportValid
   const evidenceIds = validateEvidenceIndex(report.evidenceIndex, errors);
   const evidenceById = collectEvidenceById(report.evidenceIndex);
   const requirementIds = collectRequirementIds(report.requirements);
+  if (report.reviewCandidates !== undefined) {
+    if (!isV2 || (report.verificationContract as { state?: string } | undefined)?.state !== "absent") errors.push("Review candidates require an ordinary v2 report.");
+    errors.push(...reviewCandidateErrors(report.reviewCandidates, requirementIds, Array.isArray(report.evidenceIndex) ? report.evidenceIndex : []));
+  }
   validateSource(report.source, errors, options.requireSourceProvenance === true);
   validateSummary(report.summary, errors);
   validateRequirements(report.requirements, evidenceIds, errors, isV2);
@@ -2898,12 +2905,13 @@ function validateEvidenceIndex(value: unknown, errors: string[]): Set<string> {
       continue;
     }
 
-    requireKeys(item, ["id", "kind", "label", "summary", "confidence"], path, errors, ["locator"]);
+    requireKeys(item, ["id", "kind", "label", "summary", "confidence"], path, errors, ["locator", "codeLocation"]);
     validateString(item.id, `${path}.id`, LIMITS.shortText, errors);
     validateEnum(item.kind, `${path}.kind`, EVIDENCE_KINDS, errors);
     validateString(item.label, `${path}.label`, LIMITS.evidenceLabel, errors);
     validateString(item.summary, `${path}.summary`, LIMITS.evidenceSummary, errors);
     validateOptionalString(item.locator, `${path}.locator`, LIMITS.evidenceLocator, errors);
+    validateEvidenceCodeLocation(item.codeLocation, `${path}.codeLocation`, errors);
     validateRange(item.confidence, `${path}.confidence`, 0, 1, errors);
 
     if (typeof item.id === "string") {
@@ -2915,6 +2923,21 @@ function validateEvidenceIndex(value: unknown, errors: string[]): Set<string> {
   }
 
   return evidenceIds;
+}
+
+function validateEvidenceCodeLocation(value: unknown, path: string, errors: string[]): void {
+  if (value === undefined) return;
+  if (!isRecord(value)) {
+    errors.push(`${path} must be an object.`);
+    return;
+  }
+  requireKeys(value, ["path", "side"], path, errors, ["revisionSha", "previousPath", "line"]);
+  validateString(value.path, `${path}.path`, LIMITS.evidenceLocator, errors);
+  validateEnum(value.side, `${path}.side`, new Set(["head", "base"]), errors);
+  validateOptionalString(value.revisionSha, `${path}.revisionSha`, 64, errors);
+  validateOptionalString(value.previousPath, `${path}.previousPath`, LIMITS.evidenceLocator, errors);
+  if (value.line !== undefined && (!Number.isSafeInteger(value.line) || (value.line as number) < 1)) errors.push(`${path}.line must be a positive safe integer.`);
+  if (typeof value.revisionSha === "string" && !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(value.revisionSha)) errors.push(`${path}.revisionSha must be an exact lowercase commit SHA.`);
 }
 
 function validateEvidenceRefs(value: unknown, path: string, evidenceIds: Set<string>, errors: string[]) {

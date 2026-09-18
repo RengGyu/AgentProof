@@ -317,6 +317,14 @@ export interface EvidenceItem {
   label: string;
   summary: string;
   locator?: string;
+  /** Bounded code navigation metadata derived from the changed-file inventory. */
+  codeLocation?: {
+    path: string;
+    side: "head" | "base";
+    revisionSha?: string;
+    previousPath?: string;
+    line?: number;
+  };
   confidence: number;
 }
 
@@ -788,6 +796,7 @@ export interface VerificationReportV2 extends VerificationReport {
   generalPrAssessment?: GeneralPrAssessmentV1;
   /** Reviewer/API-safe companion; it is intentionally target-free. */
   generalPrAssessmentSummary?: GeneralPrAssessmentSummaryV1;
+  reviewCandidates?: import("./review-candidates").ReviewCandidatesV1;
   ordinaryDocumentationSummary?: import("./general-pr-documentation-presentation").OrdinaryDocumentationSummary;
   ordinaryStaticSummary?: import("./general-pr-static-types-presentation").OrdinaryStaticSummary;
   ordinaryRequirementOutcomes?: import("./ordinary-requirement-outcome-contract").OrdinaryRequirementOutcomes;

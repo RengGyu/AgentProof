@@ -1,0 +1,1495 @@
+{
+  "schema": "agentproof.ten-pr-raw-navigation.v1",
+  "model": "gpt-5.6-luna",
+  "startedAt": "2026-09-17T22:52:36.933Z",
+  "finishedAt": "2026-09-17T22:58:49.969Z",
+  "cases": [
+    {
+      "id": "flask-5918",
+      "url": "https://github.com/pallets/flask/pull/5918",
+      "head": "a82e942870b6472bb40017349cca772c242eb1ad",
+      "base": "d8eaaba824655046958d1a97f11780de460c3271",
+      "status": "completed",
+      "input": {
+        "titleSha256": "523ca4b9d35450294c993c6879fb9bcf5d4abccc657f780f25a510c2a568b6bc",
+        "descriptionSha256": "098ae8053de0924c683f96b5b120b8b571c6229863e46cdfe51a6ff1454f97b6",
+        "changedPaths": [
+          "src/flask/app.py",
+          "src/flask/cli.py",
+          "src/flask/sansio/app.py",
+          "tests/test_basic.py",
+          "tests/test_cli.py"
+        ]
+      },
+      "calls": 3,
+      "usage": [
+        {
+          "status": "provider_succeeded",
+          "stage": "intent",
+          "model": "gpt-5.6-luna",
+          "inputTokens": 1536,
+          "outputTokens": 1026,
+          "latencyMs": 11394
+        },
+        {
+          "status": "provider_succeeded",
+          "stage": "ranking",
+          "model": "gpt-5.6-luna",
+          "inputTokens": 3352,
+          "outputTokens": 1513,
+          "latencyMs": 11932
+        },
+        {
+          "status": "provider_succeeded",
+          "stage": "refinement",
+          "model": "gpt-5.6-luna",
+          "inputTokens": 3767,
+          "outputTokens": 1829,
+          "latencyMs": 14420
+        }
+      ],
+      "rawFiles": [
+        "2026-09-18-ten-pr-raw-navigation/raw-provider/flask-5918-01-intent.raw.json",
+        "2026-09-18-ten-pr-raw-navigation/raw-provider/flask-5918-02-ranking.raw.json",
+        "2026-09-18-ten-pr-raw-navigation/raw-provider/flask-5918-03-refinement.raw.json"
+      ],
+      "reads": [
+        {
+          "requestedPaths": [
+            "tests/test_basic.py",
+            "tests/test_cli.py",
+            "src/flask/sansio/app.py",
+            "src/flask/app.py",
+            "src/flask/config.py",
+            "src/flask/views.py",
+            "docs/config.rst",
+            "CHANGES.rst"
+          ],
+          "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+          "returnedPaths": [
+            "tests/test_basic.py",
+            "tests/test_cli.py",
+            "src/flask/sansio/app.py",
+            "src/flask/app.py",
+            "src/flask/config.py",
+            "src/flask/views.py",
+            "docs/config.rst",
+            "CHANGES.rst"
+          ]
+        }
+      ],
+      "navigation": {
+        "state": "partial",
+        "rankingStatus": "ready",
+        "coverageStatus": "partial",
+        "goalCount": 5,
+        "artifactCount": 8,
+        "firstPath": "src/flask/sansio/app.py",
+        "top3Paths": [
+          "src/flask/sansio/app.py",
+          "src/flask/app.py",
+          "src/flask/cli.py"
+        ],
+        "firstAt1": true,
+        "firstAt3": true,
+        "requiredConceptHits": [
+          {
+            "concept": "automatic OPTIONS",
+            "found": true
+          },
+          {
+            "concept": "routing",
+            "found": false
+          }
+        ],
+        "goals": [
+          {
+            "id": "goal_1",
+            "summary": "Handle automatic OPTIONS through a normal registered route and view dispatch path instead of a special check on every request.",
+            "emphasis": "primary",
+            "facets": [
+              {
+                "kind": "motivation",
+                "summary": "The issue reports that checking every dispatched request for OPTIONS is wasteful and that the current feature is confusing."
+              },
+              {
+                "kind": "condition",
+                "summary": "The change concerns automatic OPTIONS handling for routes where it is enabled."
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "The PR author says the implementation registers an internal automatic-options route and view, and relies on duplicate detection to avoid repeated registration where possible."
+              },
+              {
+                "kind": "context",
+                "summary": "The issue notes that adding routes can create duplicate rules, especially when multiple decorators register the same URL, and that this is considered messy even where it does not break behavior."
+              }
+            ],
+            "firstPath": "src/flask/sansio/app.py",
+            "candidatePaths": [
+              "src/flask/sansio/app.py",
+              "src/flask/app.py",
+              "src/flask/cli.py"
+            ]
+          },
+          {
+            "id": "goal_2",
+            "summary": "Ensure per-rule or view-level automatic-options settings can enable OPTIONS handling even when the global configuration is disabled.",
+            "emphasis": "primary",
+            "facets": [
+              {
+                "kind": "condition",
+                "summary": "The enabling behavior matters specifically when PROVIDE_AUTOMATIC_OPTIONS is disabled globally."
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "The issue author reports that the enabling issue has been fixed."
+              },
+              {
+                "kind": "test_claim",
+                "summary": "The issue reports that existing tests for this behavior were incomplete and had problems."
+              }
+            ],
+            "firstPath": "src/flask/sansio/app.py",
+            "candidatePaths": [
+              "src/flask/sansio/app.py",
+              "tests/test_basic.py",
+              "src/flask/app.py"
+            ]
+          },
+          {
+            "id": "goal_4",
+            "summary": "Keep the internal automatic-options endpoint out of flask routes output.",
+            "emphasis": "supporting",
+            "facets": [
+              {
+                "kind": "implementation_claim",
+                "summary": "The PR author says the routes command was adjusted to omit the internal endpoint because displaying it would be noisy."
+              }
+            ],
+            "firstPath": "src/flask/cli.py",
+            "candidatePaths": [
+              "src/flask/cli.py",
+              "src/flask/app.py"
+            ]
+          },
+          {
+            "id": "goal_5",
+            "summary": "Use a regular named static view rather than a lambda and weak reference for the new handling path.",
+            "emphasis": "supporting",
+            "facets": [
+              {
+                "kind": "implementation_claim",
+                "summary": "The PR author reports moving the static view out to match how the new automatic-options view is handled."
+              }
+            ],
+            "firstPath": "src/flask/app.py",
+            "candidatePaths": [
+              "src/flask/app.py",
+              "src/flask/sansio/app.py",
+              "tests/test_basic.py"
+            ]
+          },
+          {
+            "id": "goal_3",
+            "summary": "Consider whether the global automatic-options configuration should be deprecated.",
+            "emphasis": "optional",
+            "facets": [
+              {
+                "kind": "motivation",
+                "summary": "The issue questions the benefit of disabling automatic OPTIONS handling or configuring it per deployment."
+              }
+            ],
+            "firstPath": "src/flask/sansio/app.py",
+            "candidatePaths": [
+              "src/flask/sansio/app.py",
+              "tests/test_basic.py",
+              "src/flask/app.py"
+            ]
+          }
+        ],
+        "failures": [
+          {
+            "stage": "refinement",
+            "category": "invalid_json_or_shape",
+            "reason": "unknown_artifact_ref"
+          }
+        ],
+        "limitations": [
+          "retrieval_budget_exceeded",
+          "retrieval_language_unsupported",
+          "retrieval_scan_budget_exceeded",
+          "retrieval_unverified_fallback",
+          "invalid_reference"
+        ],
+        "unprocessedCount": 3
+      },
+      "cards": {
+        "mode": "objectives",
+        "count": 5
+      },
+      "boundary": {
+        "valid": true,
+        "errors": []
+      },
+      "elapsedMs": 59695
+    },
+    {
+      "id": "httpx-3785",
+      "url": "https://github.com/encode/httpx/pull/3785",
+      "head": "54857a13dfd2d868fc52a54b0eaa4a97487f97d2",
+      "base": "b5addb64f0161ff6bfe94c124ef76f6a1fba5254",
+      "status": "completed",
+      "input": {
+        "titleSha256": "77b1d80d42b33eaddd45787506e58a11b5a0187f2864dcffe1e5b1d763479806",
+        "descriptionSha256": "53a9f782e72e1e16e77ff411462d4e4489bc4ee0cf6c1f071f8c20e12fc5c52d",
+        "changedPaths": [
+          "requirements.txt"
+        ]
+      },
+      "calls": 2,
+      "usage": [
+        {
+          "status": "provider_succeeded",
+          "stage": "intent",
+          "model": "gpt-5.6-luna",
+          "inputTokens": 2944,
+          "outputTokens": 353,
+          "latencyMs": 4287
+        },
+        {
+          "status": "provider_succeeded",
+          "stage": "ranking",
+          "model": "gpt-5.6-luna",
+          "inputTokens": 1076,
+          "outputTokens": 465,
+          "latencyMs": 5049
+        }
+      ],
+      "rawFiles": [
+        "2026-09-18-ten-pr-raw-navigation/raw-provider/httpx-3785-01-intent.raw.json",
+        "2026-09-18-ten-pr-raw-navigation/raw-provider/httpx-3785-02-ranking.raw.json"
+      ],
+      "reads": [
+        {
+          "requestedPaths": [
+            "pyproject.toml",
+            "setup.py",
+            "setup.cfg",
+            "tox.ini",
+            "requirements-dev.txt",
+            "requirements.in",
+            "poetry.lock",
+            ".github/workflows/ci.yml"
+          ],
+          "revision": "54857a13dfd2d868fc52a54b0eaa4a97487f97d2",
+          "returnedPaths": []
+        }
+      ],
+      "navigation": {
+        "state": "partial",
+        "rankingStatus": "ready",
+        "coverageStatus": "partial",
+        "goalCount": 1,
+        "artifactCount": 1,
+        "firstPath": "requirements.txt",
+        "top3Paths": [
+          "requirements.txt"
+        ],
+        "firstAt1": true,
+        "firstAt3": true,
+        "requiredConceptHits": [
+          {
+            "concept": "cryptography",
+            "found": true
+          },
+          {
+            "concept": "dependency update",
+            "found": false
+          }
+        ],
+        "goals": [
+          {
+            "id": "goal_1",
+            "summary": "Update the project’s cryptography dependency from version 45.0.7 to version 46.0.6.",
+            "emphasis": "primary",
+            "facets": [
+              {
+                "kind": "constraint",
+                "summary": "The requested version transition is specifically 45.0.7 to 46.0.6."
+              },
+              {
+                "kind": "context",
+                "summary": "The referenced upstream release includes security fixes, binary-elliptic-curve changes, platform wheel changes, and other release updates."
+              }
+            ],
+            "firstPath": "requirements.txt",
+            "candidatePaths": [
+              "requirements.txt"
+            ]
+          }
+        ],
+        "failures": [],
+        "limitations": [
+          "requested_path_unread"
+        ],
+        "unprocessedCount": 14
+      },
+      "cards": {
+        "mode": "objectives",
+        "count": 1
+      },
+      "boundary": {
+        "valid": true,
+        "errors": []
+      },
+      "elapsedMs": 20039
+    },
+    {
+      "id": "starlette-3552",
+      "url": "https://github.com/Kludex/starlette/pull/3552",
+      "head": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+      "base": "03f12b7fcf0a3e21a8da648ca0900c79472e9efe",
+      "status": "completed",
+      "input": {
+        "titleSha256": "14fc982be7a8594740189d2f1286a9ade1162126d42b98eab761979d24ad12cd",
+        "descriptionSha256": "4a8de2dfa411a2fb792c0af9c77c2b8732de27873294ff3d4ee69355ae96d7de",
+        "changedPaths": [
+          "starlette/endpoints.py",
+          "tests/test_endpoints.py"
+        ]
+      },
+      "calls": 3,
+      "usage": [
+        {
+          "status": "provider_succeeded",
+          "stage": "intent",
+          "model": "gpt-5.6-luna",
+          "inputTokens": 1282,
+          "outputTokens": 664,
+          "latencyMs": 5946
+        },
+        {
+          "status": "provider_succeeded",
+          "stage": "ranking",
+          "model": "gpt-5.6-luna",
+          "inputTokens": 2983,
+          "outputTokens": 1429,
+          "latencyMs": 11573
+        },
+        {
+          "status": "provider_succeeded",
+          "stage": "refinement",
+          "model": "gpt-5.6-luna",
+          "inputTokens": 3821,
+          "outputTokens": 1723,
+          "latencyMs": 13319
+        }
+      ],
+      "rawFiles": [
+        "2026-09-18-ten-pr-raw-navigation/raw-provider/starlette-3552-01-intent.raw.json",
+        "2026-09-18-ten-pr-raw-navigation/raw-provider/starlette-3552-02-ranking.raw.json",
+        "2026-09-18-ten-pr-raw-navigation/raw-provider/starlette-3552-03-refinement.raw.json"
+      ],
+      "reads": [
+        {
+          "requestedPaths": [
+            "tests/test_endpoints.py",
+            "pyproject.toml",
+            "tox.ini",
+            "setup.cfg",
+            "starlette/endpoints.py"
+          ],
+          "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+          "returnedPaths": [
+            "tests/test_endpoints.py",
+            "pyproject.toml",
+            "starlette/endpoints.py"
+          ]
+        }
+      ],
+      "navigation": {
+        "state": "partial",
+        "rankingStatus": "ready",
+        "coverageStatus": "partial",
+        "goalCount": 4,
+        "artifactCount": 8,
+        "firstPath": "starlette/endpoints.py",
+        "top3Paths": [
+          "starlette/endpoints.py",
+          "tests/test_endpoints.py"
+        ],
+        "firstAt1": true,
+        "firstAt3": true,
+        "requiredConceptHits": [
+          {
+            "concept": "WebSocketEndpoint",
+            "found": true
+          },
+          {
+            "concept": "JSON decode",
+            "found": false
+          }
+        ],
+        "goals": [
+          {
+            "id": "goal_1",
+            "summary": "Make JSON-mode WebSocketEndpoint.decode() handle receive events with no text and no bytes without crashing through an unexpected exception path.",
+            "emphasis": "primary",
+            "facets": [
+              {
+                "kind": "condition",
+                "summary": "Applies when WebSocketEndpoint uses JSON encoding and the receive event has no text payload; the described cases include bytes being null or absent."
+              },
+              {
+                "kind": "motivation",
+                "summary": "The prior behavior could raise AttributeError or KeyError and cause the endpoint handler to fail instead of closing cleanly."
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "The author reports that the change checks for bytes before attempting to decode it."
+              }
+            ],
+            "firstPath": "starlette/endpoints.py",
+            "candidatePaths": [
+              "starlette/endpoints.py",
+              "tests/test_endpoints.py"
+            ]
+          },
+          {
+            "id": "goal_2",
+            "summary": "Handle non-UTF-8 binary payloads in JSON mode as unsupported WebSocket data rather than allowing UnicodeDecodeError to escape.",
+            "emphasis": "primary",
+            "facets": [
+              {
+                "kind": "condition",
+                "summary": "Applies when a binary frame contains bytes that are not valid UTF-8 JSON input."
+              },
+              {
+                "kind": "motivation",
+                "summary": "The prior unhandled UnicodeDecodeError could trigger an internal-error close and server traceback instead of the unsupported-data behavior."
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "The author reports catching UnicodeDecodeError during binary decoding."
+              }
+            ],
+            "firstPath": "starlette/endpoints.py",
+            "candidatePaths": [
+              "starlette/endpoints.py",
+              "tests/test_endpoints.py"
+            ]
+          },
+          {
+            "id": "goal_3",
+            "summary": "Use the unsupported-data handling path for malformed JSON input, including the missing-payload and invalid-UTF-8 cases, with the stated error behavior.",
+            "emphasis": "primary",
+            "facets": [
+              {
+                "kind": "acceptance",
+                "summary": "The stated target behavior is to close with WS_1003_UNSUPPORTED_DATA and raise RuntimeError with the message indicating malformed JSON data was received."
+              },
+              {
+                "kind": "context",
+                "summary": "The intended binary JSON behavior is described as matching text JSON error handling."
+              },
+              {
+                "kind": "constraint",
+                "summary": "These cases should not be converted into the general dispatch path that closes with WS_1011_INTERNAL_ERROR."
+              }
+            ],
+            "firstPath": "starlette/endpoints.py",
+            "candidatePaths": [
+              "starlette/endpoints.py",
+              "tests/test_endpoints.py"
+            ]
+          },
+          {
+            "id": "goal_4",
+            "summary": "Preserve the reported validation of the change across the project test and check commands.",
+            "emphasis": "supporting",
+            "facets": [
+              {
+                "kind": "test_claim",
+                "summary": "The author reports that all 1253 tests passed with 100% coverage and that formatting, type checking, and lint checks were clean."
+              }
+            ],
+            "firstPath": "tests/test_endpoints.py",
+            "candidatePaths": [
+              "tests/test_endpoints.py",
+              "pyproject.toml"
+            ]
+          }
+        ],
+        "failures": [
+          {
+            "stage": "ranking",
+            "category": "invalid_json_or_shape",
+            "reason": "unknown_artifact_ref"
+          }
+        ],
+        "limitations": [
+          "invalid_reference",
+          "retrieval_language_unsupported",
+          "retrieval_scan_budget_exceeded",
+          "retrieval_unverified_fallback",
+          "retrieval_budget_exceeded",
+          "requested_path_unread"
+        ],
+        "unprocessedCount": 4
+      },
+      "cards": {
+        "mode": "objectives",
+        "count": 4
+      },
+      "boundary": {
+        "valid": true,
+        "errors": []
+      },
+      "elapsedMs": 49736
+    },
+    {
+      "id": "fastapi-16370",
+      "url": "https://github.com/fastapi/fastapi/pull/16370",
+      "head": "0a6b344a2c950af11946718210202cb458cb485c",
+      "base": "50113da16fec53b66b80d75e80a89296de4fa5a5",
+      "status": "completed",
+      "input": {
+        "titleSha256": "45af6c5ab323bcb53775f67814603959e84d0f55f372fec022bd2fb43a0267bb",
+        "descriptionSha256": "5352abd98a649e331bdd961b56e7920c26108acfe6453158f211c880ad4c2209",
+        "changedPaths": [
+          "docs/en/docs/tutorial/path-params.md",
+          "fastapi/openapi/utils.py",
+          "tests/test_openapi_path_converter_collision.py"
+        ]
+      },
+      "calls": 3,
+      "usage": [
+        {
+          "status": "provider_succeeded",
+          "stage": "intent",
+          "model": "gpt-5.6-luna",
+          "inputTokens": 1441,
+          "outputTokens": 661,
+          "latencyMs": 6367
+        },
+        {
+          "status": "provider_succeeded",
+          "stage": "ranking",
+          "model": "gpt-5.6-luna",
+          "inputTokens": 2821,
+          "outputTokens": 959,
+          "latencyMs": 9005
+        },
+        {
+          "status": "provider_succeeded",
+          "stage": "refinement",
+          "model": "gpt-5.6-luna",
+          "inputTokens": 3034,
+          "outputTokens": 1508,
+          "latencyMs": 13186
+        }
+      ],
+      "rawFiles": [
+        "2026-09-18-ten-pr-raw-navigation/raw-provider/fastapi-16370-01-intent.raw.json",
+        "2026-09-18-ten-pr-raw-navigation/raw-provider/fastapi-16370-02-ranking.raw.json",
+        "2026-09-18-ten-pr-raw-navigation/raw-provider/fastapi-16370-03-refinement.raw.json"
+      ],
+      "reads": [
+        {
+          "requestedPaths": [
+            "tests/test_openapi_path_converter_collision.py",
+            "fastapi/openapi/utils.py",
+            "docs/en/docs/tutorial/path-params.md"
+          ],
+          "revision": "0a6b344a2c950af11946718210202cb458cb485c",
+          "returnedPaths": [
+            "tests/test_openapi_path_converter_collision.py",
+            "fastapi/openapi/utils.py",
+            "docs/en/docs/tutorial/path-params.md"
+          ]
+        }
+      ],
+      "navigation": {
+        "state": "partial",
+        "rankingStatus": "ready",
+        "coverageStatus": "partial",
+        "goalCount": 3,
+        "artifactCount": 5,
+        "firstPath": "fastapi/openapi/utils.py",
+        "top3Paths": [
+          "fastapi/openapi/utils.py",
+          "tests/test_openapi_path_converter_collision.py",
+          "docs/en/docs/tutorial/path-params.md"
+        ],
+        "firstAt1": true,
+        "firstAt3": true,
+        "requiredConceptHits": [
+          {
+            "concept": "OpenAPI",
+            "found": true
+          },
+          {
+            "concept": "path converter",
+            "found": true
+          }
+        ],
+        "goals": [
+          {
+            "id": "goal_1",
+            "summary": "Warn when OpenAPI generation encounters a route or webhook whose normalized path and method would overwrite an existing operation, especially when differing path converters collapse to the same OpenAPI path.",
+            "emphasis": "primary",
+            "facets": [
+              {
+                "kind": "motivation",
+                "summary": "Different Starlette converters can normalize to one OpenAPI path, leaving the runtime's first-match behavior inconsistent with the spec's last-overwritten operation."
+              },
+              {
+                "kind": "condition",
+                "summary": "The warning should apply to collisions on an OpenAPI path-and-method combination and identify the colliding path and methods."
+              },
+              {
+                "kind": "context",
+                "summary": "The reported example uses string and integer converters on the same path template; runtime selects the first route while OpenAPI retains the last registered operation."
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "The PR author reports adding the referenced code) logic in OpenAPI generation for route or webhook overwrites, including an explanation of the converter mismatch."
+              }
+            ],
+            "firstPath": "fastapi/openapi/utils.py",
+            "candidatePaths": [
+              "fastapi/openapi/utils.py",
+              "tests/test_openapi_path_converter_collision.py",
+              "docs/en/docs/tutorial/path-params.md"
+            ]
+          },
+          {
+            "id": "goal_2",
+            "summary": "Add regression coverage for converter collision detection, non-colliding routes, and matching versus differing parameter names.",
+            "emphasis": "supporting",
+            "facets": [
+              {
+                "kind": "acceptance",
+                "summary": "Tests should cover collision detection, a no-collision case, and cases with the same parameter name versus different parameter names."
+              },
+              {
+                "kind": "test_claim",
+                "summary": "The PR author reports adding a dedicated regression test file for these scenarios."
+              }
+            ],
+            "firstPath": "tests/test_openapi_path_converter_collision.py",
+            "candidatePaths": [
+              "tests/test_openapi_path_converter_collision.py",
+              "fastapi/openapi/utils.py",
+              "docs/en/docs/tutorial/path-params.md"
+            ]
+          },
+          {
+            "id": "goal_3",
+            "summary": "Document that different path converters on one path template collapse to the same OpenAPI path and recommend distinct parameter names.",
+            "emphasis": "supporting",
+            "facets": [
+              {
+                "kind": "acceptance",
+                "summary": "The documentation should be placed under the path-parameter order guidance and include the distinct-parameter-name recommendation."
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "The PR author reports updating the path-parameters tutorial with this note."
+              }
+            ],
+            "firstPath": "docs/en/docs/tutorial/path-params.md",
+            "candidatePaths": [
+              "docs/en/docs/tutorial/path-params.md",
+              "fastapi/openapi/utils.py"
+            ]
+          }
+        ],
+        "failures": [
+          {
+            "stage": "intent",
+            "category": "invalid_json_or_shape",
+            "reason": "unsafe_summary"
+          }
+        ],
+        "limitations": [
+          "unsafe_summary_omitted",
+          "retrieval_budget_exceeded",
+          "retrieval_language_unsupported",
+          "retrieval_unverified_fallback",
+          "retrieval_scan_budget_exceeded"
+        ],
+        "unprocessedCount": 7
+      },
+      "cards": {
+        "mode": "objectives",
+        "count": 3
+      },
+      "boundary": {
+        "valid": true,
+        "errors": []
+      },
+      "elapsedMs": 49919
+    },
+    {
+      "id": "pydantic-13819",
+      "url": "https://github.com/pydantic/pydantic/pull/13819",
+      "head": "299309892717854a738bb385a33e7f655cb62bf1",
+      "base": "7b15a786a755ec4089a34c9bb5f957f8b8ce3690",
+      "status": "completed",
+      "input": {
+        "titleSha256": "a148e2933b1126dc4cd14e70dbcf487ff27e823a09610f72a37e6b64422a18c7",
+        "descriptionSha256": "47c378257ccfaa6a9c9f6631a91dab05e7ee479606613de84cb03b98d036fa47",
+        "changedPaths": [
+          "pydantic-core/src/definitions.rs",
+          "pydantic-core/src/py_gc.rs",
+          "pydantic-core/src/serializers/type_serializers/function.rs",
+          "pydantic-core/src/serializers/type_serializers/generator.rs",
+          "pydantic-core/src/validators/function.rs",
+          "pydantic-core/src/validators/generator.rs",
+          "pydantic-core/tests/test_garbage_collection.py"
+        ]
+      },
+      "calls": 3,
+      "usage": [
+        {
+          "status": "provider_succeeded",
+          "stage": "intent",
+          "model": "gpt-5.6-luna",
+          "inputTokens": 926,
+          "outputTokens": 668,
+          "latencyMs": 8663
+        },
+        {
+          "status": "provider_succeeded",
+          "stage": "ranking",
+          "model": "gpt-5.6-luna",
+          "inputTokens": 2278,
+          "outputTokens": 1366,
+          "latencyMs": 10649
+        },
+        {
+          "status": "provider_succeeded",
+          "stage": "refinement",
+          "model": "gpt-5.6-luna",
+          "inputTokens": 2499,
+          "outputTokens": 1718,
+          "latencyMs": 12608
+        }
+      ],
+      "rawFiles": [
+        "2026-09-18-ten-pr-raw-navigation/raw-provider/pydantic-13819-01-intent.raw.json",
+        "2026-09-18-ten-pr-raw-navigation/raw-provider/pydantic-13819-02-ranking.raw.json",
+        "2026-09-18-ten-pr-raw-navigation/raw-provider/pydantic-13819-03-refinement.raw.json"
+      ],
+      "reads": [
+        {
+          "requestedPaths": [
+            "pydantic-core/src/definitions.rs",
+            "pydantic-core/src/py_gc.rs",
+            "pydantic-core/src/serializers/type_serializers/function.rs",
+            "pydantic-core/src/serializers/type_serializers/generator.rs",
+            "pydantic-core/src/validators/function.rs",
+            "pydantic-core/src/validators/generator.rs",
+            "pydantic-core/tests/test_garbage_collection.py"
+          ],
+          "revision": "299309892717854a738bb385a33e7f655cb62bf1",
+          "returnedPaths": [
+            "pydantic-core/src/definitions.rs",
+            "pydantic-core/src/py_gc.rs",
+            "pydantic-core/src/serializers/type_serializers/function.rs",
+            "pydantic-core/src/serializers/type_serializers/generator.rs",
+            "pydantic-core/src/validators/function.rs",
+            "pydantic-core/src/validators/generator.rs",
+            "pydantic-core/tests/test_garbage_collection.py"
+          ]
+        }
+      ],
+      "navigation": {
+        "state": "partial",
+        "rankingStatus": "ready",
+        "coverageStatus": "partial",
+        "goalCount": 3,
+        "artifactCount": 6,
+        "firstPath": "pydantic-core/src/serializers/type_serializers/function.rs",
+        "top3Paths": [
+          "pydantic-core/src/serializers/type_serializers/function.rs",
+          "pydantic-core/src/serializers/type_serializers/generator.rs",
+          "pydantic-core/src/definitions.rs"
+        ],
+        "firstAt1": false,
+        "firstAt3": false,
+        "requiredConceptHits": [
+          {
+            "concept": "GC",
+            "found": true
+          },
+          {
+            "concept": "pydantic-core",
+            "found": false
+          }
+        ],
+        "goals": [
+          {
+            "id": "goal_1",
+            "summary": "Correct GC traversal so validator and serializer callable fields do not traverse Arc-owned subtrees redundantly, including the listed validator and serializer iterator/callable paths.",
+            "emphasis": "primary",
+            "facets": [
+              {
+                "kind": "motivation",
+                "summary": "The description attributes duplicate visits to an Arc clone whose subtree is already owned and traversed by the corresponding SchemaValidator."
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "The author describes removing traversal through the specified validator and serializer fields and documenting that an Arc should be traversed only by its unique owner."
+              }
+            ],
+            "firstPath": "pydantic-core/src/serializers/type_serializers/function.rs",
+            "candidatePaths": [
+              "pydantic-core/src/serializers/type_serializers/function.rs",
+              "pydantic-core/src/serializers/type_serializers/generator.rs",
+              "pydantic-core/src/definitions.rs"
+            ]
+          },
+          {
+            "id": "goal_2",
+            "summary": "Make the relevant validation and serialization info/callable/iterator types participate in Python GC tracking by placing their traversal and clearing methods where the bindings recognize them.",
+            "emphasis": "supporting",
+            "facets": [
+              {
+                "kind": "implementation_claim",
+                "summary": "The author states that __traverse__ and __clear__ methods for ValidationInfo, SerializationInfo, SerializationCallable, and SerializationIterator are moved into the pymethods definitions."
+              }
+            ],
+            "firstPath": "pydantic-core/src/serializers/type_serializers/function.rs",
+            "candidatePaths": [
+              "pydantic-core/src/serializers/type_serializers/function.rs",
+              "pydantic-core/src/serializers/type_serializers/generator.rs",
+              "pydantic-core/src/definitions.rs"
+            ]
+          },
+          {
+            "id": "goal_3",
+            "summary": "Remove the unused DefinitionRef GC traversal implementation and retain documentation for the Arc ownership rule.",
+            "emphasis": "supporting",
+            "facets": [
+              {
+                "kind": "implementation_claim",
+                "summary": "The author describes removing the unused PyGcTraverse implementation for DefinitionRef and adding documentation about unique Arc ownership during traversal."
+              }
+            ],
+            "firstPath": "pydantic-core/src/definitions.rs",
+            "candidatePaths": [
+              "pydantic-core/src/definitions.rs",
+              "pydantic-core/src/serializers/type_serializers/function.rs",
+              "pydantic-core/src/serializers/type_serializers/generator.rs"
+            ]
+          }
+        ],
+        "failures": [
+          {
+            "stage": "refinement",
+            "category": "invalid_json_or_shape",
+            "reason": "unknown_artifact_ref"
+          }
+        ],
+        "limitations": [
+          "retrieval_budget_exceeded",
+          "retrieval_language_unsupported",
+          "retrieval_unverified_fallback",
+          "retrieval_scan_budget_exceeded",
+          "invalid_reference"
+        ],
+        "unprocessedCount": 1
+      },
+      "cards": {
+        "mode": "objectives",
+        "count": 3
+      },
+      "boundary": {
+        "valid": true,
+        "errors": []
+      },
+      "elapsedMs": 48303
+    },
+    {
+      "id": "requests-7619",
+      "url": "https://github.com/psf/requests/pull/7619",
+      "head": "1e62a1d065cb8a332e5a20e58b2f83ecef4fd78c",
+      "base": "dae7ef63b4df6eded86637f251fc4e3a06c3b479",
+      "status": "completed",
+      "input": {
+        "titleSha256": "fbe132d57eae12206165d9f315eef1a9097e93b3c8c9497638df6dd97e56d5d3",
+        "descriptionSha256": "b08dd3c7d77c20f76f89d390b70c6ab4fa5f392b8e5d1060cd76af7fb0f07f6b",
+        "changedPaths": [
+          ".pre-commit-config.yaml"
+        ]
+      },
+      "calls": 3,
+      "usage": [
+        {
+          "status": "provider_succeeded",
+          "stage": "intent",
+          "model": "gpt-5.6-luna",
+          "inputTokens": 1919,
+          "outputTokens": 378,
+          "latencyMs": 4046
+        },
+        {
+          "status": "provider_succeeded",
+          "stage": "ranking",
+          "model": "gpt-5.6-luna",
+          "inputTokens": 1076,
+          "outputTokens": 484,
+          "latencyMs": 4748
+        },
+        {
+          "status": "provider_succeeded",
+          "stage": "refinement",
+          "model": "gpt-5.6-luna",
+          "inputTokens": 1298,
+          "outputTokens": 622,
+          "latencyMs": 5959
+        }
+      ],
+      "rawFiles": [
+        "2026-09-18-ten-pr-raw-navigation/raw-provider/requests-7619-01-intent.raw.json",
+        "2026-09-18-ten-pr-raw-navigation/raw-provider/requests-7619-02-ranking.raw.json",
+        "2026-09-18-ten-pr-raw-navigation/raw-provider/requests-7619-03-refinement.raw.json"
+      ],
+      "reads": [
+        {
+          "requestedPaths": [
+            ".pre-commit-config.yaml"
+          ],
+          "revision": "1e62a1d065cb8a332e5a20e58b2f83ecef4fd78c",
+          "returnedPaths": [
+            ".pre-commit-config.yaml"
+          ]
+        }
+      ],
+      "navigation": {
+        "state": "partial",
+        "rankingStatus": "ready",
+        "coverageStatus": "partial",
+        "goalCount": 1,
+        "artifactCount": 3,
+        "firstPath": ".pre-commit-config.yaml",
+        "top3Paths": [
+          ".pre-commit-config.yaml"
+        ],
+        "firstAt1": true,
+        "firstAt3": true,
+        "requiredConceptHits": [
+          {
+            "concept": "ruff",
+            "found": true
+          },
+          {
+            "concept": "pre-commit",
+            "found": true
+          }
+        ],
+        "goals": [
+          {
+            "id": "goal_1",
+            "summary": "Update the pre-commit dependency ruff-pre-commit from v0.16.4 to v0.16.5 within the pre-commit dependency group.",
+            "emphasis": "primary",
+            "facets": [
+              {
+                "kind": "constraint",
+                "summary": "The requested change is limited to the named dependency and the specified version transition."
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "The PR description presents this as a Dependabot-generated update and lists the upstream release and commits associated with v0.16.5."
+              }
+            ],
+            "firstPath": ".pre-commit-config.yaml",
+            "candidatePaths": [
+              ".pre-commit-config.yaml"
+            ]
+          }
+        ],
+        "failures": [],
+        "limitations": [
+          "retrieval_language_unsupported",
+          "retrieval_unverified_fallback"
+        ],
+        "unprocessedCount": 13
+      },
+      "cards": {
+        "mode": "objectives",
+        "count": 1
+      },
+      "boundary": {
+        "valid": true,
+        "errors": []
+      },
+      "elapsedMs": 37824
+    },
+    {
+      "id": "svelte-18835",
+      "url": "https://github.com/sveltejs/svelte/pull/18835",
+      "head": "b0e03c7b96ec9cc6ff99bedef650acf78c20de98",
+      "base": "6eb720a1b7cafca3ebe0ab5c76674272cd3044f9",
+      "status": "completed",
+      "input": {
+        "titleSha256": "909147235f7520bb7160dca80dec7884b3c6c2fd7c8d7555a1ef467d54e2bf37",
+        "descriptionSha256": "6359a555da9bfeec037a457ae574483617277e3bd0970694823fa395c6ce30dc",
+        "changedPaths": [
+          ".changeset/bright-images-release.md",
+          "packages/svelte/src/internal/client/dom/template.js",
+          "packages/svelte/tests/runtime-runes/samples/responsive-image-anchor-fragment/Picture.js",
+          "packages/svelte/tests/runtime-runes/samples/responsive-image-anchor-fragment/_config.js",
+          "packages/svelte/tests/runtime-runes/samples/responsive-image-anchor-fragment/main.svelte"
+        ]
+      },
+      "calls": 3,
+      "usage": [
+        {
+          "status": "provider_succeeded",
+          "stage": "intent",
+          "model": "gpt-5.6-luna",
+          "inputTokens": 1098,
+          "outputTokens": 450,
+          "latencyMs": 4363
+        },
+        {
+          "status": "provider_succeeded",
+          "stage": "ranking",
+          "model": "gpt-5.6-luna",
+          "inputTokens": 2358,
+          "outputTokens": 1407,
+          "latencyMs": 11085
+        },
+        {
+          "status": "provider_succeeded",
+          "stage": "refinement",
+          "model": "gpt-5.6-luna",
+          "inputTokens": 2624,
+          "outputTokens": 1354,
+          "latencyMs": 10852
+        }
+      ],
+      "rawFiles": [
+        "2026-09-18-ten-pr-raw-navigation/raw-provider/svelte-18835-01-intent.raw.json",
+        "2026-09-18-ten-pr-raw-navigation/raw-provider/svelte-18835-02-ranking.raw.json",
+        "2026-09-18-ten-pr-raw-navigation/raw-provider/svelte-18835-03-refinement.raw.json"
+      ],
+      "reads": [
+        {
+          "requestedPaths": [
+            "packages/svelte/src/internal/client/dom/template.js",
+            "packages/svelte/tests/runtime-runes/samples/responsive-image-anchor-fragment/Picture.js",
+            "packages/svelte/tests/runtime-runes/samples/responsive-image-anchor-fragment/main.svelte",
+            "packages/svelte/tests/runtime-runes/samples/responsive-image-anchor-fragment/_config.js",
+            "packages/svelte/tests/runtime-runes/test.js",
+            "packages/svelte/tests/runtime-runes/samples/anchor-fragment/_config.js",
+            "packages/svelte/src/internal/client/dom/blocks/each.js",
+            "packages/svelte/package.json"
+          ],
+          "revision": "b0e03c7b96ec9cc6ff99bedef650acf78c20de98",
+          "returnedPaths": [
+            "packages/svelte/src/internal/client/dom/template.js",
+            "packages/svelte/tests/runtime-runes/samples/responsive-image-anchor-fragment/Picture.js",
+            "packages/svelte/tests/runtime-runes/samples/responsive-image-anchor-fragment/main.svelte",
+            "packages/svelte/tests/runtime-runes/samples/responsive-image-anchor-fragment/_config.js",
+            "packages/svelte/src/internal/client/dom/blocks/each.js",
+            "packages/svelte/package.json"
+          ]
+        }
+      ],
+      "navigation": {
+        "state": "partial",
+        "rankingStatus": "ready",
+        "coverageStatus": "partial",
+        "goalCount": 4,
+        "artifactCount": 6,
+        "firstPath": "packages/svelte/src/internal/client/dom/template.js",
+        "top3Paths": [
+          "packages/svelte/src/internal/client/dom/template.js",
+          "packages/svelte/tests/runtime-runes/samples/responsive-image-anchor-fragment/main.svelte",
+          "packages/svelte/tests/runtime-runes/samples/responsive-image-anchor-fragment/_config.js"
+        ],
+        "firstAt1": true,
+        "firstAt3": true,
+        "requiredConceptHits": [
+          {
+            "concept": "responsive images",
+            "found": true
+          },
+          {
+            "concept": "Chromium",
+            "found": true
+          }
+        ],
+        "goals": [
+          {
+            "id": "goal_1",
+            "summary": "Instantiate cached HTML templates with document.importNode so their assembled nodes start in the page document, avoiding the reported Chromium template-document adoption sequence.",
+            "emphasis": "primary",
+            "facets": [
+              {
+                "kind": "motivation",
+                "summary": "The reported Chromium behavior may leave a viewport listener in the template document retaining a removed responsive image and detached subtree."
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "The author states that importing template nodes into the page document up front prevents the T→M→T→M adoption sequence."
+              },
+              {
+                "kind": "context",
+                "summary": "The change is presented as addressing Chromium retention of responsive images."
+              }
+            ],
+            "firstPath": "packages/svelte/src/internal/client/dom/template.js",
+            "candidatePaths": [
+              "packages/svelte/src/internal/client/dom/template.js",
+              "packages/svelte/tests/runtime-runes/samples/responsive-image-anchor-fragment/main.svelte",
+              "packages/svelte/tests/runtime-runes/samples/responsive-image-anchor-fragment/_config.js",
+              ".changeset/bright-images-release.md"
+            ]
+          },
+          {
+            "id": "goal_2",
+            "summary": "Add regression coverage for responsive images assembled through anchor fragments.",
+            "emphasis": "supporting",
+            "facets": [],
+            "firstPath": "packages/svelte/tests/runtime-runes/samples/responsive-image-anchor-fragment/main.svelte",
+            "candidatePaths": [
+              "packages/svelte/tests/runtime-runes/samples/responsive-image-anchor-fragment/main.svelte",
+              "packages/svelte/tests/runtime-runes/samples/responsive-image-anchor-fragment/_config.js",
+              "packages/svelte/src/internal/client/dom/template.js",
+              ".changeset/bright-images-release.md"
+            ]
+          },
+          {
+            "id": "goal_3",
+            "summary": "Add a patch changeset for the fix.",
+            "emphasis": "supporting",
+            "facets": [],
+            "firstPath": ".changeset/bright-images-release.md",
+            "candidatePaths": [
+              ".changeset/bright-images-release.md",
+              "packages/svelte/src/internal/client/dom/template.js"
+            ]
+          },
+          {
+            "id": "goal_4",
+            "summary": "Preserve the stated reproduction and test evidence as review context, including Chromium CDP retention measurements and the reported project test, lint, check, and format runs.",
+            "emphasis": "optional",
+            "facets": [
+              {
+                "kind": "reproduction",
+                "summary": "The author reports a Playwright Chromium CDP reproduction in which forced garbage collection retained substantially more nodes for cloneNode subtrees than for importNode."
+              },
+              {
+                "kind": "test_claim",
+                "summary": "The author reports successful runtime-runes and full test runs, plus lint, check, and format commands."
+              }
+            ],
+            "firstPath": "packages/svelte/tests/runtime-runes/samples/responsive-image-anchor-fragment/_config.js",
+            "candidatePaths": [
+              "packages/svelte/tests/runtime-runes/samples/responsive-image-anchor-fragment/_config.js",
+              "packages/svelte/tests/runtime-runes/samples/responsive-image-anchor-fragment/main.svelte",
+              "packages/svelte/src/internal/client/dom/template.js",
+              ".changeset/bright-images-release.md"
+            ]
+          }
+        ],
+        "failures": [],
+        "limitations": [
+          "retrieval_budget_exceeded",
+          "retrieval_scan_budget_exceeded",
+          "retrieval_unverified_fallback",
+          "retrieval_language_unsupported",
+          "requested_path_unread"
+        ],
+        "unprocessedCount": 6
+      },
+      "cards": {
+        "mode": "objectives",
+        "count": 4
+      },
+      "boundary": {
+        "valid": true,
+        "errors": []
+      },
+      "elapsedMs": 39648
+    },
+    {
+      "id": "express-7474",
+      "url": "https://github.com/expressjs/express/pull/7474",
+      "head": "2e9749889c8e9b5411f29e4cbd33ed822ffdb87b",
+      "base": "9a34acf03cb818ff3f8bc40e44176e277a25cbb9",
+      "status": "completed",
+      "input": {
+        "titleSha256": "ed1a537d2fceb5e79a3bd637ec4c6bb77380f57c3610d586866fa0aae53f4edc",
+        "descriptionSha256": "949d629db469a50f1c98706e264af2e1e619cda1ef9534ba89b138b34ea1ad77",
+        "changedPaths": [
+          "package.json"
+        ]
+      },
+      "calls": 2,
+      "usage": [
+        {
+          "status": "provider_succeeded",
+          "stage": "intent",
+          "model": "gpt-5.6-luna",
+          "inputTokens": 952,
+          "outputTokens": 472,
+          "latencyMs": 5613
+        },
+        {
+          "status": "provider_succeeded",
+          "stage": "ranking",
+          "model": "gpt-5.6-luna",
+          "inputTokens": 1355,
+          "outputTokens": 539,
+          "latencyMs": 5327
+        }
+      ],
+      "rawFiles": [
+        "2026-09-18-ten-pr-raw-navigation/raw-provider/express-7474-01-intent.raw.json",
+        "2026-09-18-ten-pr-raw-navigation/raw-provider/express-7474-02-ranking.raw.json"
+      ],
+      "reads": [
+        {
+          "requestedPaths": [
+            "package-lock.json",
+            "npm-shrinkwrap.json",
+            "yarn.lock",
+            "pnpm-lock.yaml"
+          ],
+          "revision": "2e9749889c8e9b5411f29e4cbd33ed822ffdb87b",
+          "returnedPaths": []
+        }
+      ],
+      "navigation": {
+        "state": "partial",
+        "rankingStatus": "ready",
+        "coverageStatus": "partial",
+        "goalCount": 1,
+        "artifactCount": 1,
+        "firstPath": "package.json",
+        "top3Paths": [
+          "package.json"
+        ],
+        "firstAt1": true,
+        "firstAt3": true,
+        "requiredConceptHits": [
+          {
+            "concept": "proxy-addr",
+            "found": true
+          },
+          {
+            "concept": "dependency update",
+            "found": true
+          }
+        ],
+        "goals": [
+          {
+            "id": "goal_1",
+            "summary": "Update Express’s proxy-addr dependency from 2.0.7 to 2.0.8 to address the reported CVE-related vulnerability and prevent associated CVE noise.",
+            "emphasis": "primary",
+            "facets": [
+              {
+                "kind": "motivation",
+                "summary": "The issue frames the dependency update as CVE noise prevention."
+              },
+              {
+                "kind": "condition",
+                "summary": "The current dependency version is reported as vulnerable to CVE-2026-90711."
+              },
+              {
+                "kind": "acceptance",
+                "summary": "The requested target version is proxy-addr 2.0.8."
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "The PR author reports changing the dependency range to ^2.0.8 and resolving the cited CVE."
+              }
+            ],
+            "firstPath": "package.json",
+            "candidatePaths": [
+              "package.json"
+            ]
+          }
+        ],
+        "failures": [],
+        "limitations": [
+          "requested_path_unread"
+        ],
+        "unprocessedCount": 1
+      },
+      "cards": {
+        "mode": "objectives",
+        "count": 1
+      },
+      "boundary": {
+        "valid": true,
+        "errors": []
+      },
+      "elapsedMs": 34323
+    },
+    {
+      "id": "vite-23499",
+      "url": "https://github.com/vitejs/vite/pull/23499",
+      "head": "3defa496547b5dd2e212a8ad750e0d694abc74aa",
+      "base": "99bd9d1d46153fa939f4a304cc0177db42e28776",
+      "status": "failed",
+      "calls": 0,
+      "usage": [],
+      "rawFiles": [],
+      "reads": [],
+      "errorCode": "GitHub pull request base changed while AgentProof was collecting evidence.",
+      "elapsedMs": 753
+    },
+    {
+      "id": "typer-1957",
+      "url": "https://github.com/fastapi/typer/pull/1957",
+      "head": "09bf9a55a86e88bc3a79b2e63682a599eed4ffc5",
+      "base": "a80f6e5ecd74f32b983cca336a2f3cba98d9853a",
+      "status": "completed",
+      "input": {
+        "titleSha256": "0cf07685a46d8ea510458b5997605af1635d969bb222983954202ff1f567be58",
+        "descriptionSha256": "6bd3c34ca0ff03629220b2173dcd4ef5e44acde0a649fafe04fa2c9d60ac40ad",
+        "changedPaths": [
+          "tests/test_core.py",
+          "typer/main.py"
+        ]
+      },
+      "calls": 2,
+      "usage": [
+        {
+          "status": "provider_succeeded",
+          "stage": "intent",
+          "model": "gpt-5.6-luna",
+          "inputTokens": 1235,
+          "outputTokens": 537,
+          "latencyMs": 5630
+        },
+        {
+          "status": "provider_succeeded",
+          "stage": "ranking",
+          "model": "gpt-5.6-luna",
+          "inputTokens": 2053,
+          "outputTokens": 812,
+          "latencyMs": 8026
+        }
+      ],
+      "rawFiles": [
+        "2026-09-18-ten-pr-raw-navigation/raw-provider/typer-1957-01-intent.raw.json",
+        "2026-09-18-ten-pr-raw-navigation/raw-provider/typer-1957-02-ranking.raw.json"
+      ],
+      "reads": [
+        {
+          "requestedPaths": [
+            "typer/main.py:1660-1745",
+            "typer/main.py:1325-1385",
+            "typer/main.py:1745-1815",
+            "tests/test_core.py:330-455",
+            "tests/test_core.py:455-540"
+          ],
+          "revision": "09bf9a55a86e88bc3a79b2e63682a599eed4ffc5",
+          "returnedPaths": []
+        }
+      ],
+      "navigation": {
+        "state": "partial",
+        "rankingStatus": "ready",
+        "coverageStatus": "partial",
+        "goalCount": 1,
+        "artifactCount": 4,
+        "firstPath": "typer/main.py",
+        "top3Paths": [
+          "typer/main.py",
+          "tests/test_core.py"
+        ],
+        "firstAt1": true,
+        "firstAt3": true,
+        "requiredConceptHits": [
+          {
+            "concept": "metavar",
+            "found": true
+          },
+          {
+            "concept": "default option name",
+            "found": false
+          }
+        ],
+        "goals": [
+          {
+            "id": "goal_1",
+            "summary": "Keep option names and their usage/display casing independent from metavar annotations; metavars should affect display text only, not how an option is invoked.",
+            "emphasis": "primary",
+            "facets": [
+              {
+                "kind": "condition",
+                "summary": "Even when a metavar corresponds to the option name after lowercasing, it must not overwrite the option name's casing."
+              },
+              {
+                "kind": "acceptance",
+                "summary": "An option annotated with a custom metavar remains invoked using its option name, such as --name, rather than the metavar."
+              },
+              {
+                "kind": "motivation",
+                "summary": "The stated intent is to restore the documented rule that metavars are for display and should not influence option usage, correcting a regression introduced in version 0.27.0."
+              },
+              {
+                "kind": "constraint",
+                "summary": "The author notes this changes behavior from 0.27.0, while being less disruptive relative to 0.26.8."
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "The PR author reports that this change fixes the metavar-related option-name behavior."
+              },
+              {
+                "kind": "test_claim",
+                "summary": "The PR author reports adding tests, that updated tests fail on main and pass on the PR, and that coverage remains at 100%."
+              }
+            ],
+            "firstPath": "typer/main.py",
+            "candidatePaths": [
+              "typer/main.py",
+              "tests/test_core.py"
+            ]
+          }
+        ],
+        "failures": [],
+        "limitations": [
+          "requested_path_unread"
+        ],
+        "unprocessedCount": 6
+      },
+      "cards": {
+        "mode": "objectives",
+        "count": 1
+      },
+      "boundary": {
+        "valid": true,
+        "errors": []
+      },
+      "elapsedMs": 32795
+    }
+  ],
+  "aggregate": {
+    "totalCases": 10,
+    "completedCases": 9,
+    "failedCases": 1,
+    "providerCalls": 24,
+    "inputTokens": 49728,
+    "outputTokens": 22937,
+    "totalTokens": 72665,
+    "providerLatencyMs": 204047,
+    "readyNavigation": 9,
+    "boundaryValid": 9,
+    "firstAt1": 8,
+    "firstAt3": 8,
+    "unsafeSummaryCases": [
+      "fastapi-16370"
+    ]
+  }
+}

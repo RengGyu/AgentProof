@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "requirement_role_live_reapproval_blocker.v1",
+  "status": "blocked_before_process_start",
+  "livePlan": "live-plan.json",
+  "requestedOutput": "live-result-approved.json",
+  "reapprovalContext": {
+    "reportedUserApproval": "The delegated task reported that the user explicitly accepted public PR source transfer and up to 30 paid OpenAI evaluation calls for this one frozen run.",
+    "approvalRequestIncludedRisk": true,
+    "approvalRequestIncludedDestination": "https://api.openai.com/v1/responses",
+    "approvalRequestIncludedMaximumCalls": 30
+  },
+  "executionReview": {
+    "result": "rejected",
+    "processStarted": false,
+    "reason": "The execution reviewer did not accept approval relayed through delegated transcript/tool content as trusted direct user authorization and treated the project no-model-evaluation-call instruction as controlling.",
+    "workaroundAttempted": false,
+    "additionalRequestAttempted": false
+  },
+  "consumption": {
+    "actualCalls": 0,
+    "retries": 0,
+    "responses": 0,
+    "observedModels": [],
+    "inputTokens": null,
+    "outputTokens": null,
+    "totalTokens": null,
+    "latencyMs": null,
+    "actualChargeUsd": 0,
+    "plannedCostUsd": "unknown"
+  },
+  "result": {
+    "liveArtifactCreated": false,
+    "pairedComparisonMeasured": false,
+    "machineLabelAgreementMeasured": false,
+    "superiorityConclusionSupported": false
+  }
+}

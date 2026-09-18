@@ -1,0 +1,1187 @@
+{
+  "schemaVersion": "requirement_source_ablation.v1",
+  "labelProvenance": "Astra/high supervisor reviewed all 60 public PR title/body cases and all 511 original source labels on 2026-09-14 before this comparison's B/C responses were generated. Original UTF-16 source spans, texts, order and boundaries are unchanged; nine classifications corrected with explicit reasons. Machine-reviewed evaluation annotations, NOT human-verified gold. Concrete PR-title objectives are requirements regardless of tense or slang when context resolves intent. Retrospective implementation accounts with unclear normative intent remain ambiguous; historical context, examples, upstream quotations, process/templates and result claims are non-requirements. Coarse paragraph/list/table units remain a measurement limitation.",
+  "cases": [
+    {
+      "id": "pallets-flask-5917",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/pallets/flask/pull/5917",
+        "title": "fix provide_automatic_options override",
+        "description": "`OPTIONS` is added correctly whenever `provide_automatic_options` is set. Previously, it was only added if the argument was not passed and was not set as an attribute; it could only be disabled, not enabled.\n\nAlso cleans up the tests about options. Fixes some other tests that were inadvertently adding duplicate routes.\n\nfixes #5916 ",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "e82db2ca3a22c9614c1987392c9cfaa8c6ce99ad",
+        "baseSha": "d3b78fd18a8d9e224cb9ef58a23cec9b1ffc9ce9",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 38,
+          "text": "fix provide_automatic_options override",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 73,
+          "text": "`OPTIONS` is added correctly whenever `provide_automatic_options` is set.",
+          "label": "ambiguous"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 74,
+          "end": 207,
+          "text": "Previously, it was only added if the argument was not passed and was not set as an attribute; it could only be disabled, not enabled.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 209,
+          "end": 320,
+          "text": "Also cleans up the tests about options. Fixes some other tests that were inadvertently adding duplicate routes.",
+          "label": "ambiguous"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 322,
+          "end": 333,
+          "text": "fixes #5916",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "pallets-flask-5899",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/pallets/flask/pull/5899",
+        "title": "deprecate `should_ignore_error`",
+        "description": "closes #5816 ",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "c77a5203438fe772d41f6a47303ad3f57a4efe6d",
+        "baseSha": "9b74a90dd3c47f792734823e8793ac36f38bc4dd",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 31,
+          "text": "deprecate `should_ignore_error`",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 12,
+          "text": "closes #5816",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "pallets-flask-5962",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/pallets/flask/pull/5962",
+        "title": "remove unicode host test",
+        "description": "This test is invalid, the `Host` header cannot contain non-ASCII. It was added in https://github.com/pallets/flask/pull/2994. It appears there was some confusion over Python 2/3 handling of strings, rather than testing this because it was a valid `Host` header.\n\ncloses #5961 ",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "91c6b3fecf36b1f04554e57cc4060ccb737a445d",
+        "baseSha": "4cae5d8e411b1e69949d8fae669afeacbd3e5908",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 24,
+          "text": "remove unicode host test",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 261,
+          "text": "This test is invalid, the `Host` header cannot contain non-ASCII. It was added in https://github.com/pallets/flask/pull/2994. It appears there was some confusion over Python 2/3 handling of strings, rather than testing this because it was a valid `Host` header.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 263,
+          "end": 275,
+          "text": "closes #5961",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "pallets-flask-6096",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/pallets/flask/pull/6096",
+        "title": "Fix `.partition(\":\")` usage on potential IPv6 addresses",
+        "description": "Fix two usages of `.partition(\":\")` on potential IPv6 addresses.\nReplace them with alternatives.\n\nFixes https://github.com/pallets/flask/issues/6093\n\n<!--\nEnsure each step in CONTRIBUTING.rst is complete, especially the following:\n- Add tests that demonstrate the correct behavior of the change. Tests\n  should fail without the change.\n- Add or update relevant docs, in the docs folder and in code.\n- Add an entry in CHANGES.rst summarizing the change and linking to the issue.\n- Add `.. versionchanged::` entries in any relevant code docs.\n-->\n",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "7203feabf723edae0286ae5dc64fec8ac4c91735",
+        "baseSha": "514fc6b3e8402e4c646d5284e97a4f0ab50a7c4b",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 55,
+          "text": "Fix `.partition(\":\")` usage on potential IPv6 addresses",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 96,
+          "text": "Fix two usages of `.partition(\":\")` on potential IPv6 addresses.\nReplace them with alternatives.",
+          "label": "requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 98,
+          "end": 148,
+          "text": "Fixes https://github.com/pallets/flask/issues/6093",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 150,
+          "end": 544,
+          "text": "<!--\nEnsure each step in CONTRIBUTING.rst is complete, especially the following:\n- Add tests that demonstrate the correct behavior of the change. Tests\n  should fail without the change.\n- Add or update relevant docs, in the docs folder and in code.\n- Add an entry in CHANGES.rst summarizing the change and linking to the issue.\n- Add `.. versionchanged::` entries in any relevant code docs.\n-->",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "pallets-flask-5945",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/pallets/flask/pull/5945",
+        "title": "add zizmor to scan workflows",
+        "description": "https://docs.zizmor.sh/\n\nAmong the findings:\n\n- apply empty permissions with `permissions: {}`, although we have read only defaults set at the organization level\n- use concurrency group for each workflow\n- disable credentials for checkout\n- remove some template variables in favor of env vars",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "560c119e3dc33b35b9c57172fae521d99c2a1421",
+        "baseSha": "a29f88ce6f2f9843bd6fcbbfce1390a2071965d6",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 28,
+          "text": "add zizmor to scan workflows",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 23,
+          "text": "https://docs.zizmor.sh/",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 25,
+          "end": 44,
+          "text": "Among the findings:",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 46,
+          "end": 292,
+          "text": "- apply empty permissions with `permissions: {}`, although we have read only defaults set at the organization level\n- use concurrency group for each workflow\n- disable credentials for checkout\n- remove some template variables in favor of env vars",
+          "label": "requirement"
+        }
+      ]
+    },
+    {
+      "id": "pallets-flask-6133",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/pallets/flask/pull/6133",
+        "title": "add `app.query` route decorator",
+        "description": "[RFC 10008](https://datatracker.ietf.org/doc/html/rfc10008) isn't accepted yet, but it's been kicking around for years and looks like it will pass. I'm adding it now so I don't have to watch it anymore.\n\nAdded `client.query` method in https://github.com/pallets/werkzeug/pull/3219. Adjusted the test here to account for Werkzeug not being released yet.\n\ncloses #3193 ",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "89992954ec71b594b1b911f98977cdc8ad46a057",
+        "baseSha": "3596b1ab61cea85edb8970e83ff61daa073facf8",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 31,
+          "text": "add `app.query` route decorator",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 147,
+          "text": "[RFC 10008](https://datatracker.ietf.org/doc/html/rfc10008) isn't accepted yet, but it's been kicking around for years and looks like it will pass.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 148,
+          "end": 202,
+          "text": "I'm adding it now so I don't have to watch it anymore.",
+          "label": "ambiguous"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 204,
+          "end": 352,
+          "text": "Added `client.query` method in https://github.com/pallets/werkzeug/pull/3219. Adjusted the test here to account for Werkzeug not being released yet.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 354,
+          "end": 366,
+          "text": "closes #3193",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "django-django-21900",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/django/django/pull/21900",
+        "title": "Fixed Playwright test flakiness in admin collapse filter tests.",
+        "description": "#### Trac ticket number\n<!-- Replace XXXXX with the corresponding Trac ticket number. -->\n<!-- Or delete the line and write \"N/A - typo\" for typo fixes. -->\n\nN/A\n\n#### Branch description\n\nThis PR fixes flaky tests mentioned in https://github.com/django/django/pull/21596#issuecomment-5545315143 which were  failing apparently due to page navigation/reload before sessionStorage is set.\n\n#### AI Assistance Disclosure (REQUIRED)\n<!-- Select exactly ONE of the following: -->\n- [x] **No AI tools were used** in preparing this PR.\n- [ ] **If AI tools were used**, I have disclosed which ones, and fully reviewed and verified their output.\n<!-- If AI tools were used, provide which tools were used here. -->\n\n#### Checklist\n- [x] This PR follows the [contribution guidelines](https://docs.djangoproject.com/en/stable/internals/contributing/writing-code/submitting-patches/).\n- [x] This PR **does not** disclose a security vulnerability (see [vulnerability reporting](https://docs.djangoproject.com/en/stable/internals/security/)).\n- [x] This PR targets the `main` branch. <!-- Backports will be evaluated and done by mergers, when necessary. -->\n- [x] The commit message is written in past tense, mentions the ticket number (if applicable), and ends with a period (see [guidelines](https://docs.djangoproject.com/en/dev/internals/contributing/committing-code/#committing-guidelines)).\n- [x] I have not requested, and will not request, an automated AI review for this PR. <!-- You are welcome to do so in your own fork. -->\n\n<!-- Leave the following items unchecked if not applicable. -->\n- [ ] I have checked the \"Has patch\" ticket flag in the Trac system.\n- [x] I have added or updated relevant tests.\n- [ ] I have added or updated relevant docs, including release notes if applicable.\n- [ ] I have attached screenshots in both light and dark modes for any UI changes.\n",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "f102d0c83fee1c8e2a4c745d1e757feb622923ec",
+        "baseSha": "e2a3da142687c3b3dfa9cbc63c1a1a4433a8f842",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 63,
+          "text": "Fixed Playwright test flakiness in admin collapse filter tests.",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 23,
+          "text": "#### Trac ticket number",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 24,
+          "end": 89,
+          "text": "<!-- Replace XXXXX with the corresponding Trac ticket number. -->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 90,
+          "end": 156,
+          "text": "<!-- Or delete the line and write \"N/A - typo\" for typo fixes. -->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 158,
+          "end": 161,
+          "text": "N/A",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-6",
+          "sourceKind": "pr_body",
+          "start": 163,
+          "end": 186,
+          "text": "#### Branch description",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-7",
+          "sourceKind": "pr_body",
+          "start": 188,
+          "end": 385,
+          "text": "This PR fixes flaky tests mentioned in https://github.com/django/django/pull/21596#issuecomment-5545315143 which were  failing apparently due to page navigation/reload before sessionStorage is set.",
+          "label": "ambiguous"
+        },
+        {
+          "id": "label-8",
+          "sourceKind": "pr_body",
+          "start": 387,
+          "end": 427,
+          "text": "#### AI Assistance Disclosure (REQUIRED)",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-9",
+          "sourceKind": "pr_body",
+          "start": 428,
+          "end": 473,
+          "text": "<!-- Select exactly ONE of the following: -->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-10",
+          "sourceKind": "pr_body",
+          "start": 474,
+          "end": 635,
+          "text": "- [x] **No AI tools were used** in preparing this PR.\n- [ ] **If AI tools were used**, I have disclosed which ones, and fully reviewed and verified their output.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-11",
+          "sourceKind": "pr_body",
+          "start": 636,
+          "end": 703,
+          "text": "<!-- If AI tools were used, provide which tools were used here. -->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-12",
+          "sourceKind": "pr_body",
+          "start": 705,
+          "end": 719,
+          "text": "#### Checklist",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-13",
+          "sourceKind": "pr_body",
+          "start": 720,
+          "end": 1518,
+          "text": "- [x] This PR follows the [contribution guidelines](https://docs.djangoproject.com/en/stable/internals/contributing/writing-code/submitting-patches/).\n- [x] This PR **does not** disclose a security vulnerability (see [vulnerability reporting](https://docs.djangoproject.com/en/stable/internals/security/)).\n- [x] This PR targets the `main` branch. <!-- Backports will be evaluated and done by mergers, when necessary. -->\n- [x] The commit message is written in past tense, mentions the ticket number (if applicable), and ends with a period (see [guidelines](https://docs.djangoproject.com/en/dev/internals/contributing/committing-code/#committing-guidelines)).\n- [x] I have not requested, and will not request, an automated AI review for this PR. <!-- You are welcome to do so in your own fork. -->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-14",
+          "sourceKind": "pr_body",
+          "start": 1520,
+          "end": 1583,
+          "text": "<!-- Leave the following items unchecked if not applicable. -->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-15",
+          "sourceKind": "pr_body",
+          "start": 1584,
+          "end": 1865,
+          "text": "- [ ] I have checked the \"Has patch\" ticket flag in the Trac system.\n- [x] I have added or updated relevant tests.\n- [ ] I have added or updated relevant docs, including release notes if applicable.\n- [ ] I have attached screenshots in both light and dark modes for any UI changes.",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "django-django-21808",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/django/django/pull/21808",
+        "title": "Refs #36664 -- Readded optional requirements on daily builds for Python 3.15.",
+        "description": "ticket-36664\n\nSimilar to 500bd42b96fb2c668fb4e4d218869982b97fa552 for 3.14.",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "8e66bb992f72dfabbd4828d9df7aa7cd0212107c",
+        "baseSha": "cccc004b46f71b4e54d87b376be691a17de6b903",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 77,
+          "text": "Refs #36664 -- Readded optional requirements on daily builds for Python 3.15.",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 12,
+          "text": "ticket-36664",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 14,
+          "end": 75,
+          "text": "Similar to 500bd42b96fb2c668fb4e4d218869982b97fa552 for 3.14.",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "django-django-21803",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/django/django/pull/21803",
+        "title": "Fixed #36945 -- Made .values() and .order_by() resolve FilteredRelation aliases correctly.",
+        "description": "Made Query.add_fields(), Query.add_ordering() and\nSQLCompiler.find_ordering_name() look up FilteredRelation aliases\nbefore splitting field names to relationship traversals. Added\n.test_alias_values() and .test_alias_order_by() to\nFilteredRelationTests.\n\n#### Trac ticket number\n<!-- Replace XXXXX with the corresponding Trac ticket number. -->\n<!-- Or delete the line and write \"N/A - typo\" for typo fixes. -->\n\nticket-36945\n\n#### Branch description\n<!-- Provide a concise overview of the issue or rationale behind the proposed changes. Minimum five words. -->\nWhen .values()/.values_list()/.order_by() resolve aliases, they fail to account for annotations consisting of FilteredRelation, which are stored in a different internal data structure than other annotations, and therefore missed. This leads to resolving an alias that happens to contain __ as a relationship traversal instead of the alias that was requested.\n\nThe proposed solution is to look up FilteredRelation aliases stored in the Query object's _filtered_relations attribute before trying to split the field name by the lookup separator \"__\". For order_by(), this affects the compiling phase in addition to the resolving phase.\n\n#### AI Assistance Disclosure (REQUIRED)\n<!-- Select exactly ONE of the following: -->\n- [ ] **No AI tools were used** in preparing this PR.\n- [x] **If AI tools were used**, I have disclosed which ones, and fully reviewed and verified their output.\n<!-- If AI tools were used, provide which tools were used here. -->\nI used GitHub Copilot with Claude Sonnet 4.5 to help me understand how the field names are passed around different Query and SQLCompiler methods. All code changes are mine.\n\n#### Checklist\n- [x] This PR follows the [contribution guidelines](https://docs.djangoproject.com/en/stable/internals/contributing/writing-code/submitting-patches/).\n- [x] This PR **does not** disclose a security vulnerability (see [vulnerability reporting](https://docs.djangoproject.com/en/stable/internals/security/)).\n- [x] This PR targets the `main` branch. <!-- Backports will be evaluated and done by mergers, when necessary. -->\n- [x] The commit message is written in past tense, mentions the ticket number (if applicable), and ends with a period (see [guidelines](https://docs.djangoproject.com/en/dev/internals/contributing/committing-code/#committing-guidelines)).\n- [x] I have not requested, and will not request, an automated AI review for this PR. <!-- You are welcome to do so in your own fork. -->\n\n<!-- Leave the following items unchecked if not applicable. -->\n- [x] I have checked the \"Has patch\" ticket flag in the Trac system.\n- [x] I have added or updated relevant tests.\n- [ ] I have added or updated relevant docs, including release notes if applicable.\n- [ ] I have attached screenshots in both light and dark modes for any UI changes.\n",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "68e935763d57afdbd5e7b87d94fba143760e661e",
+        "baseSha": "439b936753e5a679ffcf40cff5918c5637f7c72b",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 90,
+          "text": "Fixed #36945 -- Made .values() and .order_by() resolve FilteredRelation aliases correctly.",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 252,
+          "text": "Made Query.add_fields(), Query.add_ordering() and\nSQLCompiler.find_ordering_name() look up FilteredRelation aliases\nbefore splitting field names to relationship traversals. Added\n.test_alias_values() and .test_alias_order_by() to\nFilteredRelationTests.",
+          "label": "ambiguous"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 254,
+          "end": 277,
+          "text": "#### Trac ticket number",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 278,
+          "end": 343,
+          "text": "<!-- Replace XXXXX with the corresponding Trac ticket number. -->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 344,
+          "end": 410,
+          "text": "<!-- Or delete the line and write \"N/A - typo\" for typo fixes. -->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-6",
+          "sourceKind": "pr_body",
+          "start": 412,
+          "end": 424,
+          "text": "ticket-36945",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-7",
+          "sourceKind": "pr_body",
+          "start": 426,
+          "end": 449,
+          "text": "#### Branch description",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-8",
+          "sourceKind": "pr_body",
+          "start": 450,
+          "end": 560,
+          "text": "<!-- Provide a concise overview of the issue or rationale behind the proposed changes. Minimum five words. -->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-9",
+          "sourceKind": "pr_body",
+          "start": 561,
+          "end": 919,
+          "text": "When .values()/.values_list()/.order_by() resolve aliases, they fail to account for annotations consisting of FilteredRelation, which are stored in a different internal data structure than other annotations, and therefore missed. This leads to resolving an alias that happens to contain __ as a relationship traversal instead of the alias that was requested.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-10",
+          "sourceKind": "pr_body",
+          "start": 921,
+          "end": 1193,
+          "text": "The proposed solution is to look up FilteredRelation aliases stored in the Query object's _filtered_relations attribute before trying to split the field name by the lookup separator \"__\". For order_by(), this affects the compiling phase in addition to the resolving phase.",
+          "label": "requirement"
+        },
+        {
+          "id": "label-11",
+          "sourceKind": "pr_body",
+          "start": 1195,
+          "end": 1235,
+          "text": "#### AI Assistance Disclosure (REQUIRED)",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-12",
+          "sourceKind": "pr_body",
+          "start": 1236,
+          "end": 1281,
+          "text": "<!-- Select exactly ONE of the following: -->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-13",
+          "sourceKind": "pr_body",
+          "start": 1282,
+          "end": 1443,
+          "text": "- [ ] **No AI tools were used** in preparing this PR.\n- [x] **If AI tools were used**, I have disclosed which ones, and fully reviewed and verified their output.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-14",
+          "sourceKind": "pr_body",
+          "start": 1444,
+          "end": 1511,
+          "text": "<!-- If AI tools were used, provide which tools were used here. -->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-15",
+          "sourceKind": "pr_body",
+          "start": 1512,
+          "end": 1684,
+          "text": "I used GitHub Copilot with Claude Sonnet 4.5 to help me understand how the field names are passed around different Query and SQLCompiler methods. All code changes are mine.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-16",
+          "sourceKind": "pr_body",
+          "start": 1686,
+          "end": 1700,
+          "text": "#### Checklist",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-17",
+          "sourceKind": "pr_body",
+          "start": 1701,
+          "end": 2499,
+          "text": "- [x] This PR follows the [contribution guidelines](https://docs.djangoproject.com/en/stable/internals/contributing/writing-code/submitting-patches/).\n- [x] This PR **does not** disclose a security vulnerability (see [vulnerability reporting](https://docs.djangoproject.com/en/stable/internals/security/)).\n- [x] This PR targets the `main` branch. <!-- Backports will be evaluated and done by mergers, when necessary. -->\n- [x] The commit message is written in past tense, mentions the ticket number (if applicable), and ends with a period (see [guidelines](https://docs.djangoproject.com/en/dev/internals/contributing/committing-code/#committing-guidelines)).\n- [x] I have not requested, and will not request, an automated AI review for this PR. <!-- You are welcome to do so in your own fork. -->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-18",
+          "sourceKind": "pr_body",
+          "start": 2501,
+          "end": 2564,
+          "text": "<!-- Leave the following items unchecked if not applicable. -->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-19",
+          "sourceKind": "pr_body",
+          "start": 2565,
+          "end": 2846,
+          "text": "- [x] I have checked the \"Has patch\" ticket flag in the Trac system.\n- [x] I have added or updated relevant tests.\n- [ ] I have added or updated relevant docs, including release notes if applicable.\n- [ ] I have attached screenshots in both light and dark modes for any UI changes.",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "django-django-21897",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/django/django/pull/21897",
+        "title": "Fixed #37313 -- Confirmed support for GEOS 3.15.",
+        "description": "#### Trac ticket number\n<!-- Replace XXXXX with the corresponding Trac ticket number. -->\n<!-- Or delete the line and write \"N/A - typo\" for typo fixes. -->\n\nticket-37313\n\n#### Branch description\n<!-- Provide a concise overview of the issue or rationale behind the proposed changes. Minimum five words. -->\nI tested geos-3.15.0 locally and all gis and geos tests passed with the spatialite backend. I updated the documentation to add geos-3.15 as a supported.\n\n\n#### AI Assistance Disclosure (REQUIRED)\n<!-- Select exactly ONE of the following: -->\n- [x] **No AI tools were used** in preparing this PR.\n- [ ] **If AI tools were used**, I have disclosed which ones, and fully reviewed and verified their output.\n<!-- If AI tools were used, provide which ones here. -->\n\n\n#### Checklist\n- [x] This PR follows the [contribution guidelines](https://docs.djangoproject.com/en/stable/internals/contributing/writing-code/submitting-patches/).\n- [x] This PR **does not** disclose a security vulnerability (see [vulnerability reporting](https://docs.djangoproject.com/en/stable/internals/security/)).\n- [x] This PR targets the `main` branch. <!-- Backports will be evaluated and done by mergers, when necessary. -->\n- [x] The commit message is written in past tense, mentions the ticket number (if applicable), and ends with a period (see [guidelines](https://docs.djangoproject.com/en/dev/internals/contributing/committing-code/#committing-guidelines)).\n- [x] I have not requested, and will not request, an automated AI review for this PR. <!-- You are welcome to do so in your own fork. -->\n\n\n<!-- Leave the following items unchecked if not applicable. -->\n- [x] I have checked the \"Has patch\" ticket flag in the Trac system.\n- [ ] I have added or updated relevant tests.\n- [x] I have added or updated relevant docs, including release notes if applicable.\n- [ ] I have attached screenshots in both light and dark modes for any UI changes.",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "f94d07286af98cb012e0e4882a606beec34f6d02",
+        "baseSha": "be6a149de8f85fb8f858680f721dbaadd182f1d8",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 48,
+          "text": "Fixed #37313 -- Confirmed support for GEOS 3.15.",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 23,
+          "text": "#### Trac ticket number",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 24,
+          "end": 89,
+          "text": "<!-- Replace XXXXX with the corresponding Trac ticket number. -->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 90,
+          "end": 156,
+          "text": "<!-- Or delete the line and write \"N/A - typo\" for typo fixes. -->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 158,
+          "end": 170,
+          "text": "ticket-37313",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-6",
+          "sourceKind": "pr_body",
+          "start": 172,
+          "end": 195,
+          "text": "#### Branch description",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-7",
+          "sourceKind": "pr_body",
+          "start": 196,
+          "end": 306,
+          "text": "<!-- Provide a concise overview of the issue or rationale behind the proposed changes. Minimum five words. -->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-8",
+          "sourceKind": "pr_body",
+          "start": 307,
+          "end": 398,
+          "text": "I tested geos-3.15.0 locally and all gis and geos tests passed with the spatialite backend.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-9",
+          "sourceKind": "pr_body",
+          "start": 399,
+          "end": 459,
+          "text": "I updated the documentation to add geos-3.15 as a supported.",
+          "label": "ambiguous"
+        },
+        {
+          "id": "label-10",
+          "sourceKind": "pr_body",
+          "start": 462,
+          "end": 502,
+          "text": "#### AI Assistance Disclosure (REQUIRED)",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-11",
+          "sourceKind": "pr_body",
+          "start": 503,
+          "end": 548,
+          "text": "<!-- Select exactly ONE of the following: -->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-12",
+          "sourceKind": "pr_body",
+          "start": 549,
+          "end": 710,
+          "text": "- [x] **No AI tools were used** in preparing this PR.\n- [ ] **If AI tools were used**, I have disclosed which ones, and fully reviewed and verified their output.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-13",
+          "sourceKind": "pr_body",
+          "start": 711,
+          "end": 767,
+          "text": "<!-- If AI tools were used, provide which ones here. -->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-14",
+          "sourceKind": "pr_body",
+          "start": 770,
+          "end": 784,
+          "text": "#### Checklist",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-15",
+          "sourceKind": "pr_body",
+          "start": 785,
+          "end": 1583,
+          "text": "- [x] This PR follows the [contribution guidelines](https://docs.djangoproject.com/en/stable/internals/contributing/writing-code/submitting-patches/).\n- [x] This PR **does not** disclose a security vulnerability (see [vulnerability reporting](https://docs.djangoproject.com/en/stable/internals/security/)).\n- [x] This PR targets the `main` branch. <!-- Backports will be evaluated and done by mergers, when necessary. -->\n- [x] The commit message is written in past tense, mentions the ticket number (if applicable), and ends with a period (see [guidelines](https://docs.djangoproject.com/en/dev/internals/contributing/committing-code/#committing-guidelines)).\n- [x] I have not requested, and will not request, an automated AI review for this PR. <!-- You are welcome to do so in your own fork. -->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-16",
+          "sourceKind": "pr_body",
+          "start": 1586,
+          "end": 1649,
+          "text": "<!-- Leave the following items unchecked if not applicable. -->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-17",
+          "sourceKind": "pr_body",
+          "start": 1650,
+          "end": 1931,
+          "text": "- [x] I have checked the \"Has patch\" ticket flag in the Trac system.\n- [ ] I have added or updated relevant tests.\n- [x] I have added or updated relevant docs, including release notes if applicable.\n- [ ] I have attached screenshots in both light and dark modes for any UI changes.",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "django-django-21787",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/django/django/pull/21787",
+        "title": "Fixed #37279 -- Rejected null characters in URLValidator.",
+        "description": "#### Trac ticket number\nticket-37279\n\n#### Branch description\n`URLValidator.unsafe_chars` rejected tabs and newlines (#32713) but not null characters, so URLs containing `\\x00` passed validation. This adds `\\x00` to `unsafe_chars`, making `URLValidator` consistent with `forms.CharField`/`forms.URLField`, which already reject null characters via `ProhibitNullCharactersValidator` (#28201).\n\nReproduction on main before this patch:\n\n```pycon\n>>> from django.core.validators import URLValidator\n>>> URLValidator()(\"http://www.djangoproject.com/\\x00\")\n>>> URLValidator()(\"http://example.com/page\\x00@example.com/\")\n```\n\nNeither call raised `ValidationError`. With this patch both raise, covered by new entries in `INVALID_URLS` (null character in path, host, and userinfo positions). Null characters are invalid in URLs per RFC 3986 and cannot be stored in PostgreSQL string literals (\"A string literal cannot contain NUL (0x00) characters\").\n\n#### AI Assistance Disclosure (REQUIRED)\n- [ ] **No AI tools were used** in preparing this PR.\n- [x] **If AI tools were used**, I have disclosed which ones, and fully reviewed and verified their output.\n\nClaude (Anthropic) was used to help draft the patch, tests, and this description. The issue was reproduced manually and the fix was verified by running the validators test suite before and after the patch (fails without, passes with).\n\n#### Checklist\n- [x] This PR follows the [contribution guidelines](https://docs.djangoproject.com/en/stable/internals/contributing/writing-code/submitting-patches/).\n- [x] This PR **does not** disclose a security vulnerability (see [vulnerability reporting](https://docs.djangoproject.com/en/stable/internals/security/)).\n- [x] This PR targets the `main` branch.\n- [x] The commit message is written in past tense, mentions the ticket number (if applicable), and ends with a period (see [guidelines](https://docs.djangoproject.com/en/dev/internals/contributing/committing-code/#committing-guidelines)).\n- [x] I have not requested, and will not request, an automated AI review for this PR.\n\n- [x] I have checked the \"Has patch\" ticket flag in the Trac system.\n- [x] I have added or updated relevant tests.\n- [ ] I have added or updated relevant docs, including release notes if applicable.\n- [ ] I have attached screenshots in both light and dark modes for any UI changes.\n",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "0a479a1ffcf4990be3a1cae28a83a407eaf7bd38",
+        "baseSha": "a3e6e7d3aa6e2aa793ba1d122a76cb007727197c",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 57,
+          "text": "Fixed #37279 -- Rejected null characters in URLValidator.",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 23,
+          "text": "#### Trac ticket number",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 24,
+          "end": 36,
+          "text": "ticket-37279",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 38,
+          "end": 61,
+          "text": "#### Branch description",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 62,
+          "end": 195,
+          "text": "`URLValidator.unsafe_chars` rejected tabs and newlines (#32713) but not null characters, so URLs containing `\\x00` passed validation.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-6",
+          "sourceKind": "pr_body",
+          "start": 196,
+          "end": 390,
+          "text": "This adds `\\x00` to `unsafe_chars`, making `URLValidator` consistent with `forms.CharField`/`forms.URLField`, which already reject null characters via `ProhibitNullCharactersValidator` (#28201).",
+          "label": "ambiguous"
+        },
+        {
+          "id": "label-7",
+          "sourceKind": "pr_body",
+          "start": 392,
+          "end": 431,
+          "text": "Reproduction on main before this patch:",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-8",
+          "sourceKind": "pr_body",
+          "start": 433,
+          "end": 616,
+          "text": "```pycon\n>>> from django.core.validators import URLValidator\n>>> URLValidator()(\"http://www.djangoproject.com/\\x00\")\n>>> URLValidator()(\"http://example.com/page\\x00@example.com/\")\n```",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-9",
+          "sourceKind": "pr_body",
+          "start": 618,
+          "end": 656,
+          "text": "Neither call raised `ValidationError`.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-10",
+          "sourceKind": "pr_body",
+          "start": 657,
+          "end": 781,
+          "text": "With this patch both raise, covered by new entries in `INVALID_URLS` (null character in path, host, and userinfo positions).",
+          "label": "ambiguous"
+        },
+        {
+          "id": "label-11",
+          "sourceKind": "pr_body",
+          "start": 782,
+          "end": 940,
+          "text": "Null characters are invalid in URLs per RFC 3986 and cannot be stored in PostgreSQL string literals (\"A string literal cannot contain NUL (0x00) characters\").",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-12",
+          "sourceKind": "pr_body",
+          "start": 942,
+          "end": 982,
+          "text": "#### AI Assistance Disclosure (REQUIRED)",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-13",
+          "sourceKind": "pr_body",
+          "start": 983,
+          "end": 1144,
+          "text": "- [ ] **No AI tools were used** in preparing this PR.\n- [x] **If AI tools were used**, I have disclosed which ones, and fully reviewed and verified their output.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-14",
+          "sourceKind": "pr_body",
+          "start": 1146,
+          "end": 1380,
+          "text": "Claude (Anthropic) was used to help draft the patch, tests, and this description. The issue was reproduced manually and the fix was verified by running the validators test suite before and after the patch (fails without, passes with).",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-15",
+          "sourceKind": "pr_body",
+          "start": 1382,
+          "end": 1396,
+          "text": "#### Checklist",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-16",
+          "sourceKind": "pr_body",
+          "start": 1397,
+          "end": 2069,
+          "text": "- [x] This PR follows the [contribution guidelines](https://docs.djangoproject.com/en/stable/internals/contributing/writing-code/submitting-patches/).\n- [x] This PR **does not** disclose a security vulnerability (see [vulnerability reporting](https://docs.djangoproject.com/en/stable/internals/security/)).\n- [x] This PR targets the `main` branch.\n- [x] The commit message is written in past tense, mentions the ticket number (if applicable), and ends with a period (see [guidelines](https://docs.djangoproject.com/en/dev/internals/contributing/committing-code/#committing-guidelines)).\n- [x] I have not requested, and will not request, an automated AI review for this PR.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-17",
+          "sourceKind": "pr_body",
+          "start": 2071,
+          "end": 2352,
+          "text": "- [x] I have checked the \"Has patch\" ticket flag in the Trac system.\n- [x] I have added or updated relevant tests.\n- [ ] I have added or updated relevant docs, including release notes if applicable.\n- [ ] I have attached screenshots in both light and dark modes for any UI changes.",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "django-django-21802",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/django/django/pull/21802",
+        "title": "Skipped tests involving 1-element GeometryCollections on Oracle 23.9.",
+        "description": "Because these Oracle versions unpack 1-element collections, `LayerMapping` unexpectedly received single geometries and failed when saving:\n```py\n  File \"/django/source/django/contrib/gis/utils/layermapping.py\", line 663, in _save\n    geom.add(g)\n    ^^^^^^^^\nAttributeError: 'Polygon' object has no attribute 'add'\n```\nhttps://forums.oracle.com/ords/apexds/post/23ai-sdo-geometry-converts-1-element-multipolygon-to-polygo-3474",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "16bff48d9cc7d9a8546e63ff997cc381abb16854",
+        "baseSha": "1d50f12929f8f2d424f0e7cc6b1f693f590f71a2",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 69,
+          "text": "Skipped tests involving 1-element GeometryCollections on Oracle 23.9.",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 138,
+          "text": "Because these Oracle versions unpack 1-element collections, `LayerMapping` unexpectedly received single geometries and failed when saving:",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 139,
+          "end": 318,
+          "text": "```py\n  File \"/django/source/django/contrib/gis/utils/layermapping.py\", line 663, in _save\n    geom.add(g)\n    ^^^^^^^^\nAttributeError: 'Polygon' object has no attribute 'add'\n```",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 319,
+          "end": 426,
+          "text": "https://forums.oracle.com/ords/apexds/post/23ai-sdo-geometry-converts-1-element-multipolygon-to-polygo-3474",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "fastapi-fastapi-16205",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/fastapi/fastapi/pull/16205",
+        "title": "🌐 Update translations for fr (update-outdated)",
+        "description": "🌐 Update translations for fr (update-outdated)\n\nThis PR was created automatically using LLMs.\n\nIt uses the prompt file https://github.com/fastapi/fastapi/blob/master/docs/fr/llm-prompt.md.\n\nIn most cases, it's better to make PRs updating that file so that the LLM can do a better job generating the translations than suggesting changes in this PR.",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "9a49ef1c8f33768a52a108fd034b1ae074e12f6a",
+        "baseSha": "30a2a89487f63bb6a678760ed28efda96d297968",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 47,
+          "text": "🌐 Update translations for fr (update-outdated)",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 47,
+          "text": "🌐 Update translations for fr (update-outdated)",
+          "label": "requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 49,
+          "end": 94,
+          "text": "This PR was created automatically using LLMs.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 96,
+          "end": 189,
+          "text": "It uses the prompt file https://github.com/fastapi/fastapi/blob/master/docs/fr/llm-prompt.md.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 191,
+          "end": 348,
+          "text": "In most cases, it's better to make PRs updating that file so that the LLM can do a better job generating the translations than suggesting changes in this PR.",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "fastapi-fastapi-16224",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/fastapi/fastapi/pull/16224",
+        "title": "👷 Update translation PR branches with PR Push",
+        "description": "👷 Update translation PR branches with PR Push\n\n## AI Disclaimer\n\nMade with the help of AI, using Codex with `gpt-5.6-sol`, manually reviewed.",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "e23eb44fa3f09382b98662154273a374db92cab9",
+        "baseSha": "66b2c5a9b5ddf65f218423072ad158e42ed780aa",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 46,
+          "text": "👷 Update translation PR branches with PR Push",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 46,
+          "text": "👷 Update translation PR branches with PR Push",
+          "label": "requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 48,
+          "end": 64,
+          "text": "## AI Disclaimer",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 66,
+          "end": 142,
+          "text": "Made with the help of AI, using Codex with `gpt-5.6-sol`, manually reviewed.",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "fastapi-fastapi-16208",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/fastapi/fastapi/pull/16208",
+        "title": "🌐 Update translations for uk (update-outdated)",
+        "description": "🌐 Update translations for uk (update-outdated)\n\nThis PR was created automatically using LLMs.\n\nIt uses the prompt file https://github.com/fastapi/fastapi/blob/master/docs/uk/llm-prompt.md.\n\nIn most cases, it's better to make PRs updating that file so that the LLM can do a better job generating the translations than suggesting changes in this PR.",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "6589e63c6c071fa97b372528236655fae0667021",
+        "baseSha": "c44617dc831547c562f2e32948b63906db7d3428",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 47,
+          "text": "🌐 Update translations for uk (update-outdated)",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 47,
+          "text": "🌐 Update translations for uk (update-outdated)",
+          "label": "requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 49,
+          "end": 94,
+          "text": "This PR was created automatically using LLMs.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 96,
+          "end": 189,
+          "text": "It uses the prompt file https://github.com/fastapi/fastapi/blob/master/docs/uk/llm-prompt.md.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 191,
+          "end": 348,
+          "text": "In most cases, it's better to make PRs updating that file so that the LLM can do a better job generating the translations than suggesting changes in this PR.",
+          "label": "non_requirement"
+        }
+      ]
+    }
+  ]
+}

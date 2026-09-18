@@ -1,0 +1,153 @@
+{
+  "schemaVersion": "requirement_role_pilot_summary.v1",
+  "status": "blocked_before_external_process",
+  "shadowOnly": true,
+  "codeReview": {
+    "productionSourceChanged": false,
+    "experimentDefectFound": "V4 expansion for an early case could consume the global budget before later cases received their initial V0-V4 comparison.",
+    "experimentDefectFix": "Execute every case's initial V0-V4 packets before any V4 expansion packets.",
+    "redEvidence": "Focused regression test failed because an expanded request displaced later initial requests.",
+    "greenEvidence": "Focused regression test and the final targeted suite passed after the two-phase ordering change.",
+    "schemaBoundary": {
+      "V0_V1": "product_legacy",
+      "V2_V4": "research_strict_with_product_diagnostic",
+      "interpretation": "Malformed-schema policy effects must be reported separately from semantic-role changes. No live output was observed, so neither effect was measured."
+    }
+  },
+  "preResultFreeze": {
+    "manifestSha256": "dabb5aaf3ed2eb71bd02b88b61df7425bd0d4c768347368ecfdda07a114bfa7c",
+    "sampleCorpusSha256": "76181cdfe050662c5ed6ce29db3b56e212bed5081f80c2e40fbe3c77ad61a463",
+    "caseCount": 4,
+    "distinctRepositoryCount": 4,
+    "labelsPresentInRunInput": 0
+  },
+  "liveRun": {
+    "requestedConfiguredModel": "gpt-5.6-luna",
+    "attempted": true,
+    "actualCalls": null,
+    "actualCallBounds": { "minimum": 0, "maximum": 30 },
+    "observedModels": null,
+    "inputTokens": null,
+    "outputTokens": null,
+    "totalTokens": null,
+    "latencyMs": null,
+    "retryCount": 0,
+    "costUsd": "unknown",
+    "costNote": "No verified price was introduced. The exact number of requests sent before local timeout is unavailable, so actual charges are unknown.",
+    "keyFileCheck": "The explicitly selected parent .env.local exists and contains exactly one nonempty OPENAI_API_KEY assignment; the value was neither printed nor persisted.",
+    "blocker": "After direct approval in this thread, external execution was authorized and started. The Vitest artifact runner hit its default 5000 ms timeout before the result write. The zero-byte incomplete output was preserved under an explicit name and the command was not retried. See live-runtime-timeout-blocker.json."
+  },
+  "sampleOffline": {
+    "artifact": "sample-offline-post-fix.json",
+    "sha256": "365fecdb5a8eaee388b4b18cf51ee8742ba255281d70f59112b17a6ee0bbba6b",
+    "wallSeconds": 1.94,
+    "caseCount": 4,
+    "registryUnits": 34,
+    "plannedInitialCalls": 24,
+    "globalCallBudget": 30,
+    "maximumResidualCallsAvailableToV4Expansion": 6,
+    "residualBudgetObservation": "No expansion demand or shortage can be observed offline. The final execution order reserves all 24 initial packets before expansion uses the six-call residual.",
+    "versions": {
+      "V0": {
+        "units": 34,
+        "selected": { "count": 23, "rate": 0.6764705882352942 },
+        "attempted": { "count": 0, "rate": 0 },
+        "decided": { "count": 0, "rate": 0 },
+        "abstained": { "count": 0, "rate": 0 },
+        "unreviewed": { "count": 34, "rate": 1 },
+        "invalid": { "count": 0, "rate": 0 },
+        "plannedInitialCalls": 4,
+        "validatorFailuresObserved": null
+      },
+      "V1": {
+        "units": 34,
+        "selected": { "count": 29, "rate": 0.8529411764705882 },
+        "attempted": { "count": 0, "rate": 0 },
+        "decided": { "count": 0, "rate": 0 },
+        "abstained": { "count": 0, "rate": 0 },
+        "unreviewed": { "count": 34, "rate": 1 },
+        "invalid": { "count": 0, "rate": 0 },
+        "plannedInitialCalls": 5,
+        "validatorFailuresObserved": null
+      },
+      "V2": {
+        "units": 34,
+        "selected": { "count": 29, "rate": 0.8529411764705882 },
+        "attempted": { "count": 0, "rate": 0 },
+        "decided": { "count": 0, "rate": 0 },
+        "abstained": { "count": 0, "rate": 0 },
+        "unreviewed": { "count": 34, "rate": 1 },
+        "invalid": { "count": 0, "rate": 0 },
+        "plannedInitialCalls": 5,
+        "validatorFailuresObserved": null
+      },
+      "V3": {
+        "units": 34,
+        "selected": { "count": 29, "rate": 0.8529411764705882 },
+        "attempted": { "count": 0, "rate": 0 },
+        "decided": { "count": 0, "rate": 0 },
+        "abstained": { "count": 0, "rate": 0 },
+        "unreviewed": { "count": 34, "rate": 1 },
+        "invalid": { "count": 0, "rate": 0 },
+        "plannedInitialCalls": 5,
+        "validatorFailuresObserved": null
+      },
+      "V4": {
+        "units": 34,
+        "selected": { "count": 29, "rate": 0.8529411764705882 },
+        "attempted": { "count": 0, "rate": 0 },
+        "decided": { "count": 0, "rate": 0 },
+        "abstained": { "count": 0, "rate": 0 },
+        "unreviewed": { "count": 34, "rate": 1 },
+        "invalid": { "count": 0, "rate": 0 },
+        "plannedInitialCalls": 5,
+        "validatorFailuresObserved": null
+      }
+    }
+  },
+  "aiLabelAgreement": {
+    "status": "not_measured",
+    "agreementNumerator": null,
+    "agreementDenominator": 0,
+    "reason": "No validated model outcomes exist because the live run was blocked before transport.",
+    "availableExistingLabels": {
+      "provenanceSha256": "767972e38aa9a08ff94355b103a947d614079135edb19933f0b3dfa9d513fe0e",
+      "total": 27,
+      "requirement": 4,
+      "nonRequirement": 19,
+      "ambiguous": 4,
+      "interpretation": "Machine-proposed labels only; not human gold and not human accuracy."
+    }
+  },
+  "full60OfflinePerformance": {
+    "artifact": "full-60-offline-post-fix.json",
+    "sha256": "028514d3ea8ec8780fc52d6e1f42b19c2a837a11a5184c8504050db40030037e",
+    "wallSeconds": 4.52,
+    "caseCount": 60,
+    "registryUnits": 640,
+    "actualCalls": 0,
+    "plannedInitialCallsByVersion": { "V0": 60, "V1": 78, "V2": 78, "V3": 78, "V4": 78 },
+    "selectedUnitsByVersion": { "V0": 426, "V1": 536, "V2": 536, "V3": 536, "V4": 536 },
+    "unreviewedUnitsByVersion": { "V0": 640, "V1": 640, "V2": 640, "V3": 640, "V4": 640 }
+  },
+  "verification": {
+    "targetedTestFiles": 9,
+    "testsPassed": 152,
+    "testsSkipped": 1,
+    "typecheck": "passed",
+    "frozenExistingEvidence": {
+      "fileCount": 37,
+      "beforeAggregateSha256": "f43c372a547a047577e0073629605bd5ae07bf3396021f8936c8a75746188188",
+      "afterAggregateSha256": "f43c372a547a047577e0073629605bd5ae07bf3396021f8936c8a75746188188",
+      "unchanged": true
+    }
+  },
+  "limitations": [
+    "No live V0-V4 semantic comparison was produced, so no version-superiority conclusion is supported.",
+    "Selection coverage differs between V0 and V1-V4; offline selected-unit rates are not semantic accuracy.",
+    "No new 36-case set was collected.",
+    "No two-human independent review was performed.",
+    "Existing AI labels are not human gold.",
+    "Product adoption remains out of scope."
+  ]
+}

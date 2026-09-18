@@ -890,6 +890,25 @@ describe("extractRequirementSpanSeed", () => {
 });
 
 describe("extractClaims", () => {
+  it("derives bounded code navigation from canonical changed-file status and source revisions", () => {
+    const evidence = buildEvidenceIndexResult("", "", [
+      { path: "src/new.ts", previousPath: "src/old.ts", status: "renamed", patch: "@@ -8,2 +12,3 @@\n-old\n+new" },
+      { path: "src/deleted.ts", status: "removed", patch: "@@ -21,4 +0,0 @@\n-old" },
+    ], [], [], "task", {
+      version: 1,
+      origin: "github_snapshot",
+      headSha: "a".repeat(40),
+      baseSha: "b".repeat(40),
+      evidenceCapturedAt: "2026-09-15T00:00:00.000Z",
+      inputFingerprint: { version: 1, algorithm: "sha256", value: "c".repeat(64), coverage: "github_metadata" },
+    }).items;
+
+    expect(evidence.map((item) => item.codeLocation)).toEqual([
+      { path: "src/new.ts", previousPath: "src/old.ts", side: "head", revisionSha: "a".repeat(40), line: 12 },
+      { path: "src/deleted.ts", side: "base", revisionSha: "b".repeat(40), line: 21 },
+    ]);
+  });
+
   it("captures product and UX claim verbs used by agent-authored PRs", () => {
     const evidence = buildEvidenceIndex("", "", [
       {

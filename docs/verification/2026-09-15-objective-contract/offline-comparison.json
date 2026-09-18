@@ -1,0 +1,3968 @@
+{
+  "schemaVersion": "requirement_role_objective_result.v1",
+  "shadowOnly": true,
+  "offline": true,
+  "sourceInputHash": "6ab295a61f3ec259433ea2ffe7dfe81558dba699c07f70e1830b35b869bf9774",
+  "contractHash": "4a35ffcd44a49aae0566ec882e2af5ca43d5854244da0bdbb95be686404ffac7",
+  "reviewTemplateHash": "fad05aacc6849ecace2163cce79f65869ef8999c7d74a509e2ea997a77eb8e30",
+  "configuredModel": "gpt-5.6-luna",
+  "modelProfileHash": "ed38cb7d00b9a24c66d874083cf7adf710324267f6e9a4c456ba50311e87090c",
+  "actualCallCount": 0,
+  "maxCallCount": 30,
+  "retries": 0,
+  "reviewTemplate": {
+    "schemaVersion": "requirement_role_objective_review.v1",
+    "contract": {
+      "schemaVersion": "requirement_role_objective_contract.v1",
+      "sourceInputHash": "6ab295a61f3ec259433ea2ffe7dfe81558dba699c07f70e1830b35b869bf9774",
+      "rubricHash": "b1c3f2d15068d22aa262f5037505ca6c4dab017c3801b051f810b94b4f401de9",
+      "boundaryHash": "fbeab413362669f960b14a96aa171a8c45da5d3967f8972b68fee2ebb83fde79",
+      "inputLabelsUsed": false,
+      "targetAxis": [
+        "yes",
+        "no",
+        "unresolved"
+      ],
+      "semanticRoleAxis": [
+        "objective_candidate",
+        "problem_observation",
+        "implementation_claim",
+        "test_claim",
+        "scope_exclusion",
+        "known_limitation",
+        "risk_or_revert",
+        "follow_up",
+        "template_or_process",
+        "supporting_context",
+        "mixed_or_ambiguous"
+      ],
+      "denominatorPolicy": "fixed_v0_selected_source_units",
+      "matchingPolicy": "exact_case_source_unit_and_range_hash",
+      "labelProvenancePolicy": "explicit_import_only_no_identity_verification",
+      "rubric": {
+        "objectivePresence": {
+          "yes": "This exact unit explicitly states a target behavior or deliverable for the current PR.",
+          "no": "This exact unit does not explicitly state a target behavior or deliverable for the current PR.",
+          "unresolved": "The exact unit does not support a reliable yes/no target judgment without human resolution."
+        },
+        "semanticRoleAxis": [
+          "objective_candidate",
+          "problem_observation",
+          "implementation_claim",
+          "test_claim",
+          "scope_exclusion",
+          "known_limitation",
+          "risk_or_revert",
+          "follow_up",
+          "template_or_process",
+          "supporting_context",
+          "mixed_or_ambiguous"
+        ],
+        "independence": "Objective presence and semantic role are independent: a current-PR target may also be an implementation_claim.",
+        "nonImplications": "Target presence does not imply an executable criterion, implementation proof, test proof, support, or fulfillment.",
+        "authority": "Source authority is immutable input metadata and is never a model decision."
+      },
+      "cases": [
+        {
+          "caseId": "pallets-flask-5917",
+          "inputHash": "bcb239d733e1824439e7fbda15b4ddf213787c1e5c215a97c54c3d3459ab43bb",
+          "seedHash": "efdc3a19182f25ef1ab391524b135b77aabc4828388bf84826771e8495157d65",
+          "units": [
+            {
+              "caseId": "pallets-flask-5917",
+              "unitId": "gpsp_1_1",
+              "sourceUnitId": "gpsrc_c4c40313492cdc82e9f1d2a6",
+              "sourceKind": "pr_title",
+              "start": 0,
+              "end": 38,
+              "textHash": "5e48e15cb95bdba20b2cbbe36186ffb16f0e3b47e87b3198e7972657f2ed92e6",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "sourceBindingAvailable": true,
+              "comparisonEligible": true
+            },
+            {
+              "caseId": "pallets-flask-5917",
+              "unitId": "gpsp_2_1",
+              "sourceUnitId": "gpsrc_d4a38fc955918e0525732779",
+              "sourceKind": "pr_body",
+              "start": 0,
+              "end": 207,
+              "textHash": "d9dae493998d7ec9ba66517d5109da1e2d2160109d2dee1a8e6c09bf80e69135",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "sourceBindingAvailable": true,
+              "comparisonEligible": true
+            },
+            {
+              "caseId": "pallets-flask-5917",
+              "unitId": "gpsp_2_2",
+              "sourceUnitId": "gpsrc_d4a38fc955918e0525732779",
+              "sourceKind": "pr_body",
+              "start": 209,
+              "end": 320,
+              "textHash": "9238aa7b071fca702f6fbcc99ff1d47d417169c66dfcd531fb84f172bcfd4e75",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "sourceBindingAvailable": true,
+              "comparisonEligible": true
+            },
+            {
+              "caseId": "pallets-flask-5917",
+              "unitId": "gpsp_2_3",
+              "sourceUnitId": "gpsrc_d4a38fc955918e0525732779",
+              "sourceKind": "pr_body",
+              "start": 322,
+              "end": 334,
+              "textHash": "a3acfdb5c8ec6e2e7f774d51809a535f17308fd0fb313754087c985c3235a8dd",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "sourceBindingAvailable": true,
+              "comparisonEligible": true
+            }
+          ]
+        },
+        {
+          "caseId": "django-django-21900",
+          "inputHash": "6198415a87241dc58a24e1ffa4608fa70b1b56a76be254e4f43688167fabf77f",
+          "seedHash": "a1509a69119c175e54017a558c65720a1bfa58aaad0aeba6fd7a4f2617e9cb9a",
+          "units": [
+            {
+              "caseId": "django-django-21900",
+              "unitId": "gpsp_1_1",
+              "sourceUnitId": "gpsrc_d2945cddd2a45c2ca807d412",
+              "sourceKind": "pr_title",
+              "start": 0,
+              "end": 63,
+              "textHash": "1a5515ae912a1cf96a80cb84c5475239659c081a92bb015c974ad25b5fb55ba3",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "sourceBindingAvailable": true,
+              "comparisonEligible": true
+            },
+            {
+              "caseId": "django-django-21900",
+              "unitId": "gpsp_2_1",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 0,
+              "end": 23,
+              "textHash": "811110e2ab48fcc07604841df9daa1f14d0f1ae379917fe05438d135a3aae57a",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "sourceBindingAvailable": true,
+              "comparisonEligible": false
+            },
+            {
+              "caseId": "django-django-21900",
+              "unitId": "gpsp_2_2",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 24,
+              "end": 89,
+              "textHash": "4f499b52fe34c8f17e5aad2d49acbd408af840cb4b441c1ceb5ee730cc66e281",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "sourceBindingAvailable": true,
+              "comparisonEligible": false
+            },
+            {
+              "caseId": "django-django-21900",
+              "unitId": "gpsp_2_3",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 90,
+              "end": 156,
+              "textHash": "29153c8057fb4824e2a1c182b3ba1a3737875c367864c8bc1bc6f72bbd835633",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "sourceBindingAvailable": true,
+              "comparisonEligible": false
+            },
+            {
+              "caseId": "django-django-21900",
+              "unitId": "gpsp_2_4",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 158,
+              "end": 161,
+              "textHash": "e2f79e5b60330bba4c289962231b6ba2957d0b14e7deb3110417003c79dea635",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "sourceBindingAvailable": true,
+              "comparisonEligible": true
+            },
+            {
+              "caseId": "django-django-21900",
+              "unitId": "gpsp_2_5",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 163,
+              "end": 186,
+              "textHash": "cdd976e0a3ef23264900ad9e7378a6d6f765cdc5c4b098a7029427bf5fb3d908",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "sourceBindingAvailable": true,
+              "comparisonEligible": false
+            },
+            {
+              "caseId": "django-django-21900",
+              "unitId": "gpsp_2_6",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 188,
+              "end": 385,
+              "textHash": "e6d94dc6a352404a3335af43d7a9663da883d73c1aa9b23f4297e54539bc0ad9",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "sourceBindingAvailable": true,
+              "comparisonEligible": true
+            },
+            {
+              "caseId": "django-django-21900",
+              "unitId": "gpsp_2_7",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 387,
+              "end": 427,
+              "textHash": "23bec3b2eb6f45312dd8f276bbc9b5485006a7daf995cc78b6929f62374bcaff",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "sourceBindingAvailable": true,
+              "comparisonEligible": false
+            },
+            {
+              "caseId": "django-django-21900",
+              "unitId": "gpsp_2_8",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 428,
+              "end": 473,
+              "textHash": "a32cf86f225de720f3e624134bdc36864163c5d7e520f9857c88d2e6f3812c72",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "sourceBindingAvailable": true,
+              "comparisonEligible": false
+            },
+            {
+              "caseId": "django-django-21900",
+              "unitId": "gpsp_2_9",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 474,
+              "end": 527,
+              "textHash": "dae75ac38e613f08982763d7ecbca112fbf89bbae5e97317d9aab7b80be69908",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "sourceBindingAvailable": true,
+              "comparisonEligible": true
+            },
+            {
+              "caseId": "django-django-21900",
+              "unitId": "gpsp_2_10",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 528,
+              "end": 635,
+              "textHash": "6db2510f5cfa51cdcc5480a02dcc205743f43b06c65172cf17f58f76fd889e22",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "sourceBindingAvailable": true,
+              "comparisonEligible": true
+            },
+            {
+              "caseId": "django-django-21900",
+              "unitId": "gpsp_2_11",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 636,
+              "end": 703,
+              "textHash": "a5996ccc5cf7eafc27b8e387a3dee79ef9d0391b145e30758bd24db06715be5c",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "sourceBindingAvailable": true,
+              "comparisonEligible": false
+            },
+            {
+              "caseId": "django-django-21900",
+              "unitId": "gpsp_2_12",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 705,
+              "end": 719,
+              "textHash": "648debb6c1f546222209036a82c754bcdc45e4116d48d61feffe1c5b9c1ba040",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "sourceBindingAvailable": true,
+              "comparisonEligible": false
+            },
+            {
+              "caseId": "django-django-21900",
+              "unitId": "gpsp_2_13",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 720,
+              "end": 870,
+              "textHash": "f66f200e1a5c1a112f1c35989a4ec3dd6453492c6d715b4b51a119ba890a6211",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "sourceBindingAvailable": true,
+              "comparisonEligible": true
+            },
+            {
+              "caseId": "django-django-21900",
+              "unitId": "gpsp_2_14",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 871,
+              "end": 1026,
+              "textHash": "419bfc7e0073b223f31cfc5a4871a6b43489507ea214febbc2dcbcf62b8ede98",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "sourceBindingAvailable": true,
+              "comparisonEligible": true
+            },
+            {
+              "caseId": "django-django-21900",
+              "unitId": "gpsp_2_15",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 1027,
+              "end": 1141,
+              "textHash": "aed4e708bbd915a863933f95b375c9785c86d696bbd2e950b77d45e52b3220af",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "sourceBindingAvailable": true,
+              "comparisonEligible": true
+            },
+            {
+              "caseId": "django-django-21900",
+              "unitId": "gpsp_2_16",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 1142,
+              "end": 1380,
+              "textHash": "6625b5126e8758f60b3f90439a552d2a590889bf21b4880643c6302e444ee483",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "sourceBindingAvailable": true,
+              "comparisonEligible": true
+            },
+            {
+              "caseId": "django-django-21900",
+              "unitId": "gpsp_2_17",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 1381,
+              "end": 1518,
+              "textHash": "edb853a8aa9c3f8f746cdc16a09ac8348862e498f7a6563956d859abb6169fa0",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "sourceBindingAvailable": true,
+              "comparisonEligible": false
+            },
+            {
+              "caseId": "django-django-21900",
+              "unitId": "gpsp_2_18",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 1520,
+              "end": 1583,
+              "textHash": "8d29c46db87b68eaddc52cf2db3a75ca6dfcf2e08c3dfba292df50d1387847d3",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "sourceBindingAvailable": true,
+              "comparisonEligible": false
+            },
+            {
+              "caseId": "django-django-21900",
+              "unitId": "gpsp_2_19",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 1584,
+              "end": 1652,
+              "textHash": "a4b902f2619d6f4c361286ee8d66b1171b805e5d4862220cb361af1589d2d957",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "sourceBindingAvailable": true,
+              "comparisonEligible": false
+            },
+            {
+              "caseId": "django-django-21900",
+              "unitId": "gpsp_2_20",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 1653,
+              "end": 1698,
+              "textHash": "6f66dbae6663ea7881245488c3203020745ff02100dbef00e7e1cd76cacedb5b",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "sourceBindingAvailable": true,
+              "comparisonEligible": true
+            },
+            {
+              "caseId": "django-django-21900",
+              "unitId": "gpsp_2_21",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 1699,
+              "end": 1782,
+              "textHash": "5d2bed99510bc18cd84c85d472c3b2259771d72855e3a9ebae1e7ee44c7d4f03",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "sourceBindingAvailable": true,
+              "comparisonEligible": true
+            },
+            {
+              "caseId": "django-django-21900",
+              "unitId": "gpsp_2_22",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 1783,
+              "end": 1865,
+              "textHash": "2941b48d91a763a1c453d511cb50e254c3e9f645f82b130038404ef836ae63ec",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "sourceBindingAvailable": true,
+              "comparisonEligible": true
+            }
+          ]
+        },
+        {
+          "caseId": "fastapi-fastapi-16205",
+          "inputHash": "f8ee3c0f3f6494fc73a8434d6c5c2f74b29dd9765ebfde7710e5c64e385ab104",
+          "seedHash": "42dd2e3b95dab105ad00d2929486ec6a973b1dcfe9b2879f76a54931e5e3a2b5",
+          "units": [
+            {
+              "caseId": "fastapi-fastapi-16205",
+              "unitId": "gpsp_1_1",
+              "sourceUnitId": "gpsrc_57f26acf7bc25733dfd4a5b4",
+              "sourceKind": "pr_title",
+              "start": 0,
+              "end": 47,
+              "textHash": "aa79ce39552b6e2daa6ce47b8960ff7e4b464eefe6e41a59f19d5010a7820cd2",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "sourceBindingAvailable": true,
+              "comparisonEligible": true
+            },
+            {
+              "caseId": "fastapi-fastapi-16205",
+              "unitId": "gpsp_2_1",
+              "sourceUnitId": "gpsrc_d31782c5cd9d93483bc2807b",
+              "sourceKind": "pr_body",
+              "start": 0,
+              "end": 47,
+              "textHash": "aa79ce39552b6e2daa6ce47b8960ff7e4b464eefe6e41a59f19d5010a7820cd2",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "sourceBindingAvailable": true,
+              "comparisonEligible": true
+            },
+            {
+              "caseId": "fastapi-fastapi-16205",
+              "unitId": "gpsp_2_2",
+              "sourceUnitId": "gpsrc_d31782c5cd9d93483bc2807b",
+              "sourceKind": "pr_body",
+              "start": 49,
+              "end": 94,
+              "textHash": "0ef3fc601fd7345a0984aadc2896030f6d9ffec54884c6f38c131dcadad2981a",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "sourceBindingAvailable": true,
+              "comparisonEligible": true
+            },
+            {
+              "caseId": "fastapi-fastapi-16205",
+              "unitId": "gpsp_2_3",
+              "sourceUnitId": "gpsrc_d31782c5cd9d93483bc2807b",
+              "sourceKind": "pr_body",
+              "start": 96,
+              "end": 189,
+              "textHash": "f020b7640b70a02a618d3f86d03da3f699802bfa77a15e4c7408e7207764e3f2",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "sourceBindingAvailable": true,
+              "comparisonEligible": true
+            },
+            {
+              "caseId": "fastapi-fastapi-16205",
+              "unitId": "gpsp_2_4",
+              "sourceUnitId": "gpsrc_d31782c5cd9d93483bc2807b",
+              "sourceKind": "pr_body",
+              "start": 191,
+              "end": 348,
+              "textHash": "724498496343facd8b491fe527df79d420ea43f1408c4852e14cf48d662a63bc",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "sourceBindingAvailable": true,
+              "comparisonEligible": true
+            }
+          ]
+        },
+        {
+          "caseId": "sveltejs-svelte-18752",
+          "inputHash": "b4b9b492624f24033ef5ac1f02936914d5a1b75407e38427268af440fbfe3d1e",
+          "seedHash": "2a6c112de4909714bfa4fdb18f37e1f9e7bf411b2a0ecfef37baae836995f1c9",
+          "units": [
+            {
+              "caseId": "sveltejs-svelte-18752",
+              "unitId": "gpsp_1_1",
+              "sourceUnitId": "gpsrc_91a261c5cf4300a1d7b4e973",
+              "sourceKind": "pr_title",
+              "start": 0,
+              "end": 20,
+              "textHash": "3464ac537bd89ea580fefc814cfba581563635849d3855bbcc9efa1ee61e034f",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "sourceBindingAvailable": true,
+              "comparisonEligible": true
+            },
+            {
+              "caseId": "sveltejs-svelte-18752",
+              "unitId": "gpsp_2_1",
+              "sourceUnitId": "gpsrc_ea275941da7859acd7628386",
+              "sourceKind": "pr_body",
+              "start": 0,
+              "end": 67,
+              "textHash": "e4eac35da8775bec62fca95de13aaf9ad311b44a0681b7e8a5a581289b982d40",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "sourceBindingAvailable": true,
+              "comparisonEligible": true
+            }
+          ]
+        }
+      ]
+    },
+    "contractHash": "4a35ffcd44a49aae0566ec882e2af5ca43d5854244da0bdbb95be686404ffac7",
+    "templateHash": "fad05aacc6849ecace2163cce79f65869ef8999c7d74a509e2ea997a77eb8e30",
+    "labelProvenance": null,
+    "annotators": [
+      {
+        "slotId": "annotator_1",
+        "humanIdentityVerified": false,
+        "cases": [
+          {
+            "caseId": "pallets-flask-5917",
+            "goalDefinitions": [],
+            "decisions": [
+              {
+                "ref": {
+                  "caseId": "pallets-flask-5917",
+                  "unitId": "gpsp_1_1",
+                  "sourceUnitId": "gpsrc_c4c40313492cdc82e9f1d2a6",
+                  "sourceKind": "pr_title",
+                  "start": 0,
+                  "end": 38,
+                  "textHash": "5e48e15cb95bdba20b2cbbe36186ffb16f0e3b47e87b3198e7972657f2ed92e6"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "pallets-flask-5917",
+                  "unitId": "gpsp_2_1",
+                  "sourceUnitId": "gpsrc_d4a38fc955918e0525732779",
+                  "sourceKind": "pr_body",
+                  "start": 0,
+                  "end": 207,
+                  "textHash": "d9dae493998d7ec9ba66517d5109da1e2d2160109d2dee1a8e6c09bf80e69135"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "pallets-flask-5917",
+                  "unitId": "gpsp_2_2",
+                  "sourceUnitId": "gpsrc_d4a38fc955918e0525732779",
+                  "sourceKind": "pr_body",
+                  "start": 209,
+                  "end": 320,
+                  "textHash": "9238aa7b071fca702f6fbcc99ff1d47d417169c66dfcd531fb84f172bcfd4e75"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "pallets-flask-5917",
+                  "unitId": "gpsp_2_3",
+                  "sourceUnitId": "gpsrc_d4a38fc955918e0525732779",
+                  "sourceKind": "pr_body",
+                  "start": 322,
+                  "end": 334,
+                  "textHash": "a3acfdb5c8ec6e2e7f774d51809a535f17308fd0fb313754087c985c3235a8dd"
+                },
+                "judgment": null
+              }
+            ]
+          },
+          {
+            "caseId": "django-django-21900",
+            "goalDefinitions": [],
+            "decisions": [
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_1_1",
+                  "sourceUnitId": "gpsrc_d2945cddd2a45c2ca807d412",
+                  "sourceKind": "pr_title",
+                  "start": 0,
+                  "end": 63,
+                  "textHash": "1a5515ae912a1cf96a80cb84c5475239659c081a92bb015c974ad25b5fb55ba3"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_1",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 0,
+                  "end": 23,
+                  "textHash": "811110e2ab48fcc07604841df9daa1f14d0f1ae379917fe05438d135a3aae57a"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_2",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 24,
+                  "end": 89,
+                  "textHash": "4f499b52fe34c8f17e5aad2d49acbd408af840cb4b441c1ceb5ee730cc66e281"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_3",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 90,
+                  "end": 156,
+                  "textHash": "29153c8057fb4824e2a1c182b3ba1a3737875c367864c8bc1bc6f72bbd835633"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_4",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 158,
+                  "end": 161,
+                  "textHash": "e2f79e5b60330bba4c289962231b6ba2957d0b14e7deb3110417003c79dea635"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_5",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 163,
+                  "end": 186,
+                  "textHash": "cdd976e0a3ef23264900ad9e7378a6d6f765cdc5c4b098a7029427bf5fb3d908"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_6",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 188,
+                  "end": 385,
+                  "textHash": "e6d94dc6a352404a3335af43d7a9663da883d73c1aa9b23f4297e54539bc0ad9"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_7",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 387,
+                  "end": 427,
+                  "textHash": "23bec3b2eb6f45312dd8f276bbc9b5485006a7daf995cc78b6929f62374bcaff"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_8",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 428,
+                  "end": 473,
+                  "textHash": "a32cf86f225de720f3e624134bdc36864163c5d7e520f9857c88d2e6f3812c72"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_9",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 474,
+                  "end": 527,
+                  "textHash": "dae75ac38e613f08982763d7ecbca112fbf89bbae5e97317d9aab7b80be69908"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_10",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 528,
+                  "end": 635,
+                  "textHash": "6db2510f5cfa51cdcc5480a02dcc205743f43b06c65172cf17f58f76fd889e22"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_11",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 636,
+                  "end": 703,
+                  "textHash": "a5996ccc5cf7eafc27b8e387a3dee79ef9d0391b145e30758bd24db06715be5c"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_12",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 705,
+                  "end": 719,
+                  "textHash": "648debb6c1f546222209036a82c754bcdc45e4116d48d61feffe1c5b9c1ba040"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_13",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 720,
+                  "end": 870,
+                  "textHash": "f66f200e1a5c1a112f1c35989a4ec3dd6453492c6d715b4b51a119ba890a6211"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_14",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 871,
+                  "end": 1026,
+                  "textHash": "419bfc7e0073b223f31cfc5a4871a6b43489507ea214febbc2dcbcf62b8ede98"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_15",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 1027,
+                  "end": 1141,
+                  "textHash": "aed4e708bbd915a863933f95b375c9785c86d696bbd2e950b77d45e52b3220af"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_16",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 1142,
+                  "end": 1380,
+                  "textHash": "6625b5126e8758f60b3f90439a552d2a590889bf21b4880643c6302e444ee483"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_17",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 1381,
+                  "end": 1518,
+                  "textHash": "edb853a8aa9c3f8f746cdc16a09ac8348862e498f7a6563956d859abb6169fa0"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_18",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 1520,
+                  "end": 1583,
+                  "textHash": "8d29c46db87b68eaddc52cf2db3a75ca6dfcf2e08c3dfba292df50d1387847d3"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_19",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 1584,
+                  "end": 1652,
+                  "textHash": "a4b902f2619d6f4c361286ee8d66b1171b805e5d4862220cb361af1589d2d957"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_20",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 1653,
+                  "end": 1698,
+                  "textHash": "6f66dbae6663ea7881245488c3203020745ff02100dbef00e7e1cd76cacedb5b"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_21",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 1699,
+                  "end": 1782,
+                  "textHash": "5d2bed99510bc18cd84c85d472c3b2259771d72855e3a9ebae1e7ee44c7d4f03"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_22",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 1783,
+                  "end": 1865,
+                  "textHash": "2941b48d91a763a1c453d511cb50e254c3e9f645f82b130038404ef836ae63ec"
+                },
+                "judgment": null
+              }
+            ]
+          },
+          {
+            "caseId": "fastapi-fastapi-16205",
+            "goalDefinitions": [],
+            "decisions": [
+              {
+                "ref": {
+                  "caseId": "fastapi-fastapi-16205",
+                  "unitId": "gpsp_1_1",
+                  "sourceUnitId": "gpsrc_57f26acf7bc25733dfd4a5b4",
+                  "sourceKind": "pr_title",
+                  "start": 0,
+                  "end": 47,
+                  "textHash": "aa79ce39552b6e2daa6ce47b8960ff7e4b464eefe6e41a59f19d5010a7820cd2"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "fastapi-fastapi-16205",
+                  "unitId": "gpsp_2_1",
+                  "sourceUnitId": "gpsrc_d31782c5cd9d93483bc2807b",
+                  "sourceKind": "pr_body",
+                  "start": 0,
+                  "end": 47,
+                  "textHash": "aa79ce39552b6e2daa6ce47b8960ff7e4b464eefe6e41a59f19d5010a7820cd2"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "fastapi-fastapi-16205",
+                  "unitId": "gpsp_2_2",
+                  "sourceUnitId": "gpsrc_d31782c5cd9d93483bc2807b",
+                  "sourceKind": "pr_body",
+                  "start": 49,
+                  "end": 94,
+                  "textHash": "0ef3fc601fd7345a0984aadc2896030f6d9ffec54884c6f38c131dcadad2981a"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "fastapi-fastapi-16205",
+                  "unitId": "gpsp_2_3",
+                  "sourceUnitId": "gpsrc_d31782c5cd9d93483bc2807b",
+                  "sourceKind": "pr_body",
+                  "start": 96,
+                  "end": 189,
+                  "textHash": "f020b7640b70a02a618d3f86d03da3f699802bfa77a15e4c7408e7207764e3f2"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "fastapi-fastapi-16205",
+                  "unitId": "gpsp_2_4",
+                  "sourceUnitId": "gpsrc_d31782c5cd9d93483bc2807b",
+                  "sourceKind": "pr_body",
+                  "start": 191,
+                  "end": 348,
+                  "textHash": "724498496343facd8b491fe527df79d420ea43f1408c4852e14cf48d662a63bc"
+                },
+                "judgment": null
+              }
+            ]
+          },
+          {
+            "caseId": "sveltejs-svelte-18752",
+            "goalDefinitions": [],
+            "decisions": [
+              {
+                "ref": {
+                  "caseId": "sveltejs-svelte-18752",
+                  "unitId": "gpsp_1_1",
+                  "sourceUnitId": "gpsrc_91a261c5cf4300a1d7b4e973",
+                  "sourceKind": "pr_title",
+                  "start": 0,
+                  "end": 20,
+                  "textHash": "3464ac537bd89ea580fefc814cfba581563635849d3855bbcc9efa1ee61e034f"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "sveltejs-svelte-18752",
+                  "unitId": "gpsp_2_1",
+                  "sourceUnitId": "gpsrc_ea275941da7859acd7628386",
+                  "sourceKind": "pr_body",
+                  "start": 0,
+                  "end": 67,
+                  "textHash": "e4eac35da8775bec62fca95de13aaf9ad311b44a0681b7e8a5a581289b982d40"
+                },
+                "judgment": null
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "slotId": "annotator_2",
+        "humanIdentityVerified": false,
+        "cases": [
+          {
+            "caseId": "pallets-flask-5917",
+            "goalDefinitions": [],
+            "decisions": [
+              {
+                "ref": {
+                  "caseId": "pallets-flask-5917",
+                  "unitId": "gpsp_1_1",
+                  "sourceUnitId": "gpsrc_c4c40313492cdc82e9f1d2a6",
+                  "sourceKind": "pr_title",
+                  "start": 0,
+                  "end": 38,
+                  "textHash": "5e48e15cb95bdba20b2cbbe36186ffb16f0e3b47e87b3198e7972657f2ed92e6"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "pallets-flask-5917",
+                  "unitId": "gpsp_2_1",
+                  "sourceUnitId": "gpsrc_d4a38fc955918e0525732779",
+                  "sourceKind": "pr_body",
+                  "start": 0,
+                  "end": 207,
+                  "textHash": "d9dae493998d7ec9ba66517d5109da1e2d2160109d2dee1a8e6c09bf80e69135"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "pallets-flask-5917",
+                  "unitId": "gpsp_2_2",
+                  "sourceUnitId": "gpsrc_d4a38fc955918e0525732779",
+                  "sourceKind": "pr_body",
+                  "start": 209,
+                  "end": 320,
+                  "textHash": "9238aa7b071fca702f6fbcc99ff1d47d417169c66dfcd531fb84f172bcfd4e75"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "pallets-flask-5917",
+                  "unitId": "gpsp_2_3",
+                  "sourceUnitId": "gpsrc_d4a38fc955918e0525732779",
+                  "sourceKind": "pr_body",
+                  "start": 322,
+                  "end": 334,
+                  "textHash": "a3acfdb5c8ec6e2e7f774d51809a535f17308fd0fb313754087c985c3235a8dd"
+                },
+                "judgment": null
+              }
+            ]
+          },
+          {
+            "caseId": "django-django-21900",
+            "goalDefinitions": [],
+            "decisions": [
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_1_1",
+                  "sourceUnitId": "gpsrc_d2945cddd2a45c2ca807d412",
+                  "sourceKind": "pr_title",
+                  "start": 0,
+                  "end": 63,
+                  "textHash": "1a5515ae912a1cf96a80cb84c5475239659c081a92bb015c974ad25b5fb55ba3"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_1",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 0,
+                  "end": 23,
+                  "textHash": "811110e2ab48fcc07604841df9daa1f14d0f1ae379917fe05438d135a3aae57a"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_2",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 24,
+                  "end": 89,
+                  "textHash": "4f499b52fe34c8f17e5aad2d49acbd408af840cb4b441c1ceb5ee730cc66e281"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_3",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 90,
+                  "end": 156,
+                  "textHash": "29153c8057fb4824e2a1c182b3ba1a3737875c367864c8bc1bc6f72bbd835633"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_4",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 158,
+                  "end": 161,
+                  "textHash": "e2f79e5b60330bba4c289962231b6ba2957d0b14e7deb3110417003c79dea635"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_5",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 163,
+                  "end": 186,
+                  "textHash": "cdd976e0a3ef23264900ad9e7378a6d6f765cdc5c4b098a7029427bf5fb3d908"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_6",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 188,
+                  "end": 385,
+                  "textHash": "e6d94dc6a352404a3335af43d7a9663da883d73c1aa9b23f4297e54539bc0ad9"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_7",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 387,
+                  "end": 427,
+                  "textHash": "23bec3b2eb6f45312dd8f276bbc9b5485006a7daf995cc78b6929f62374bcaff"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_8",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 428,
+                  "end": 473,
+                  "textHash": "a32cf86f225de720f3e624134bdc36864163c5d7e520f9857c88d2e6f3812c72"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_9",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 474,
+                  "end": 527,
+                  "textHash": "dae75ac38e613f08982763d7ecbca112fbf89bbae5e97317d9aab7b80be69908"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_10",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 528,
+                  "end": 635,
+                  "textHash": "6db2510f5cfa51cdcc5480a02dcc205743f43b06c65172cf17f58f76fd889e22"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_11",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 636,
+                  "end": 703,
+                  "textHash": "a5996ccc5cf7eafc27b8e387a3dee79ef9d0391b145e30758bd24db06715be5c"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_12",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 705,
+                  "end": 719,
+                  "textHash": "648debb6c1f546222209036a82c754bcdc45e4116d48d61feffe1c5b9c1ba040"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_13",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 720,
+                  "end": 870,
+                  "textHash": "f66f200e1a5c1a112f1c35989a4ec3dd6453492c6d715b4b51a119ba890a6211"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_14",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 871,
+                  "end": 1026,
+                  "textHash": "419bfc7e0073b223f31cfc5a4871a6b43489507ea214febbc2dcbcf62b8ede98"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_15",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 1027,
+                  "end": 1141,
+                  "textHash": "aed4e708bbd915a863933f95b375c9785c86d696bbd2e950b77d45e52b3220af"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_16",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 1142,
+                  "end": 1380,
+                  "textHash": "6625b5126e8758f60b3f90439a552d2a590889bf21b4880643c6302e444ee483"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_17",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 1381,
+                  "end": 1518,
+                  "textHash": "edb853a8aa9c3f8f746cdc16a09ac8348862e498f7a6563956d859abb6169fa0"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_18",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 1520,
+                  "end": 1583,
+                  "textHash": "8d29c46db87b68eaddc52cf2db3a75ca6dfcf2e08c3dfba292df50d1387847d3"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_19",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 1584,
+                  "end": 1652,
+                  "textHash": "a4b902f2619d6f4c361286ee8d66b1171b805e5d4862220cb361af1589d2d957"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_20",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 1653,
+                  "end": 1698,
+                  "textHash": "6f66dbae6663ea7881245488c3203020745ff02100dbef00e7e1cd76cacedb5b"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_21",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 1699,
+                  "end": 1782,
+                  "textHash": "5d2bed99510bc18cd84c85d472c3b2259771d72855e3a9ebae1e7ee44c7d4f03"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "django-django-21900",
+                  "unitId": "gpsp_2_22",
+                  "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                  "sourceKind": "pr_body",
+                  "start": 1783,
+                  "end": 1865,
+                  "textHash": "2941b48d91a763a1c453d511cb50e254c3e9f645f82b130038404ef836ae63ec"
+                },
+                "judgment": null
+              }
+            ]
+          },
+          {
+            "caseId": "fastapi-fastapi-16205",
+            "goalDefinitions": [],
+            "decisions": [
+              {
+                "ref": {
+                  "caseId": "fastapi-fastapi-16205",
+                  "unitId": "gpsp_1_1",
+                  "sourceUnitId": "gpsrc_57f26acf7bc25733dfd4a5b4",
+                  "sourceKind": "pr_title",
+                  "start": 0,
+                  "end": 47,
+                  "textHash": "aa79ce39552b6e2daa6ce47b8960ff7e4b464eefe6e41a59f19d5010a7820cd2"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "fastapi-fastapi-16205",
+                  "unitId": "gpsp_2_1",
+                  "sourceUnitId": "gpsrc_d31782c5cd9d93483bc2807b",
+                  "sourceKind": "pr_body",
+                  "start": 0,
+                  "end": 47,
+                  "textHash": "aa79ce39552b6e2daa6ce47b8960ff7e4b464eefe6e41a59f19d5010a7820cd2"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "fastapi-fastapi-16205",
+                  "unitId": "gpsp_2_2",
+                  "sourceUnitId": "gpsrc_d31782c5cd9d93483bc2807b",
+                  "sourceKind": "pr_body",
+                  "start": 49,
+                  "end": 94,
+                  "textHash": "0ef3fc601fd7345a0984aadc2896030f6d9ffec54884c6f38c131dcadad2981a"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "fastapi-fastapi-16205",
+                  "unitId": "gpsp_2_3",
+                  "sourceUnitId": "gpsrc_d31782c5cd9d93483bc2807b",
+                  "sourceKind": "pr_body",
+                  "start": 96,
+                  "end": 189,
+                  "textHash": "f020b7640b70a02a618d3f86d03da3f699802bfa77a15e4c7408e7207764e3f2"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "fastapi-fastapi-16205",
+                  "unitId": "gpsp_2_4",
+                  "sourceUnitId": "gpsrc_d31782c5cd9d93483bc2807b",
+                  "sourceKind": "pr_body",
+                  "start": 191,
+                  "end": 348,
+                  "textHash": "724498496343facd8b491fe527df79d420ea43f1408c4852e14cf48d662a63bc"
+                },
+                "judgment": null
+              }
+            ]
+          },
+          {
+            "caseId": "sveltejs-svelte-18752",
+            "goalDefinitions": [],
+            "decisions": [
+              {
+                "ref": {
+                  "caseId": "sveltejs-svelte-18752",
+                  "unitId": "gpsp_1_1",
+                  "sourceUnitId": "gpsrc_91a261c5cf4300a1d7b4e973",
+                  "sourceKind": "pr_title",
+                  "start": 0,
+                  "end": 20,
+                  "textHash": "3464ac537bd89ea580fefc814cfba581563635849d3855bbcc9efa1ee61e034f"
+                },
+                "judgment": null
+              },
+              {
+                "ref": {
+                  "caseId": "sveltejs-svelte-18752",
+                  "unitId": "gpsp_2_1",
+                  "sourceUnitId": "gpsrc_ea275941da7859acd7628386",
+                  "sourceKind": "pr_body",
+                  "start": 0,
+                  "end": 67,
+                  "textHash": "e4eac35da8775bec62fca95de13aaf9ad311b44a0681b7e8a5a581289b982d40"
+                },
+                "judgment": null
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "adjudication": {
+      "humanIdentityVerified": false,
+      "cases": [
+        {
+          "caseId": "pallets-flask-5917",
+          "goalDefinitions": [],
+          "decisions": [
+            {
+              "ref": {
+                "caseId": "pallets-flask-5917",
+                "unitId": "gpsp_1_1",
+                "sourceUnitId": "gpsrc_c4c40313492cdc82e9f1d2a6",
+                "sourceKind": "pr_title",
+                "start": 0,
+                "end": 38,
+                "textHash": "5e48e15cb95bdba20b2cbbe36186ffb16f0e3b47e87b3198e7972657f2ed92e6"
+              },
+              "judgment": null
+            },
+            {
+              "ref": {
+                "caseId": "pallets-flask-5917",
+                "unitId": "gpsp_2_1",
+                "sourceUnitId": "gpsrc_d4a38fc955918e0525732779",
+                "sourceKind": "pr_body",
+                "start": 0,
+                "end": 207,
+                "textHash": "d9dae493998d7ec9ba66517d5109da1e2d2160109d2dee1a8e6c09bf80e69135"
+              },
+              "judgment": null
+            },
+            {
+              "ref": {
+                "caseId": "pallets-flask-5917",
+                "unitId": "gpsp_2_2",
+                "sourceUnitId": "gpsrc_d4a38fc955918e0525732779",
+                "sourceKind": "pr_body",
+                "start": 209,
+                "end": 320,
+                "textHash": "9238aa7b071fca702f6fbcc99ff1d47d417169c66dfcd531fb84f172bcfd4e75"
+              },
+              "judgment": null
+            },
+            {
+              "ref": {
+                "caseId": "pallets-flask-5917",
+                "unitId": "gpsp_2_3",
+                "sourceUnitId": "gpsrc_d4a38fc955918e0525732779",
+                "sourceKind": "pr_body",
+                "start": 322,
+                "end": 334,
+                "textHash": "a3acfdb5c8ec6e2e7f774d51809a535f17308fd0fb313754087c985c3235a8dd"
+              },
+              "judgment": null
+            }
+          ]
+        },
+        {
+          "caseId": "django-django-21900",
+          "goalDefinitions": [],
+          "decisions": [
+            {
+              "ref": {
+                "caseId": "django-django-21900",
+                "unitId": "gpsp_1_1",
+                "sourceUnitId": "gpsrc_d2945cddd2a45c2ca807d412",
+                "sourceKind": "pr_title",
+                "start": 0,
+                "end": 63,
+                "textHash": "1a5515ae912a1cf96a80cb84c5475239659c081a92bb015c974ad25b5fb55ba3"
+              },
+              "judgment": null
+            },
+            {
+              "ref": {
+                "caseId": "django-django-21900",
+                "unitId": "gpsp_2_1",
+                "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                "sourceKind": "pr_body",
+                "start": 0,
+                "end": 23,
+                "textHash": "811110e2ab48fcc07604841df9daa1f14d0f1ae379917fe05438d135a3aae57a"
+              },
+              "judgment": null
+            },
+            {
+              "ref": {
+                "caseId": "django-django-21900",
+                "unitId": "gpsp_2_2",
+                "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                "sourceKind": "pr_body",
+                "start": 24,
+                "end": 89,
+                "textHash": "4f499b52fe34c8f17e5aad2d49acbd408af840cb4b441c1ceb5ee730cc66e281"
+              },
+              "judgment": null
+            },
+            {
+              "ref": {
+                "caseId": "django-django-21900",
+                "unitId": "gpsp_2_3",
+                "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                "sourceKind": "pr_body",
+                "start": 90,
+                "end": 156,
+                "textHash": "29153c8057fb4824e2a1c182b3ba1a3737875c367864c8bc1bc6f72bbd835633"
+              },
+              "judgment": null
+            },
+            {
+              "ref": {
+                "caseId": "django-django-21900",
+                "unitId": "gpsp_2_4",
+                "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                "sourceKind": "pr_body",
+                "start": 158,
+                "end": 161,
+                "textHash": "e2f79e5b60330bba4c289962231b6ba2957d0b14e7deb3110417003c79dea635"
+              },
+              "judgment": null
+            },
+            {
+              "ref": {
+                "caseId": "django-django-21900",
+                "unitId": "gpsp_2_5",
+                "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                "sourceKind": "pr_body",
+                "start": 163,
+                "end": 186,
+                "textHash": "cdd976e0a3ef23264900ad9e7378a6d6f765cdc5c4b098a7029427bf5fb3d908"
+              },
+              "judgment": null
+            },
+            {
+              "ref": {
+                "caseId": "django-django-21900",
+                "unitId": "gpsp_2_6",
+                "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                "sourceKind": "pr_body",
+                "start": 188,
+                "end": 385,
+                "textHash": "e6d94dc6a352404a3335af43d7a9663da883d73c1aa9b23f4297e54539bc0ad9"
+              },
+              "judgment": null
+            },
+            {
+              "ref": {
+                "caseId": "django-django-21900",
+                "unitId": "gpsp_2_7",
+                "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                "sourceKind": "pr_body",
+                "start": 387,
+                "end": 427,
+                "textHash": "23bec3b2eb6f45312dd8f276bbc9b5485006a7daf995cc78b6929f62374bcaff"
+              },
+              "judgment": null
+            },
+            {
+              "ref": {
+                "caseId": "django-django-21900",
+                "unitId": "gpsp_2_8",
+                "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                "sourceKind": "pr_body",
+                "start": 428,
+                "end": 473,
+                "textHash": "a32cf86f225de720f3e624134bdc36864163c5d7e520f9857c88d2e6f3812c72"
+              },
+              "judgment": null
+            },
+            {
+              "ref": {
+                "caseId": "django-django-21900",
+                "unitId": "gpsp_2_9",
+                "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                "sourceKind": "pr_body",
+                "start": 474,
+                "end": 527,
+                "textHash": "dae75ac38e613f08982763d7ecbca112fbf89bbae5e97317d9aab7b80be69908"
+              },
+              "judgment": null
+            },
+            {
+              "ref": {
+                "caseId": "django-django-21900",
+                "unitId": "gpsp_2_10",
+                "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                "sourceKind": "pr_body",
+                "start": 528,
+                "end": 635,
+                "textHash": "6db2510f5cfa51cdcc5480a02dcc205743f43b06c65172cf17f58f76fd889e22"
+              },
+              "judgment": null
+            },
+            {
+              "ref": {
+                "caseId": "django-django-21900",
+                "unitId": "gpsp_2_11",
+                "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                "sourceKind": "pr_body",
+                "start": 636,
+                "end": 703,
+                "textHash": "a5996ccc5cf7eafc27b8e387a3dee79ef9d0391b145e30758bd24db06715be5c"
+              },
+              "judgment": null
+            },
+            {
+              "ref": {
+                "caseId": "django-django-21900",
+                "unitId": "gpsp_2_12",
+                "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                "sourceKind": "pr_body",
+                "start": 705,
+                "end": 719,
+                "textHash": "648debb6c1f546222209036a82c754bcdc45e4116d48d61feffe1c5b9c1ba040"
+              },
+              "judgment": null
+            },
+            {
+              "ref": {
+                "caseId": "django-django-21900",
+                "unitId": "gpsp_2_13",
+                "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                "sourceKind": "pr_body",
+                "start": 720,
+                "end": 870,
+                "textHash": "f66f200e1a5c1a112f1c35989a4ec3dd6453492c6d715b4b51a119ba890a6211"
+              },
+              "judgment": null
+            },
+            {
+              "ref": {
+                "caseId": "django-django-21900",
+                "unitId": "gpsp_2_14",
+                "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                "sourceKind": "pr_body",
+                "start": 871,
+                "end": 1026,
+                "textHash": "419bfc7e0073b223f31cfc5a4871a6b43489507ea214febbc2dcbcf62b8ede98"
+              },
+              "judgment": null
+            },
+            {
+              "ref": {
+                "caseId": "django-django-21900",
+                "unitId": "gpsp_2_15",
+                "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                "sourceKind": "pr_body",
+                "start": 1027,
+                "end": 1141,
+                "textHash": "aed4e708bbd915a863933f95b375c9785c86d696bbd2e950b77d45e52b3220af"
+              },
+              "judgment": null
+            },
+            {
+              "ref": {
+                "caseId": "django-django-21900",
+                "unitId": "gpsp_2_16",
+                "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                "sourceKind": "pr_body",
+                "start": 1142,
+                "end": 1380,
+                "textHash": "6625b5126e8758f60b3f90439a552d2a590889bf21b4880643c6302e444ee483"
+              },
+              "judgment": null
+            },
+            {
+              "ref": {
+                "caseId": "django-django-21900",
+                "unitId": "gpsp_2_17",
+                "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                "sourceKind": "pr_body",
+                "start": 1381,
+                "end": 1518,
+                "textHash": "edb853a8aa9c3f8f746cdc16a09ac8348862e498f7a6563956d859abb6169fa0"
+              },
+              "judgment": null
+            },
+            {
+              "ref": {
+                "caseId": "django-django-21900",
+                "unitId": "gpsp_2_18",
+                "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                "sourceKind": "pr_body",
+                "start": 1520,
+                "end": 1583,
+                "textHash": "8d29c46db87b68eaddc52cf2db3a75ca6dfcf2e08c3dfba292df50d1387847d3"
+              },
+              "judgment": null
+            },
+            {
+              "ref": {
+                "caseId": "django-django-21900",
+                "unitId": "gpsp_2_19",
+                "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                "sourceKind": "pr_body",
+                "start": 1584,
+                "end": 1652,
+                "textHash": "a4b902f2619d6f4c361286ee8d66b1171b805e5d4862220cb361af1589d2d957"
+              },
+              "judgment": null
+            },
+            {
+              "ref": {
+                "caseId": "django-django-21900",
+                "unitId": "gpsp_2_20",
+                "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                "sourceKind": "pr_body",
+                "start": 1653,
+                "end": 1698,
+                "textHash": "6f66dbae6663ea7881245488c3203020745ff02100dbef00e7e1cd76cacedb5b"
+              },
+              "judgment": null
+            },
+            {
+              "ref": {
+                "caseId": "django-django-21900",
+                "unitId": "gpsp_2_21",
+                "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                "sourceKind": "pr_body",
+                "start": 1699,
+                "end": 1782,
+                "textHash": "5d2bed99510bc18cd84c85d472c3b2259771d72855e3a9ebae1e7ee44c7d4f03"
+              },
+              "judgment": null
+            },
+            {
+              "ref": {
+                "caseId": "django-django-21900",
+                "unitId": "gpsp_2_22",
+                "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+                "sourceKind": "pr_body",
+                "start": 1783,
+                "end": 1865,
+                "textHash": "2941b48d91a763a1c453d511cb50e254c3e9f645f82b130038404ef836ae63ec"
+              },
+              "judgment": null
+            }
+          ]
+        },
+        {
+          "caseId": "fastapi-fastapi-16205",
+          "goalDefinitions": [],
+          "decisions": [
+            {
+              "ref": {
+                "caseId": "fastapi-fastapi-16205",
+                "unitId": "gpsp_1_1",
+                "sourceUnitId": "gpsrc_57f26acf7bc25733dfd4a5b4",
+                "sourceKind": "pr_title",
+                "start": 0,
+                "end": 47,
+                "textHash": "aa79ce39552b6e2daa6ce47b8960ff7e4b464eefe6e41a59f19d5010a7820cd2"
+              },
+              "judgment": null
+            },
+            {
+              "ref": {
+                "caseId": "fastapi-fastapi-16205",
+                "unitId": "gpsp_2_1",
+                "sourceUnitId": "gpsrc_d31782c5cd9d93483bc2807b",
+                "sourceKind": "pr_body",
+                "start": 0,
+                "end": 47,
+                "textHash": "aa79ce39552b6e2daa6ce47b8960ff7e4b464eefe6e41a59f19d5010a7820cd2"
+              },
+              "judgment": null
+            },
+            {
+              "ref": {
+                "caseId": "fastapi-fastapi-16205",
+                "unitId": "gpsp_2_2",
+                "sourceUnitId": "gpsrc_d31782c5cd9d93483bc2807b",
+                "sourceKind": "pr_body",
+                "start": 49,
+                "end": 94,
+                "textHash": "0ef3fc601fd7345a0984aadc2896030f6d9ffec54884c6f38c131dcadad2981a"
+              },
+              "judgment": null
+            },
+            {
+              "ref": {
+                "caseId": "fastapi-fastapi-16205",
+                "unitId": "gpsp_2_3",
+                "sourceUnitId": "gpsrc_d31782c5cd9d93483bc2807b",
+                "sourceKind": "pr_body",
+                "start": 96,
+                "end": 189,
+                "textHash": "f020b7640b70a02a618d3f86d03da3f699802bfa77a15e4c7408e7207764e3f2"
+              },
+              "judgment": null
+            },
+            {
+              "ref": {
+                "caseId": "fastapi-fastapi-16205",
+                "unitId": "gpsp_2_4",
+                "sourceUnitId": "gpsrc_d31782c5cd9d93483bc2807b",
+                "sourceKind": "pr_body",
+                "start": 191,
+                "end": 348,
+                "textHash": "724498496343facd8b491fe527df79d420ea43f1408c4852e14cf48d662a63bc"
+              },
+              "judgment": null
+            }
+          ]
+        },
+        {
+          "caseId": "sveltejs-svelte-18752",
+          "goalDefinitions": [],
+          "decisions": [
+            {
+              "ref": {
+                "caseId": "sveltejs-svelte-18752",
+                "unitId": "gpsp_1_1",
+                "sourceUnitId": "gpsrc_91a261c5cf4300a1d7b4e973",
+                "sourceKind": "pr_title",
+                "start": 0,
+                "end": 20,
+                "textHash": "3464ac537bd89ea580fefc814cfba581563635849d3855bbcc9efa1ee61e034f"
+              },
+              "judgment": null
+            },
+            {
+              "ref": {
+                "caseId": "sveltejs-svelte-18752",
+                "unitId": "gpsp_2_1",
+                "sourceUnitId": "gpsrc_ea275941da7859acd7628386",
+                "sourceKind": "pr_body",
+                "start": 0,
+                "end": 67,
+                "textHash": "e4eac35da8775bec62fca95de13aaf9ad311b44a0681b7e8a5a581289b982d40"
+              },
+              "judgment": null
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "armContract": {
+    "legacy_v0": {
+      "targetOutput": "legacy_objective_candidate_projection",
+      "semanticRoleOutput": "existing_v0_role",
+      "sourceSelection": "existing_v0",
+      "extraContext": false
+    },
+    "separated_v1": {
+      "targetOutput": "independent_yes_no_unresolved",
+      "semanticRoleOutput": "existing_11_roles",
+      "sourceSelection": "existing_v0",
+      "extraContext": false
+    }
+  },
+  "evaluation": {
+    "status": "not_evaluated",
+    "reason": "adjudicated_labels_not_supplied",
+    "denominator": 0,
+    "denominatorPolicy": "fixed_v0_selected_source_units",
+    "labelProvenanceHash": null,
+    "labelSetHash": null,
+    "reviewSummary": null,
+    "arms": null,
+    "unavailable": {
+      "goalLevelRecall": null,
+      "subspanFidelity": null,
+      "generalization": null
+    }
+  },
+  "cases": [
+    {
+      "id": "pallets-flask-5917",
+      "cohort": "public",
+      "inputHash": "bcb239d733e1824439e7fbda15b4ddf213787c1e5c215a97c54c3d3459ab43bb",
+      "seedHash": "efdc3a19182f25ef1ab391524b135b77aabc4828388bf84826771e8495157d65",
+      "registry": [
+        {
+          "id": "gpsp_1_1",
+          "spanId": "gpsp_1_1",
+          "sourceUnitId": "gpsrc_c4c40313492cdc82e9f1d2a6",
+          "sourceKind": "pr_title",
+          "sourceContentHash": "5e48e15cb95bdba20b2cbbe36186ffb16f0e3b47e87b3198e7972657f2ed92e6",
+          "structuralKind": "title",
+          "start": 0,
+          "end": 38,
+          "textHash": "5e48e15cb95bdba20b2cbbe36186ffb16f0e3b47e87b3198e7972657f2ed92e6",
+          "authority": "author_claim",
+          "sourceRole": "objective",
+          "sourceBindingAvailable": true
+        },
+        {
+          "id": "gpsp_2_1",
+          "spanId": "gpsp_2_1",
+          "sourceUnitId": "gpsrc_d4a38fc955918e0525732779",
+          "sourceKind": "pr_body",
+          "sourceContentHash": "824dabf176cde4551d0d261b85c65d67fcaa48cf5bf2e37329044a04d004e2a2",
+          "structuralKind": "paragraph",
+          "start": 0,
+          "end": 207,
+          "textHash": "d9dae493998d7ec9ba66517d5109da1e2d2160109d2dee1a8e6c09bf80e69135",
+          "authority": "author_claim",
+          "sourceRole": "objective",
+          "sourceBindingAvailable": true
+        },
+        {
+          "id": "gpsp_2_2",
+          "spanId": "gpsp_2_2",
+          "sourceUnitId": "gpsrc_d4a38fc955918e0525732779",
+          "sourceKind": "pr_body",
+          "sourceContentHash": "824dabf176cde4551d0d261b85c65d67fcaa48cf5bf2e37329044a04d004e2a2",
+          "structuralKind": "paragraph",
+          "start": 209,
+          "end": 320,
+          "textHash": "9238aa7b071fca702f6fbcc99ff1d47d417169c66dfcd531fb84f172bcfd4e75",
+          "authority": "author_claim",
+          "sourceRole": "objective",
+          "sourceBindingAvailable": true
+        },
+        {
+          "id": "gpsp_2_3",
+          "spanId": "gpsp_2_3",
+          "sourceUnitId": "gpsrc_d4a38fc955918e0525732779",
+          "sourceKind": "pr_body",
+          "sourceContentHash": "824dabf176cde4551d0d261b85c65d67fcaa48cf5bf2e37329044a04d004e2a2",
+          "structuralKind": "paragraph",
+          "start": 322,
+          "end": 334,
+          "textHash": "a3acfdb5c8ec6e2e7f774d51809a535f17308fd0fb313754087c985c3235a8dd",
+          "authority": "author_claim",
+          "sourceRole": "objective",
+          "sourceBindingAvailable": true
+        }
+      ],
+      "selection": {
+        "policy": "existing_v0",
+        "unitIds": [
+          "gpsp_1_1",
+          "gpsp_2_1",
+          "gpsp_2_2",
+          "gpsp_2_3"
+        ],
+        "plannedCallsPerArm": 1
+      },
+      "arms": {
+        "legacy_v0": {
+          "ledger": [
+            {
+              "unitId": "gpsp_1_1",
+              "sourceUnitId": "gpsrc_c4c40313492cdc82e9f1d2a6",
+              "sourceKind": "pr_title",
+              "start": 0,
+              "end": 38,
+              "textHash": "5e48e15cb95bdba20b2cbbe36186ffb16f0e3b47e87b3198e7972657f2ed92e6",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            },
+            {
+              "unitId": "gpsp_2_1",
+              "sourceUnitId": "gpsrc_d4a38fc955918e0525732779",
+              "sourceKind": "pr_body",
+              "start": 0,
+              "end": 207,
+              "textHash": "d9dae493998d7ec9ba66517d5109da1e2d2160109d2dee1a8e6c09bf80e69135",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            },
+            {
+              "unitId": "gpsp_2_2",
+              "sourceUnitId": "gpsrc_d4a38fc955918e0525732779",
+              "sourceKind": "pr_body",
+              "start": 209,
+              "end": 320,
+              "textHash": "9238aa7b071fca702f6fbcc99ff1d47d417169c66dfcd531fb84f172bcfd4e75",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            },
+            {
+              "unitId": "gpsp_2_3",
+              "sourceUnitId": "gpsrc_d4a38fc955918e0525732779",
+              "sourceKind": "pr_body",
+              "start": 322,
+              "end": 334,
+              "textHash": "a3acfdb5c8ec6e2e7f774d51809a535f17308fd0fb313754087c985c3235a8dd",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            }
+          ],
+          "calls": [
+            {
+              "id": "pallets-flask-5917:legacy_v0:1",
+              "arm": "legacy_v0",
+              "unitIds": [
+                "gpsp_1_1",
+                "gpsp_2_1",
+                "gpsp_2_2",
+                "gpsp_2_3"
+              ],
+              "inputHash": "003fbdbc56b0f7adb28721020d8febe65e3d4a010812fa994c3e313da86d5972",
+              "promptHash": "e4e26d055ef3b7f73e885984a92f8afdf621bb0b31604143c79d9fb440bdcda5",
+              "requestHash": "ca4e612ec1d865e09b02e761e4c51f657d403f1c649247800208a8eecb56a107",
+              "outputSchemaHash": "87085fdca24f4a44729ce857069d1c4dc767718649a95efb1ee95fef8758b4b8",
+              "attempted": false,
+              "retryCount": 0,
+              "state": "not_run",
+              "reason": "offline"
+            }
+          ],
+          "metrics": {
+            "selected": {
+              "numerator": 4,
+              "denominator": 4,
+              "rate": 1
+            },
+            "decided": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "abstained": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "unreviewed": {
+              "numerator": 4,
+              "denominator": 4,
+              "rate": 1
+            },
+            "invalid": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            }
+          }
+        },
+        "separated_v1": {
+          "ledger": [
+            {
+              "unitId": "gpsp_1_1",
+              "sourceUnitId": "gpsrc_c4c40313492cdc82e9f1d2a6",
+              "sourceKind": "pr_title",
+              "start": 0,
+              "end": 38,
+              "textHash": "5e48e15cb95bdba20b2cbbe36186ffb16f0e3b47e87b3198e7972657f2ed92e6",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            },
+            {
+              "unitId": "gpsp_2_1",
+              "sourceUnitId": "gpsrc_d4a38fc955918e0525732779",
+              "sourceKind": "pr_body",
+              "start": 0,
+              "end": 207,
+              "textHash": "d9dae493998d7ec9ba66517d5109da1e2d2160109d2dee1a8e6c09bf80e69135",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            },
+            {
+              "unitId": "gpsp_2_2",
+              "sourceUnitId": "gpsrc_d4a38fc955918e0525732779",
+              "sourceKind": "pr_body",
+              "start": 209,
+              "end": 320,
+              "textHash": "9238aa7b071fca702f6fbcc99ff1d47d417169c66dfcd531fb84f172bcfd4e75",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            },
+            {
+              "unitId": "gpsp_2_3",
+              "sourceUnitId": "gpsrc_d4a38fc955918e0525732779",
+              "sourceKind": "pr_body",
+              "start": 322,
+              "end": 334,
+              "textHash": "a3acfdb5c8ec6e2e7f774d51809a535f17308fd0fb313754087c985c3235a8dd",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            }
+          ],
+          "calls": [
+            {
+              "id": "pallets-flask-5917:separated_v1:1",
+              "arm": "separated_v1",
+              "unitIds": [
+                "gpsp_1_1",
+                "gpsp_2_1",
+                "gpsp_2_2",
+                "gpsp_2_3"
+              ],
+              "inputHash": "003fbdbc56b0f7adb28721020d8febe65e3d4a010812fa994c3e313da86d5972",
+              "promptHash": "52ec53e1f5f0918b100826f8565a15c0c8fd5f85bb56581149616a70e79dfb96",
+              "requestHash": "3f453f9bec9fa3bbd4659a4ed5887da8d2ae9e2446e16532379fe9d2fe7476d8",
+              "outputSchemaHash": "86c80338c839546e647c08808bfdf02b1dee90494526aeff4f39823cae98f5b4",
+              "attempted": false,
+              "retryCount": 0,
+              "state": "not_run",
+              "reason": "offline"
+            }
+          ],
+          "metrics": {
+            "selected": {
+              "numerator": 4,
+              "denominator": 4,
+              "rate": 1
+            },
+            "decided": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "abstained": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            },
+            "unreviewed": {
+              "numerator": 4,
+              "denominator": 4,
+              "rate": 1
+            },
+            "invalid": {
+              "numerator": 0,
+              "denominator": 4,
+              "rate": 0
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "django-django-21900",
+      "cohort": "public",
+      "inputHash": "6198415a87241dc58a24e1ffa4608fa70b1b56a76be254e4f43688167fabf77f",
+      "seedHash": "a1509a69119c175e54017a558c65720a1bfa58aaad0aeba6fd7a4f2617e9cb9a",
+      "registry": [
+        {
+          "id": "gpsp_1_1",
+          "spanId": "gpsp_1_1",
+          "sourceUnitId": "gpsrc_d2945cddd2a45c2ca807d412",
+          "sourceKind": "pr_title",
+          "sourceContentHash": "1a5515ae912a1cf96a80cb84c5475239659c081a92bb015c974ad25b5fb55ba3",
+          "structuralKind": "title",
+          "start": 0,
+          "end": 63,
+          "textHash": "1a5515ae912a1cf96a80cb84c5475239659c081a92bb015c974ad25b5fb55ba3",
+          "authority": "author_claim",
+          "sourceRole": "objective",
+          "sourceBindingAvailable": true
+        },
+        {
+          "id": "gpsp_2_1",
+          "spanId": "gpsp_2_1",
+          "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+          "sourceKind": "pr_body",
+          "sourceContentHash": "d7e45e6ba095c8c7c840d97ed97cd8ed5eff0f9cffded2584c5d8d3a82d58b15",
+          "structuralKind": "heading",
+          "start": 0,
+          "end": 23,
+          "textHash": "811110e2ab48fcc07604841df9daa1f14d0f1ae379917fe05438d135a3aae57a",
+          "authority": "author_claim",
+          "sourceRole": "objective",
+          "sourceBindingAvailable": true
+        },
+        {
+          "id": "gpsp_2_2",
+          "spanId": "gpsp_2_2",
+          "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+          "sourceKind": "pr_body",
+          "sourceContentHash": "d7e45e6ba095c8c7c840d97ed97cd8ed5eff0f9cffded2584c5d8d3a82d58b15",
+          "structuralKind": "html",
+          "start": 24,
+          "end": 89,
+          "textHash": "4f499b52fe34c8f17e5aad2d49acbd408af840cb4b441c1ceb5ee730cc66e281",
+          "authority": "author_claim",
+          "sourceRole": "objective",
+          "sourceBindingAvailable": true
+        },
+        {
+          "id": "gpsp_2_3",
+          "spanId": "gpsp_2_3",
+          "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+          "sourceKind": "pr_body",
+          "sourceContentHash": "d7e45e6ba095c8c7c840d97ed97cd8ed5eff0f9cffded2584c5d8d3a82d58b15",
+          "structuralKind": "html",
+          "start": 90,
+          "end": 156,
+          "textHash": "29153c8057fb4824e2a1c182b3ba1a3737875c367864c8bc1bc6f72bbd835633",
+          "authority": "author_claim",
+          "sourceRole": "objective",
+          "sourceBindingAvailable": true
+        },
+        {
+          "id": "gpsp_2_4",
+          "spanId": "gpsp_2_4",
+          "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+          "sourceKind": "pr_body",
+          "sourceContentHash": "d7e45e6ba095c8c7c840d97ed97cd8ed5eff0f9cffded2584c5d8d3a82d58b15",
+          "structuralKind": "paragraph",
+          "start": 158,
+          "end": 161,
+          "textHash": "e2f79e5b60330bba4c289962231b6ba2957d0b14e7deb3110417003c79dea635",
+          "authority": "author_claim",
+          "sourceRole": "objective",
+          "sourceBindingAvailable": true
+        },
+        {
+          "id": "gpsp_2_5",
+          "spanId": "gpsp_2_5",
+          "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+          "sourceKind": "pr_body",
+          "sourceContentHash": "d7e45e6ba095c8c7c840d97ed97cd8ed5eff0f9cffded2584c5d8d3a82d58b15",
+          "structuralKind": "heading",
+          "start": 163,
+          "end": 186,
+          "textHash": "cdd976e0a3ef23264900ad9e7378a6d6f765cdc5c4b098a7029427bf5fb3d908",
+          "authority": "author_claim",
+          "sourceRole": "objective",
+          "sourceBindingAvailable": true
+        },
+        {
+          "id": "gpsp_2_6",
+          "spanId": "gpsp_2_6",
+          "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+          "sourceKind": "pr_body",
+          "sourceContentHash": "d7e45e6ba095c8c7c840d97ed97cd8ed5eff0f9cffded2584c5d8d3a82d58b15",
+          "structuralKind": "paragraph",
+          "start": 188,
+          "end": 385,
+          "textHash": "e6d94dc6a352404a3335af43d7a9663da883d73c1aa9b23f4297e54539bc0ad9",
+          "authority": "author_claim",
+          "sourceRole": "objective",
+          "sourceBindingAvailable": true
+        },
+        {
+          "id": "gpsp_2_7",
+          "spanId": "gpsp_2_7",
+          "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+          "sourceKind": "pr_body",
+          "sourceContentHash": "d7e45e6ba095c8c7c840d97ed97cd8ed5eff0f9cffded2584c5d8d3a82d58b15",
+          "structuralKind": "heading",
+          "start": 387,
+          "end": 427,
+          "textHash": "23bec3b2eb6f45312dd8f276bbc9b5485006a7daf995cc78b6929f62374bcaff",
+          "authority": "author_claim",
+          "sourceRole": "objective",
+          "sourceBindingAvailable": true
+        },
+        {
+          "id": "gpsp_2_8",
+          "spanId": "gpsp_2_8",
+          "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+          "sourceKind": "pr_body",
+          "sourceContentHash": "d7e45e6ba095c8c7c840d97ed97cd8ed5eff0f9cffded2584c5d8d3a82d58b15",
+          "structuralKind": "html",
+          "start": 428,
+          "end": 473,
+          "textHash": "a32cf86f225de720f3e624134bdc36864163c5d7e520f9857c88d2e6f3812c72",
+          "authority": "author_claim",
+          "sourceRole": "objective",
+          "sourceBindingAvailable": true
+        },
+        {
+          "id": "gpsp_2_9",
+          "spanId": "gpsp_2_9",
+          "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+          "sourceKind": "pr_body",
+          "sourceContentHash": "d7e45e6ba095c8c7c840d97ed97cd8ed5eff0f9cffded2584c5d8d3a82d58b15",
+          "structuralKind": "list_item",
+          "start": 474,
+          "end": 527,
+          "textHash": "dae75ac38e613f08982763d7ecbca112fbf89bbae5e97317d9aab7b80be69908",
+          "authority": "author_claim",
+          "sourceRole": "objective",
+          "sourceBindingAvailable": true
+        },
+        {
+          "id": "gpsp_2_10",
+          "spanId": "gpsp_2_10",
+          "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+          "sourceKind": "pr_body",
+          "sourceContentHash": "d7e45e6ba095c8c7c840d97ed97cd8ed5eff0f9cffded2584c5d8d3a82d58b15",
+          "structuralKind": "list_item",
+          "start": 528,
+          "end": 635,
+          "textHash": "6db2510f5cfa51cdcc5480a02dcc205743f43b06c65172cf17f58f76fd889e22",
+          "authority": "author_claim",
+          "sourceRole": "objective",
+          "sourceBindingAvailable": true
+        },
+        {
+          "id": "gpsp_2_11",
+          "spanId": "gpsp_2_11",
+          "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+          "sourceKind": "pr_body",
+          "sourceContentHash": "d7e45e6ba095c8c7c840d97ed97cd8ed5eff0f9cffded2584c5d8d3a82d58b15",
+          "structuralKind": "html",
+          "start": 636,
+          "end": 703,
+          "textHash": "a5996ccc5cf7eafc27b8e387a3dee79ef9d0391b145e30758bd24db06715be5c",
+          "authority": "author_claim",
+          "sourceRole": "objective",
+          "sourceBindingAvailable": true
+        },
+        {
+          "id": "gpsp_2_12",
+          "spanId": "gpsp_2_12",
+          "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+          "sourceKind": "pr_body",
+          "sourceContentHash": "d7e45e6ba095c8c7c840d97ed97cd8ed5eff0f9cffded2584c5d8d3a82d58b15",
+          "structuralKind": "heading",
+          "start": 705,
+          "end": 719,
+          "textHash": "648debb6c1f546222209036a82c754bcdc45e4116d48d61feffe1c5b9c1ba040",
+          "authority": "author_claim",
+          "sourceRole": "objective",
+          "sourceBindingAvailable": true
+        },
+        {
+          "id": "gpsp_2_13",
+          "spanId": "gpsp_2_13",
+          "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+          "sourceKind": "pr_body",
+          "sourceContentHash": "d7e45e6ba095c8c7c840d97ed97cd8ed5eff0f9cffded2584c5d8d3a82d58b15",
+          "structuralKind": "list_item",
+          "start": 720,
+          "end": 870,
+          "textHash": "f66f200e1a5c1a112f1c35989a4ec3dd6453492c6d715b4b51a119ba890a6211",
+          "authority": "author_claim",
+          "sourceRole": "objective",
+          "sourceBindingAvailable": true
+        },
+        {
+          "id": "gpsp_2_14",
+          "spanId": "gpsp_2_14",
+          "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+          "sourceKind": "pr_body",
+          "sourceContentHash": "d7e45e6ba095c8c7c840d97ed97cd8ed5eff0f9cffded2584c5d8d3a82d58b15",
+          "structuralKind": "list_item",
+          "start": 871,
+          "end": 1026,
+          "textHash": "419bfc7e0073b223f31cfc5a4871a6b43489507ea214febbc2dcbcf62b8ede98",
+          "authority": "author_claim",
+          "sourceRole": "objective",
+          "sourceBindingAvailable": true
+        },
+        {
+          "id": "gpsp_2_15",
+          "spanId": "gpsp_2_15",
+          "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+          "sourceKind": "pr_body",
+          "sourceContentHash": "d7e45e6ba095c8c7c840d97ed97cd8ed5eff0f9cffded2584c5d8d3a82d58b15",
+          "structuralKind": "list_item",
+          "start": 1027,
+          "end": 1141,
+          "textHash": "aed4e708bbd915a863933f95b375c9785c86d696bbd2e950b77d45e52b3220af",
+          "authority": "author_claim",
+          "sourceRole": "objective",
+          "sourceBindingAvailable": true
+        },
+        {
+          "id": "gpsp_2_16",
+          "spanId": "gpsp_2_16",
+          "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+          "sourceKind": "pr_body",
+          "sourceContentHash": "d7e45e6ba095c8c7c840d97ed97cd8ed5eff0f9cffded2584c5d8d3a82d58b15",
+          "structuralKind": "list_item",
+          "start": 1142,
+          "end": 1380,
+          "textHash": "6625b5126e8758f60b3f90439a552d2a590889bf21b4880643c6302e444ee483",
+          "authority": "author_claim",
+          "sourceRole": "objective",
+          "sourceBindingAvailable": true
+        },
+        {
+          "id": "gpsp_2_17",
+          "spanId": "gpsp_2_17",
+          "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+          "sourceKind": "pr_body",
+          "sourceContentHash": "d7e45e6ba095c8c7c840d97ed97cd8ed5eff0f9cffded2584c5d8d3a82d58b15",
+          "structuralKind": "list_item",
+          "start": 1381,
+          "end": 1518,
+          "textHash": "edb853a8aa9c3f8f746cdc16a09ac8348862e498f7a6563956d859abb6169fa0",
+          "authority": "author_claim",
+          "sourceRole": "objective",
+          "sourceBindingAvailable": true
+        },
+        {
+          "id": "gpsp_2_18",
+          "spanId": "gpsp_2_18",
+          "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+          "sourceKind": "pr_body",
+          "sourceContentHash": "d7e45e6ba095c8c7c840d97ed97cd8ed5eff0f9cffded2584c5d8d3a82d58b15",
+          "structuralKind": "html",
+          "start": 1520,
+          "end": 1583,
+          "textHash": "8d29c46db87b68eaddc52cf2db3a75ca6dfcf2e08c3dfba292df50d1387847d3",
+          "authority": "author_claim",
+          "sourceRole": "objective",
+          "sourceBindingAvailable": true
+        },
+        {
+          "id": "gpsp_2_19",
+          "spanId": "gpsp_2_19",
+          "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+          "sourceKind": "pr_body",
+          "sourceContentHash": "d7e45e6ba095c8c7c840d97ed97cd8ed5eff0f9cffded2584c5d8d3a82d58b15",
+          "structuralKind": "list_item",
+          "start": 1584,
+          "end": 1652,
+          "textHash": "a4b902f2619d6f4c361286ee8d66b1171b805e5d4862220cb361af1589d2d957",
+          "authority": "author_claim",
+          "sourceRole": "objective",
+          "sourceBindingAvailable": true
+        },
+        {
+          "id": "gpsp_2_20",
+          "spanId": "gpsp_2_20",
+          "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+          "sourceKind": "pr_body",
+          "sourceContentHash": "d7e45e6ba095c8c7c840d97ed97cd8ed5eff0f9cffded2584c5d8d3a82d58b15",
+          "structuralKind": "list_item",
+          "start": 1653,
+          "end": 1698,
+          "textHash": "6f66dbae6663ea7881245488c3203020745ff02100dbef00e7e1cd76cacedb5b",
+          "authority": "author_claim",
+          "sourceRole": "objective",
+          "sourceBindingAvailable": true
+        },
+        {
+          "id": "gpsp_2_21",
+          "spanId": "gpsp_2_21",
+          "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+          "sourceKind": "pr_body",
+          "sourceContentHash": "d7e45e6ba095c8c7c840d97ed97cd8ed5eff0f9cffded2584c5d8d3a82d58b15",
+          "structuralKind": "list_item",
+          "start": 1699,
+          "end": 1782,
+          "textHash": "5d2bed99510bc18cd84c85d472c3b2259771d72855e3a9ebae1e7ee44c7d4f03",
+          "authority": "author_claim",
+          "sourceRole": "objective",
+          "sourceBindingAvailable": true
+        },
+        {
+          "id": "gpsp_2_22",
+          "spanId": "gpsp_2_22",
+          "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+          "sourceKind": "pr_body",
+          "sourceContentHash": "d7e45e6ba095c8c7c840d97ed97cd8ed5eff0f9cffded2584c5d8d3a82d58b15",
+          "structuralKind": "list_item",
+          "start": 1783,
+          "end": 1865,
+          "textHash": "2941b48d91a763a1c453d511cb50e254c3e9f645f82b130038404ef836ae63ec",
+          "authority": "author_claim",
+          "sourceRole": "objective",
+          "sourceBindingAvailable": true
+        }
+      ],
+      "selection": {
+        "policy": "existing_v0",
+        "unitIds": [
+          "gpsp_1_1",
+          "gpsp_2_4",
+          "gpsp_2_6",
+          "gpsp_2_9",
+          "gpsp_2_10",
+          "gpsp_2_13",
+          "gpsp_2_14",
+          "gpsp_2_15",
+          "gpsp_2_16",
+          "gpsp_2_20",
+          "gpsp_2_21",
+          "gpsp_2_22"
+        ],
+        "plannedCallsPerArm": 1
+      },
+      "arms": {
+        "legacy_v0": {
+          "ledger": [
+            {
+              "unitId": "gpsp_1_1",
+              "sourceUnitId": "gpsrc_d2945cddd2a45c2ca807d412",
+              "sourceKind": "pr_title",
+              "start": 0,
+              "end": 63,
+              "textHash": "1a5515ae912a1cf96a80cb84c5475239659c081a92bb015c974ad25b5fb55ba3",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            },
+            {
+              "unitId": "gpsp_2_1",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 0,
+              "end": 23,
+              "textHash": "811110e2ab48fcc07604841df9daa1f14d0f1ae379917fe05438d135a3aae57a",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": false,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "v0_not_selected"
+            },
+            {
+              "unitId": "gpsp_2_2",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 24,
+              "end": 89,
+              "textHash": "4f499b52fe34c8f17e5aad2d49acbd408af840cb4b441c1ceb5ee730cc66e281",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": false,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "v0_not_selected"
+            },
+            {
+              "unitId": "gpsp_2_3",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 90,
+              "end": 156,
+              "textHash": "29153c8057fb4824e2a1c182b3ba1a3737875c367864c8bc1bc6f72bbd835633",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": false,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "v0_not_selected"
+            },
+            {
+              "unitId": "gpsp_2_4",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 158,
+              "end": 161,
+              "textHash": "e2f79e5b60330bba4c289962231b6ba2957d0b14e7deb3110417003c79dea635",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            },
+            {
+              "unitId": "gpsp_2_5",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 163,
+              "end": 186,
+              "textHash": "cdd976e0a3ef23264900ad9e7378a6d6f765cdc5c4b098a7029427bf5fb3d908",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": false,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "v0_not_selected"
+            },
+            {
+              "unitId": "gpsp_2_6",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 188,
+              "end": 385,
+              "textHash": "e6d94dc6a352404a3335af43d7a9663da883d73c1aa9b23f4297e54539bc0ad9",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            },
+            {
+              "unitId": "gpsp_2_7",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 387,
+              "end": 427,
+              "textHash": "23bec3b2eb6f45312dd8f276bbc9b5485006a7daf995cc78b6929f62374bcaff",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": false,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "v0_not_selected"
+            },
+            {
+              "unitId": "gpsp_2_8",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 428,
+              "end": 473,
+              "textHash": "a32cf86f225de720f3e624134bdc36864163c5d7e520f9857c88d2e6f3812c72",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": false,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "v0_not_selected"
+            },
+            {
+              "unitId": "gpsp_2_9",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 474,
+              "end": 527,
+              "textHash": "dae75ac38e613f08982763d7ecbca112fbf89bbae5e97317d9aab7b80be69908",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            },
+            {
+              "unitId": "gpsp_2_10",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 528,
+              "end": 635,
+              "textHash": "6db2510f5cfa51cdcc5480a02dcc205743f43b06c65172cf17f58f76fd889e22",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            },
+            {
+              "unitId": "gpsp_2_11",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 636,
+              "end": 703,
+              "textHash": "a5996ccc5cf7eafc27b8e387a3dee79ef9d0391b145e30758bd24db06715be5c",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": false,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "v0_not_selected"
+            },
+            {
+              "unitId": "gpsp_2_12",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 705,
+              "end": 719,
+              "textHash": "648debb6c1f546222209036a82c754bcdc45e4116d48d61feffe1c5b9c1ba040",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": false,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "v0_not_selected"
+            },
+            {
+              "unitId": "gpsp_2_13",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 720,
+              "end": 870,
+              "textHash": "f66f200e1a5c1a112f1c35989a4ec3dd6453492c6d715b4b51a119ba890a6211",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            },
+            {
+              "unitId": "gpsp_2_14",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 871,
+              "end": 1026,
+              "textHash": "419bfc7e0073b223f31cfc5a4871a6b43489507ea214febbc2dcbcf62b8ede98",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            },
+            {
+              "unitId": "gpsp_2_15",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 1027,
+              "end": 1141,
+              "textHash": "aed4e708bbd915a863933f95b375c9785c86d696bbd2e950b77d45e52b3220af",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            },
+            {
+              "unitId": "gpsp_2_16",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 1142,
+              "end": 1380,
+              "textHash": "6625b5126e8758f60b3f90439a552d2a590889bf21b4880643c6302e444ee483",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            },
+            {
+              "unitId": "gpsp_2_17",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 1381,
+              "end": 1518,
+              "textHash": "edb853a8aa9c3f8f746cdc16a09ac8348862e498f7a6563956d859abb6169fa0",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": false,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "v0_not_selected"
+            },
+            {
+              "unitId": "gpsp_2_18",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 1520,
+              "end": 1583,
+              "textHash": "8d29c46db87b68eaddc52cf2db3a75ca6dfcf2e08c3dfba292df50d1387847d3",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": false,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "v0_not_selected"
+            },
+            {
+              "unitId": "gpsp_2_19",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 1584,
+              "end": 1652,
+              "textHash": "a4b902f2619d6f4c361286ee8d66b1171b805e5d4862220cb361af1589d2d957",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": false,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "v0_not_selected"
+            },
+            {
+              "unitId": "gpsp_2_20",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 1653,
+              "end": 1698,
+              "textHash": "6f66dbae6663ea7881245488c3203020745ff02100dbef00e7e1cd76cacedb5b",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            },
+            {
+              "unitId": "gpsp_2_21",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 1699,
+              "end": 1782,
+              "textHash": "5d2bed99510bc18cd84c85d472c3b2259771d72855e3a9ebae1e7ee44c7d4f03",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            },
+            {
+              "unitId": "gpsp_2_22",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 1783,
+              "end": 1865,
+              "textHash": "2941b48d91a763a1c453d511cb50e254c3e9f645f82b130038404ef836ae63ec",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            }
+          ],
+          "calls": [
+            {
+              "id": "django-django-21900:legacy_v0:1",
+              "arm": "legacy_v0",
+              "unitIds": [
+                "gpsp_1_1",
+                "gpsp_2_4",
+                "gpsp_2_6",
+                "gpsp_2_9",
+                "gpsp_2_10",
+                "gpsp_2_13",
+                "gpsp_2_14",
+                "gpsp_2_15",
+                "gpsp_2_16",
+                "gpsp_2_20",
+                "gpsp_2_21",
+                "gpsp_2_22"
+              ],
+              "inputHash": "bbf2cd7757e66cd0d0d96a827f4740024f1489387be140c99339bb4b76e65d42",
+              "promptHash": "e4e26d055ef3b7f73e885984a92f8afdf621bb0b31604143c79d9fb440bdcda5",
+              "requestHash": "073e7532b4a803ecb52d578c1df4741b6ee180c904e2c4304bfdfbeac955019c",
+              "outputSchemaHash": "ad388f6f456e0b91ba920578e466703b163a28f888640c830f0534ad378709f9",
+              "attempted": false,
+              "retryCount": 0,
+              "state": "not_run",
+              "reason": "offline"
+            }
+          ],
+          "metrics": {
+            "selected": {
+              "numerator": 12,
+              "denominator": 23,
+              "rate": 0.5217391304347826
+            },
+            "decided": {
+              "numerator": 0,
+              "denominator": 23,
+              "rate": 0
+            },
+            "abstained": {
+              "numerator": 0,
+              "denominator": 23,
+              "rate": 0
+            },
+            "unreviewed": {
+              "numerator": 23,
+              "denominator": 23,
+              "rate": 1
+            },
+            "invalid": {
+              "numerator": 0,
+              "denominator": 23,
+              "rate": 0
+            }
+          }
+        },
+        "separated_v1": {
+          "ledger": [
+            {
+              "unitId": "gpsp_1_1",
+              "sourceUnitId": "gpsrc_d2945cddd2a45c2ca807d412",
+              "sourceKind": "pr_title",
+              "start": 0,
+              "end": 63,
+              "textHash": "1a5515ae912a1cf96a80cb84c5475239659c081a92bb015c974ad25b5fb55ba3",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            },
+            {
+              "unitId": "gpsp_2_1",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 0,
+              "end": 23,
+              "textHash": "811110e2ab48fcc07604841df9daa1f14d0f1ae379917fe05438d135a3aae57a",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": false,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "v0_not_selected"
+            },
+            {
+              "unitId": "gpsp_2_2",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 24,
+              "end": 89,
+              "textHash": "4f499b52fe34c8f17e5aad2d49acbd408af840cb4b441c1ceb5ee730cc66e281",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": false,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "v0_not_selected"
+            },
+            {
+              "unitId": "gpsp_2_3",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 90,
+              "end": 156,
+              "textHash": "29153c8057fb4824e2a1c182b3ba1a3737875c367864c8bc1bc6f72bbd835633",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": false,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "v0_not_selected"
+            },
+            {
+              "unitId": "gpsp_2_4",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 158,
+              "end": 161,
+              "textHash": "e2f79e5b60330bba4c289962231b6ba2957d0b14e7deb3110417003c79dea635",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            },
+            {
+              "unitId": "gpsp_2_5",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 163,
+              "end": 186,
+              "textHash": "cdd976e0a3ef23264900ad9e7378a6d6f765cdc5c4b098a7029427bf5fb3d908",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": false,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "v0_not_selected"
+            },
+            {
+              "unitId": "gpsp_2_6",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 188,
+              "end": 385,
+              "textHash": "e6d94dc6a352404a3335af43d7a9663da883d73c1aa9b23f4297e54539bc0ad9",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            },
+            {
+              "unitId": "gpsp_2_7",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 387,
+              "end": 427,
+              "textHash": "23bec3b2eb6f45312dd8f276bbc9b5485006a7daf995cc78b6929f62374bcaff",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": false,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "v0_not_selected"
+            },
+            {
+              "unitId": "gpsp_2_8",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 428,
+              "end": 473,
+              "textHash": "a32cf86f225de720f3e624134bdc36864163c5d7e520f9857c88d2e6f3812c72",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": false,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "v0_not_selected"
+            },
+            {
+              "unitId": "gpsp_2_9",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 474,
+              "end": 527,
+              "textHash": "dae75ac38e613f08982763d7ecbca112fbf89bbae5e97317d9aab7b80be69908",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            },
+            {
+              "unitId": "gpsp_2_10",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 528,
+              "end": 635,
+              "textHash": "6db2510f5cfa51cdcc5480a02dcc205743f43b06c65172cf17f58f76fd889e22",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            },
+            {
+              "unitId": "gpsp_2_11",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 636,
+              "end": 703,
+              "textHash": "a5996ccc5cf7eafc27b8e387a3dee79ef9d0391b145e30758bd24db06715be5c",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": false,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "v0_not_selected"
+            },
+            {
+              "unitId": "gpsp_2_12",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 705,
+              "end": 719,
+              "textHash": "648debb6c1f546222209036a82c754bcdc45e4116d48d61feffe1c5b9c1ba040",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": false,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "v0_not_selected"
+            },
+            {
+              "unitId": "gpsp_2_13",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 720,
+              "end": 870,
+              "textHash": "f66f200e1a5c1a112f1c35989a4ec3dd6453492c6d715b4b51a119ba890a6211",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            },
+            {
+              "unitId": "gpsp_2_14",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 871,
+              "end": 1026,
+              "textHash": "419bfc7e0073b223f31cfc5a4871a6b43489507ea214febbc2dcbcf62b8ede98",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            },
+            {
+              "unitId": "gpsp_2_15",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 1027,
+              "end": 1141,
+              "textHash": "aed4e708bbd915a863933f95b375c9785c86d696bbd2e950b77d45e52b3220af",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            },
+            {
+              "unitId": "gpsp_2_16",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 1142,
+              "end": 1380,
+              "textHash": "6625b5126e8758f60b3f90439a552d2a590889bf21b4880643c6302e444ee483",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            },
+            {
+              "unitId": "gpsp_2_17",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 1381,
+              "end": 1518,
+              "textHash": "edb853a8aa9c3f8f746cdc16a09ac8348862e498f7a6563956d859abb6169fa0",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": false,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "v0_not_selected"
+            },
+            {
+              "unitId": "gpsp_2_18",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 1520,
+              "end": 1583,
+              "textHash": "8d29c46db87b68eaddc52cf2db3a75ca6dfcf2e08c3dfba292df50d1387847d3",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": false,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "v0_not_selected"
+            },
+            {
+              "unitId": "gpsp_2_19",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 1584,
+              "end": 1652,
+              "textHash": "a4b902f2619d6f4c361286ee8d66b1171b805e5d4862220cb361af1589d2d957",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": false,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "v0_not_selected"
+            },
+            {
+              "unitId": "gpsp_2_20",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 1653,
+              "end": 1698,
+              "textHash": "6f66dbae6663ea7881245488c3203020745ff02100dbef00e7e1cd76cacedb5b",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            },
+            {
+              "unitId": "gpsp_2_21",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 1699,
+              "end": 1782,
+              "textHash": "5d2bed99510bc18cd84c85d472c3b2259771d72855e3a9ebae1e7ee44c7d4f03",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            },
+            {
+              "unitId": "gpsp_2_22",
+              "sourceUnitId": "gpsrc_27f290618d8b056c4e85626e",
+              "sourceKind": "pr_body",
+              "start": 1783,
+              "end": 1865,
+              "textHash": "2941b48d91a763a1c453d511cb50e254c3e9f645f82b130038404ef836ae63ec",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            }
+          ],
+          "calls": [
+            {
+              "id": "django-django-21900:separated_v1:1",
+              "arm": "separated_v1",
+              "unitIds": [
+                "gpsp_1_1",
+                "gpsp_2_4",
+                "gpsp_2_6",
+                "gpsp_2_9",
+                "gpsp_2_10",
+                "gpsp_2_13",
+                "gpsp_2_14",
+                "gpsp_2_15",
+                "gpsp_2_16",
+                "gpsp_2_20",
+                "gpsp_2_21",
+                "gpsp_2_22"
+              ],
+              "inputHash": "bbf2cd7757e66cd0d0d96a827f4740024f1489387be140c99339bb4b76e65d42",
+              "promptHash": "52ec53e1f5f0918b100826f8565a15c0c8fd5f85bb56581149616a70e79dfb96",
+              "requestHash": "cd2b570541afc027cbe60d82fd50b629a5e70e26d898fb596df8ac7037835747",
+              "outputSchemaHash": "e877e186a8fed28a5fa3ba6d7f43b3176fc20c8a20b7295b7f460a93905bd97c",
+              "attempted": false,
+              "retryCount": 0,
+              "state": "not_run",
+              "reason": "offline"
+            }
+          ],
+          "metrics": {
+            "selected": {
+              "numerator": 12,
+              "denominator": 23,
+              "rate": 0.5217391304347826
+            },
+            "decided": {
+              "numerator": 0,
+              "denominator": 23,
+              "rate": 0
+            },
+            "abstained": {
+              "numerator": 0,
+              "denominator": 23,
+              "rate": 0
+            },
+            "unreviewed": {
+              "numerator": 23,
+              "denominator": 23,
+              "rate": 1
+            },
+            "invalid": {
+              "numerator": 0,
+              "denominator": 23,
+              "rate": 0
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "fastapi-fastapi-16205",
+      "cohort": "public",
+      "inputHash": "f8ee3c0f3f6494fc73a8434d6c5c2f74b29dd9765ebfde7710e5c64e385ab104",
+      "seedHash": "42dd2e3b95dab105ad00d2929486ec6a973b1dcfe9b2879f76a54931e5e3a2b5",
+      "registry": [
+        {
+          "id": "gpsp_1_1",
+          "spanId": "gpsp_1_1",
+          "sourceUnitId": "gpsrc_57f26acf7bc25733dfd4a5b4",
+          "sourceKind": "pr_title",
+          "sourceContentHash": "aa79ce39552b6e2daa6ce47b8960ff7e4b464eefe6e41a59f19d5010a7820cd2",
+          "structuralKind": "title",
+          "start": 0,
+          "end": 47,
+          "textHash": "aa79ce39552b6e2daa6ce47b8960ff7e4b464eefe6e41a59f19d5010a7820cd2",
+          "authority": "author_claim",
+          "sourceRole": "objective",
+          "sourceBindingAvailable": true
+        },
+        {
+          "id": "gpsp_2_1",
+          "spanId": "gpsp_2_1",
+          "sourceUnitId": "gpsrc_d31782c5cd9d93483bc2807b",
+          "sourceKind": "pr_body",
+          "sourceContentHash": "c9a0fc9b1efbf6a683c8d4a6d9bb48715cc00dc60619ae587f38dc6697d53c59",
+          "structuralKind": "paragraph",
+          "start": 0,
+          "end": 47,
+          "textHash": "aa79ce39552b6e2daa6ce47b8960ff7e4b464eefe6e41a59f19d5010a7820cd2",
+          "authority": "author_claim",
+          "sourceRole": "objective",
+          "sourceBindingAvailable": true
+        },
+        {
+          "id": "gpsp_2_2",
+          "spanId": "gpsp_2_2",
+          "sourceUnitId": "gpsrc_d31782c5cd9d93483bc2807b",
+          "sourceKind": "pr_body",
+          "sourceContentHash": "c9a0fc9b1efbf6a683c8d4a6d9bb48715cc00dc60619ae587f38dc6697d53c59",
+          "structuralKind": "paragraph",
+          "start": 49,
+          "end": 94,
+          "textHash": "0ef3fc601fd7345a0984aadc2896030f6d9ffec54884c6f38c131dcadad2981a",
+          "authority": "author_claim",
+          "sourceRole": "objective",
+          "sourceBindingAvailable": true
+        },
+        {
+          "id": "gpsp_2_3",
+          "spanId": "gpsp_2_3",
+          "sourceUnitId": "gpsrc_d31782c5cd9d93483bc2807b",
+          "sourceKind": "pr_body",
+          "sourceContentHash": "c9a0fc9b1efbf6a683c8d4a6d9bb48715cc00dc60619ae587f38dc6697d53c59",
+          "structuralKind": "paragraph",
+          "start": 96,
+          "end": 189,
+          "textHash": "f020b7640b70a02a618d3f86d03da3f699802bfa77a15e4c7408e7207764e3f2",
+          "authority": "author_claim",
+          "sourceRole": "objective",
+          "sourceBindingAvailable": true
+        },
+        {
+          "id": "gpsp_2_4",
+          "spanId": "gpsp_2_4",
+          "sourceUnitId": "gpsrc_d31782c5cd9d93483bc2807b",
+          "sourceKind": "pr_body",
+          "sourceContentHash": "c9a0fc9b1efbf6a683c8d4a6d9bb48715cc00dc60619ae587f38dc6697d53c59",
+          "structuralKind": "paragraph",
+          "start": 191,
+          "end": 348,
+          "textHash": "724498496343facd8b491fe527df79d420ea43f1408c4852e14cf48d662a63bc",
+          "authority": "author_claim",
+          "sourceRole": "objective",
+          "sourceBindingAvailable": true
+        }
+      ],
+      "selection": {
+        "policy": "existing_v0",
+        "unitIds": [
+          "gpsp_1_1",
+          "gpsp_2_1",
+          "gpsp_2_2",
+          "gpsp_2_3",
+          "gpsp_2_4"
+        ],
+        "plannedCallsPerArm": 1
+      },
+      "arms": {
+        "legacy_v0": {
+          "ledger": [
+            {
+              "unitId": "gpsp_1_1",
+              "sourceUnitId": "gpsrc_57f26acf7bc25733dfd4a5b4",
+              "sourceKind": "pr_title",
+              "start": 0,
+              "end": 47,
+              "textHash": "aa79ce39552b6e2daa6ce47b8960ff7e4b464eefe6e41a59f19d5010a7820cd2",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            },
+            {
+              "unitId": "gpsp_2_1",
+              "sourceUnitId": "gpsrc_d31782c5cd9d93483bc2807b",
+              "sourceKind": "pr_body",
+              "start": 0,
+              "end": 47,
+              "textHash": "aa79ce39552b6e2daa6ce47b8960ff7e4b464eefe6e41a59f19d5010a7820cd2",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            },
+            {
+              "unitId": "gpsp_2_2",
+              "sourceUnitId": "gpsrc_d31782c5cd9d93483bc2807b",
+              "sourceKind": "pr_body",
+              "start": 49,
+              "end": 94,
+              "textHash": "0ef3fc601fd7345a0984aadc2896030f6d9ffec54884c6f38c131dcadad2981a",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            },
+            {
+              "unitId": "gpsp_2_3",
+              "sourceUnitId": "gpsrc_d31782c5cd9d93483bc2807b",
+              "sourceKind": "pr_body",
+              "start": 96,
+              "end": 189,
+              "textHash": "f020b7640b70a02a618d3f86d03da3f699802bfa77a15e4c7408e7207764e3f2",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            },
+            {
+              "unitId": "gpsp_2_4",
+              "sourceUnitId": "gpsrc_d31782c5cd9d93483bc2807b",
+              "sourceKind": "pr_body",
+              "start": 191,
+              "end": 348,
+              "textHash": "724498496343facd8b491fe527df79d420ea43f1408c4852e14cf48d662a63bc",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            }
+          ],
+          "calls": [
+            {
+              "id": "fastapi-fastapi-16205:legacy_v0:1",
+              "arm": "legacy_v0",
+              "unitIds": [
+                "gpsp_1_1",
+                "gpsp_2_1",
+                "gpsp_2_2",
+                "gpsp_2_3",
+                "gpsp_2_4"
+              ],
+              "inputHash": "9a04e6005ab2cc163a1c0ef75d879f26d5cb3b4eb6940327ead2ea4f50ef086e",
+              "promptHash": "e4e26d055ef3b7f73e885984a92f8afdf621bb0b31604143c79d9fb440bdcda5",
+              "requestHash": "f7d581c661fde12ca13d948616ae4aa13ca598b8d1b6b51385f0f37782dd87b0",
+              "outputSchemaHash": "2c0896a77dbe42ade2d7c0eb1bf60c96c4ed5b2553ddd497bdc732e720f786a7",
+              "attempted": false,
+              "retryCount": 0,
+              "state": "not_run",
+              "reason": "offline"
+            }
+          ],
+          "metrics": {
+            "selected": {
+              "numerator": 5,
+              "denominator": 5,
+              "rate": 1
+            },
+            "decided": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "abstained": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "unreviewed": {
+              "numerator": 5,
+              "denominator": 5,
+              "rate": 1
+            },
+            "invalid": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            }
+          }
+        },
+        "separated_v1": {
+          "ledger": [
+            {
+              "unitId": "gpsp_1_1",
+              "sourceUnitId": "gpsrc_57f26acf7bc25733dfd4a5b4",
+              "sourceKind": "pr_title",
+              "start": 0,
+              "end": 47,
+              "textHash": "aa79ce39552b6e2daa6ce47b8960ff7e4b464eefe6e41a59f19d5010a7820cd2",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            },
+            {
+              "unitId": "gpsp_2_1",
+              "sourceUnitId": "gpsrc_d31782c5cd9d93483bc2807b",
+              "sourceKind": "pr_body",
+              "start": 0,
+              "end": 47,
+              "textHash": "aa79ce39552b6e2daa6ce47b8960ff7e4b464eefe6e41a59f19d5010a7820cd2",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            },
+            {
+              "unitId": "gpsp_2_2",
+              "sourceUnitId": "gpsrc_d31782c5cd9d93483bc2807b",
+              "sourceKind": "pr_body",
+              "start": 49,
+              "end": 94,
+              "textHash": "0ef3fc601fd7345a0984aadc2896030f6d9ffec54884c6f38c131dcadad2981a",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            },
+            {
+              "unitId": "gpsp_2_3",
+              "sourceUnitId": "gpsrc_d31782c5cd9d93483bc2807b",
+              "sourceKind": "pr_body",
+              "start": 96,
+              "end": 189,
+              "textHash": "f020b7640b70a02a618d3f86d03da3f699802bfa77a15e4c7408e7207764e3f2",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            },
+            {
+              "unitId": "gpsp_2_4",
+              "sourceUnitId": "gpsrc_d31782c5cd9d93483bc2807b",
+              "sourceKind": "pr_body",
+              "start": 191,
+              "end": 348,
+              "textHash": "724498496343facd8b491fe527df79d420ea43f1408c4852e14cf48d662a63bc",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            }
+          ],
+          "calls": [
+            {
+              "id": "fastapi-fastapi-16205:separated_v1:1",
+              "arm": "separated_v1",
+              "unitIds": [
+                "gpsp_1_1",
+                "gpsp_2_1",
+                "gpsp_2_2",
+                "gpsp_2_3",
+                "gpsp_2_4"
+              ],
+              "inputHash": "9a04e6005ab2cc163a1c0ef75d879f26d5cb3b4eb6940327ead2ea4f50ef086e",
+              "promptHash": "52ec53e1f5f0918b100826f8565a15c0c8fd5f85bb56581149616a70e79dfb96",
+              "requestHash": "6d8846517b98af74b948047dcca123d7df6e679621cef6208817b010d058bd1f",
+              "outputSchemaHash": "918665f347eb50a3709eecf0aef283aa77c8505cd8aed44165fca56dece33ed2",
+              "attempted": false,
+              "retryCount": 0,
+              "state": "not_run",
+              "reason": "offline"
+            }
+          ],
+          "metrics": {
+            "selected": {
+              "numerator": 5,
+              "denominator": 5,
+              "rate": 1
+            },
+            "decided": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "abstained": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            },
+            "unreviewed": {
+              "numerator": 5,
+              "denominator": 5,
+              "rate": 1
+            },
+            "invalid": {
+              "numerator": 0,
+              "denominator": 5,
+              "rate": 0
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "sveltejs-svelte-18752",
+      "cohort": "public",
+      "inputHash": "b4b9b492624f24033ef5ac1f02936914d5a1b75407e38427268af440fbfe3d1e",
+      "seedHash": "2a6c112de4909714bfa4fdb18f37e1f9e7bf411b2a0ecfef37baae836995f1c9",
+      "registry": [
+        {
+          "id": "gpsp_1_1",
+          "spanId": "gpsp_1_1",
+          "sourceUnitId": "gpsrc_91a261c5cf4300a1d7b4e973",
+          "sourceKind": "pr_title",
+          "sourceContentHash": "3464ac537bd89ea580fefc814cfba581563635849d3855bbcc9efa1ee61e034f",
+          "structuralKind": "title",
+          "start": 0,
+          "end": 20,
+          "textHash": "3464ac537bd89ea580fefc814cfba581563635849d3855bbcc9efa1ee61e034f",
+          "authority": "author_claim",
+          "sourceRole": "objective",
+          "sourceBindingAvailable": true
+        },
+        {
+          "id": "gpsp_2_1",
+          "spanId": "gpsp_2_1",
+          "sourceUnitId": "gpsrc_ea275941da7859acd7628386",
+          "sourceKind": "pr_body",
+          "sourceContentHash": "2669fd2c4b877c71d8cbbf30d9923d3755f3f591e01e5b512b4e009627b357a0",
+          "structuralKind": "paragraph",
+          "start": 0,
+          "end": 67,
+          "textHash": "e4eac35da8775bec62fca95de13aaf9ad311b44a0681b7e8a5a581289b982d40",
+          "authority": "author_claim",
+          "sourceRole": "objective",
+          "sourceBindingAvailable": true
+        }
+      ],
+      "selection": {
+        "policy": "existing_v0",
+        "unitIds": [
+          "gpsp_1_1",
+          "gpsp_2_1"
+        ],
+        "plannedCallsPerArm": 1
+      },
+      "arms": {
+        "legacy_v0": {
+          "ledger": [
+            {
+              "unitId": "gpsp_1_1",
+              "sourceUnitId": "gpsrc_91a261c5cf4300a1d7b4e973",
+              "sourceKind": "pr_title",
+              "start": 0,
+              "end": 20,
+              "textHash": "3464ac537bd89ea580fefc814cfba581563635849d3855bbcc9efa1ee61e034f",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            },
+            {
+              "unitId": "gpsp_2_1",
+              "sourceUnitId": "gpsrc_ea275941da7859acd7628386",
+              "sourceKind": "pr_body",
+              "start": 0,
+              "end": 67,
+              "textHash": "e4eac35da8775bec62fca95de13aaf9ad311b44a0681b7e8a5a581289b982d40",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            }
+          ],
+          "calls": [
+            {
+              "id": "sveltejs-svelte-18752:legacy_v0:1",
+              "arm": "legacy_v0",
+              "unitIds": [
+                "gpsp_1_1",
+                "gpsp_2_1"
+              ],
+              "inputHash": "703980b249f319a4241741192ae21685abdd874c3b1b6796f6256b41b6042e0a",
+              "promptHash": "e4e26d055ef3b7f73e885984a92f8afdf621bb0b31604143c79d9fb440bdcda5",
+              "requestHash": "134bba16533269ada520ad0f83b41aee50b22891bee05870e07d3d90d5c9fc96",
+              "outputSchemaHash": "612bb7ca6eb61c10aa70b7879e43e593caf07c3d60151f6663ed6eca4e41ccef",
+              "attempted": false,
+              "retryCount": 0,
+              "state": "not_run",
+              "reason": "offline"
+            }
+          ],
+          "metrics": {
+            "selected": {
+              "numerator": 2,
+              "denominator": 2,
+              "rate": 1
+            },
+            "decided": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "abstained": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "unreviewed": {
+              "numerator": 2,
+              "denominator": 2,
+              "rate": 1
+            },
+            "invalid": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            }
+          }
+        },
+        "separated_v1": {
+          "ledger": [
+            {
+              "unitId": "gpsp_1_1",
+              "sourceUnitId": "gpsrc_91a261c5cf4300a1d7b4e973",
+              "sourceKind": "pr_title",
+              "start": 0,
+              "end": 20,
+              "textHash": "3464ac537bd89ea580fefc814cfba581563635849d3855bbcc9efa1ee61e034f",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            },
+            {
+              "unitId": "gpsp_2_1",
+              "sourceUnitId": "gpsrc_ea275941da7859acd7628386",
+              "sourceKind": "pr_body",
+              "start": 0,
+              "end": 67,
+              "textHash": "e4eac35da8775bec62fca95de13aaf9ad311b44a0681b7e8a5a581289b982d40",
+              "authority": "author_claim",
+              "sourceRole": "objective",
+              "selected": true,
+              "attempted": false,
+              "semanticRole": null,
+              "objectivePresence": null,
+              "status": "unreviewed",
+              "reason": "offline"
+            }
+          ],
+          "calls": [
+            {
+              "id": "sveltejs-svelte-18752:separated_v1:1",
+              "arm": "separated_v1",
+              "unitIds": [
+                "gpsp_1_1",
+                "gpsp_2_1"
+              ],
+              "inputHash": "703980b249f319a4241741192ae21685abdd874c3b1b6796f6256b41b6042e0a",
+              "promptHash": "52ec53e1f5f0918b100826f8565a15c0c8fd5f85bb56581149616a70e79dfb96",
+              "requestHash": "8a76d2f74b9d01d14644fa9c1469e362849751019029b806d988a00e0796466f",
+              "outputSchemaHash": "3f1bbeddcb732cb2937671649909b0f4ab93f60121112dd1b3f465f3337b9185",
+              "attempted": false,
+              "retryCount": 0,
+              "state": "not_run",
+              "reason": "offline"
+            }
+          ],
+          "metrics": {
+            "selected": {
+              "numerator": 2,
+              "denominator": 2,
+              "rate": 1
+            },
+            "decided": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "abstained": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            },
+            "unreviewed": {
+              "numerator": 2,
+              "denominator": 2,
+              "rate": 1
+            },
+            "invalid": {
+              "numerator": 0,
+              "denominator": 2,
+              "rate": 0
+            }
+          }
+        }
+      }
+    }
+  ],
+  "limitations": [
+    "Fixture-provider runs validate plumbing and contracts, not prompt linguistic accuracy",
+    "No model output may change source authority",
+    "Goal-level recall, subspan fidelity, and generalization require evidence not produced by this unit-level experiment",
+    "Character overlap is not semantic correctness",
+    "Duplicate source occurrences remain distinct unless human annotations link a PR-local goal identity"
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "schemaVersion": "requirement_role_live_plan.v1",
+  "frozenBeforeLiveResults": true,
+  "sampleManifestSha256": "dabb5aaf3ed2eb71bd02b88b61df7425bd0d4c768347368ecfdda07a114bfa7c",
+  "sampleCorpusSha256": "76181cdfe050662c5ed6ce29db3b56e212bed5081f80c2e40fbe3c77ad61a463",
+  "offlinePlanArtifactSha256": "365fecdb5a8eaee388b4b18cf51ee8742ba255281d70f59112b17a6ee0bbba6b",
+  "initialRequestPlanSha256": "8ce7f7fa37ecaf5226428b130abef5e04c47eb262c9137d81e2142461a4bac35",
+  "sample": {
+    "caseCount": 4,
+    "distinctRepositories": 4,
+    "labelsInRunInput": 0,
+    "inputHashesFrozenIn": "manifest.json"
+  },
+  "transport": {
+    "configuredModel": "gpt-5.6-luna",
+    "modelProfileSha256": "2fca4d5694c4c9576ae873c76b9cf66eb8ec32d005e79f68ddda948ea0dcd1aa",
+    "endpoint": "https://api.openai.com/v1/responses",
+    "keySource": "explicit --key-file /Users/jeonggyuju/Project_folder/AgentProof/.env.local; OPENAI_API_KEY only; memory only",
+    "globalCallBudget": 30,
+    "retries": 0,
+    "resampling": false,
+    "initialPacketsFirst": true,
+    "plannedInitialCalls": 24,
+    "maximumResidualV4ExpansionCalls": 6,
+    "plannedInitialCallsByCase": {
+      "pallets-flask-5917": 5,
+      "django-django-21900": 9,
+      "fastapi-fastapi-16205": 5,
+      "sveltejs-svelte-18752": 5
+    }
+  },
+  "evaluationMapping": {
+    "grain": "non-whitespace UTF-16 characters inside each existing machine-proposed label span",
+    "objective_candidate": "requirement",
+    "mixed_or_ambiguous_or_abstained": "ambiguous",
+    "other_validated_roles": "non_requirement",
+    "no_validated_outcome_or_invalid_or_unavailable": "unreviewed",
+    "agreementDenominator": "all labeled non-whitespace UTF-16 characters; unreviewed counts as disagreement",
+    "requirementPreservation": "machine-label requirement characters predicted requirement / all machine-label requirement characters",
+    "nonRequirementMisclassification": "machine-label non_requirement characters predicted requirement / all machine-label non_requirement characters",
+    "ambiguousReporting": "prediction distribution for machine-label ambiguous characters",
+    "humanAccuracyClaim": false
+  },
+  "interpretation": {
+    "V0_V1Validation": "product_legacy",
+    "V2_V4Validation": "research_strict_with_product_diagnostic",
+    "malformedSchemaEffectsReportedSeparately": true,
+    "superiorityClaimAllowed": false,
+    "reason": "Four repositories, one run, coverage differs by version, and no independent human labels."
+  }
+}

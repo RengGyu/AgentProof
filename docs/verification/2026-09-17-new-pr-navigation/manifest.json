@@ -1,0 +1,18 @@
+{
+  "schema": "agentproof.navigation-evaluation-manifest.v1",
+  "selection": "Ten public PRs selected from current public pull-request lists, with distinct repositories where practical. Each URL was checked against the existing AgentProof evaluation corpus before model calls.",
+  "model": "gpt-5.6-luna",
+  "collection": "Public Git only: default branch plus pull-request head refs; base is the computed merge-base. No GitHub REST metadata or execution records were used.",
+  "cases": [
+    {"id": "flask-5918", "url": "https://github.com/pallets/flask/pull/5918", "head": "a82e942870b6472bb40017349cca772c242eb1ad", "base": "d8eaaba824655046958d1a97f11780de460c3271"},
+    {"id": "httpx-3785", "url": "https://github.com/encode/httpx/pull/3785", "head": "54857a13dfd2d868fc52a54b0eaa4a97487f97d2", "base": "b5addb64f0161ff6bfe94c124ef76f6a1fba5254"},
+    {"id": "starlette-3552", "url": "https://github.com/Kludex/starlette/pull/3552", "head": "fe83c02c765dcee66e447833acd9bc73adc2bb72", "base": "03f12b7fcf0a3e21a8da648ca0900c79472e9efe"},
+    {"id": "fastapi-16370", "url": "https://github.com/fastapi/fastapi/pull/16370", "head": "0a6b344a2c950af11946718210202cb458cb485c", "base": "50113da16fec53b66b80d75e80a89296de4fa5a5"},
+    {"id": "pydantic-13819", "url": "https://github.com/pydantic/pydantic/pull/13819", "head": "299309892717854a738bb385a33e7f655cb62bf1", "base": "7b15a786a755ec4089a34c9bb5f957f8b8ce3690"},
+    {"id": "requests-7619", "url": "https://github.com/psf/requests/pull/7619", "head": "1e62a1d065cb8a332e5a20e58b2f83ecef4fd78c", "base": "dae7ef63b4df6eded86637f251fc4e3a06c3b479"},
+    {"id": "svelte-18835", "url": "https://github.com/sveltejs/svelte/pull/18835", "head": "b0e03c7b96ec9cc6ff99bedef650acf78c20de98", "base": "6eb720a1b7cafca3ebe0ab5c76674272cd3044f9"},
+    {"id": "express-7474", "url": "https://github.com/expressjs/express/pull/7474", "head": "2e9749889c8e9b5411f29e4cbd33ed822ffdb87b", "base": "9a34acf03cb818ff3f8bc40e44176e277a25cbb9"},
+    {"id": "vite-23499", "url": "https://github.com/vitejs/vite/pull/23499", "head": "3defa496547b5dd2e212a8ad750e0d694abc74aa", "base": "99bd9d1d46153fa939f4a304cc0177db42e28776"},
+    {"id": "typer-1957", "url": "https://github.com/fastapi/typer/pull/1957", "head": "09bf9a55a86e88bc3a79b2e63682a599eed4ffc5", "base": "a80f6e5ecd74f32b983cca336a2f3cba98d9853a"}
+  ]
+}

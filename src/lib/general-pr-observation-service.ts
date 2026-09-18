@@ -1,3 +1,4 @@
+import { enrichReviewNavigation, type ReviewNavigationOptions } from "./review-intent";
 import { createHash } from "node:crypto";
 import type { TypeScriptProjectCollector } from "./typescript-assignability-verification";
 import { attachOrdinaryRequirementOutcomes } from "./ordinary-requirement-outcomes";
@@ -99,6 +100,7 @@ export interface GeneralPrSemanticSelectionOmittedReasonCountsV1 {
 }
 
 export interface RunGeneralPrObservationNowOptionsV2 {
+  navigation?: ReviewNavigationOptions;
   collectTypeScriptProject?: TypeScriptProjectCollector;
   collectStaticArtifacts?: (paths: string[], headSha: string) => Promise<OrdinaryDocumentationBlob[]>;
   collectScalarArtifacts?: (paths: string[], headSha: string) => Promise<OrdinaryDocumentationBlob[]>;
@@ -133,8 +135,11 @@ export async function runGeneralPrObservationNowV2(
   options: RunGeneralPrObservationNowOptionsV2
 ): Promise<{ report: VerificationReport; bundle: GeneralPrObservationBundleV2 | null; ordinaryDocumentationDiagnostic: OrdinaryDocumentationDiagnostic }> {
   // Reuse fetched exact-head blobs when both the observation and outcome need them.
-  const scoped = { ...options, collectDocumentationArtifacts: boundedOrdinaryArtifactCollector(options.collectDocumentationArtifacts), collectStaticArtifacts: boundedOrdinaryArtifactCollector(options.collectStaticArtifacts), collectScalarArtifacts: boundedOrdinaryArtifactCollector(options.collectScalarArtifacts) };
-  const result = await runGeneralPrObservations(scoped);
+  const capabilities = readEnabledVerificationCapabilitiesV2();
+  const retainVerificationInterpreter = capabilities.has("documentation_literal") || capabilities.has("typescript_union_member");
+  const scoped = { ...options, ...(options.navigation && !retainVerificationInterpreter && options.policy.assessmentProjection === "advisory" ? { semantic: undefined } : {}), collectDocumentationArtifacts: boundedOrdinaryArtifactCollector(options.collectDocumentationArtifacts), collectStaticArtifacts: boundedOrdinaryArtifactCollector(options.collectStaticArtifacts), collectScalarArtifacts: boundedOrdinaryArtifactCollector(options.collectScalarArtifacts) };
+  let result = await runGeneralPrObservations(scoped);
+  if(options.navigation && result.ordinaryDocumentationDiagnostic.state !== "deterministic_report_invalid")result={...result,report:await enrichReviewNavigation(options.input,result.report as VerificationReportV2,options.policy.assessmentProjection === "advisory" ? options.navigation : {model:options.navigation.model})};
   if (options.policy.assessmentProjection !== "advisory" || result.ordinaryDocumentationDiagnostic.state === "deterministic_report_invalid" || (result.report as VerificationReportV2).reportSchemaVersion !== "verification-report.v2") return result;
   return { ...result, report: await attachOrdinaryRequirementOutcomes(options.input, result.report as VerificationReportV2, scoped) };
 }

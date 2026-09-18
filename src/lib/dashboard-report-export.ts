@@ -1,3 +1,4 @@
+import { buildDashboardPrEvidenceReview } from "./pr-evidence-review";
 import { redactSecrets } from "./redact";
 import { copyOrdinaryDocumentationSummary, presentOrdinaryDocumentationSummary } from "./general-pr-documentation-presentation";
 import { copyOrdinaryStaticSummary, presentOrdinaryStaticSummary } from "./general-pr-static-types-presentation";
@@ -22,6 +23,42 @@ export function dashboardReportToJson(detail: DashboardExportDetail): string {
 export function dashboardReportToMarkdown(detail: DashboardExportDetail): string {
   assertCopyEligible(detail);
   const exported = toDashboardReportExport(detail);
+  const review = buildDashboardPrEvidenceReview(detail);
+  if (review) {
+    const items = (values: typeof review.changes) => values.map((item) => {
+      const url = item.url && redactSecrets(item.url) === item.url ? item.url.replace(/\(/g, "%28").replace(/\)/g, "%29") : undefined;
+      const label = redactSecrets(item.label).replace(/`/g, "'").replace(/\n/g, " ");
+      return `- **${item.kind.toUpperCase()}** \`${label}\` — ${item.relation === "candidate" ? "Candidate link" : item.relation === "observed" ? "Observed evidence" : item.relation === "verified" ? "Verified relation" : "Collected change"}${item.candidateBasis ? ` — ${item.candidateBasis}` : ""}${url ? ` [Open evidence](${url})` : ""}${item.executionMeaning ? ` — ${redactSecrets(item.executionMeaning)}` : ""}`;
+    });
+    return [
+      "# AgentProof evidence report", "",
+      `**Repository:** ${exported.repository}`,
+      `**PR:** #${exported.pull_request.number ?? "Unavailable"}`,
+      `**Head SHA:** ${exported.pull_request.head_sha ?? "Unavailable"}`, "",
+      "## PR-to-Evidence Review", "",
+      ...(detail.report && isVerificationReportV2(detail.report) && detail.report.authenticity?.trust === "portable_unverified"
+        ? ["Evidence visibility: Evidence details are omitted from this portable summary.", "Evidence IDs: Omitted from portable summary", ""] : []),
+      ...(review.source ? [`Source: ${review.source.label}`, ""] : []),
+    ...(review.sourceLinks ?? []).map(link=>`[Open ${link.label}](${link.url})`),
+    ...(review.retrievalNote ? [redactSecrets(review.retrievalNote), ""] : []),
+      ...review.objectives.flatMap((objective) => [
+        `### ${redactSecrets(objective.text).replace(/\n/g, " ")}`, "",
+      ...(objective.sourceRefs ? [`Source offsets: ${objective.sourceRefs.map(r=>`${r.sourceId ? r.sourceId+" " : ""}${r.start}–${r.end}`).join(", ")} (redacted source)`] : []),
+      ...(objective.facets ?? []).map(f=>`- ${f.kind} · source ${f.sourceRef.start}–${f.sourceRef.end}`),
+      ...(objective.goalContext ?? []),
+      ...(objective.firstInspection ? ["**Inspect first**", `${objective.firstInspection.label}: ${objective.firstInspection.whyInspect}`, objective.firstInspection.reviewQuestion ?? "", objective.firstInspection.uncertainty ?? ""] : []),
+      ...(objective.moreContext ? ["**Inspect first**", ...items(objective.code.slice(0,1)), "**More context (possible links)**", ...items(objective.moreContext), "**Tests**", ...items(objective.tests), "**Execution**", ...items(objective.execution)] : items([...objective.code, ...objective.tests, ...objective.execution])),
+        `Next to inspect: ${redactSecrets(objective.nextInspection)}`, ""
+      ]),
+      ...(review.mode === "change_summary" || review.changes.length ? [
+        review.mode === "change_summary" ? "## Collected changes" : "## Other collected changes", "",
+        ...items(review.changes), ""
+      ] : []),
+      ...(review.mode === "change_summary" ? [`Next to inspect: ${redactSecrets(review.nextInspection)}`, ""] : []),
+      "## Checks", "", `- CI: ${exported.checks.ci}`, `- Lint: ${exported.checks.lint}`, `- Typecheck: ${exported.checks.typecheck}`
+    ].join("\n");
+  }
+
   const requirementCards = toDashboardRequirementViewModels({
     report: detail.report,
     requirements: detail.report?.requirements,
@@ -149,6 +186,7 @@ function toDashboardReportExport(detail: DashboardExportDetail) {
   const v2Report = report && isVerificationReportV2(report) ? report : undefined;
   return {
     schema_version: EXPORT_SCHEMA_VERSION,
+    ...(report?.reviewCandidates ? { review_candidates: structuredClone(report.reviewCandidates) } : {}),
     repository: safeText(detail.repositoryFullName) ?? "Unavailable",
     pull_request: {
       number: detail.pullRequestNumber ?? null,

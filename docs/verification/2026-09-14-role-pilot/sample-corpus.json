@@ -1,0 +1,78 @@
+{
+  "schemaVersion": "requirement_source_ablation.v1",
+  "labelProvenance": "Labels removed before fixed-order source-role pilot execution; see manifest.json.",
+  "cases": [
+    {
+      "id": "pallets-flask-5917",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/pallets/flask/pull/5917",
+        "title": "fix provide_automatic_options override",
+        "description": "`OPTIONS` is added correctly whenever `provide_automatic_options` is set. Previously, it was only added if the argument was not passed and was not set as an attribute; it could only be disabled, not enabled.\n\nAlso cleans up the tests about options. Fixes some other tests that were inadvertently adding duplicate routes.\n\nfixes #5916 ",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "e82db2ca3a22c9614c1987392c9cfaa8c6ce99ad",
+        "baseSha": "d3b78fd18a8d9e224cb9ef58a23cec9b1ffc9ce9",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": []
+    },
+    {
+      "id": "django-django-21900",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/django/django/pull/21900",
+        "title": "Fixed Playwright test flakiness in admin collapse filter tests.",
+        "description": "#### Trac ticket number\n<!-- Replace XXXXX with the corresponding Trac ticket number. -->\n<!-- Or delete the line and write \"N/A - typo\" for typo fixes. -->\n\nN/A\n\n#### Branch description\n\nThis PR fixes flaky tests mentioned in https://github.com/django/django/pull/21596#issuecomment-5545315143 which were  failing apparently due to page navigation/reload before sessionStorage is set.\n\n#### AI Assistance Disclosure (REQUIRED)\n<!-- Select exactly ONE of the following: -->\n- [x] **No AI tools were used** in preparing this PR.\n- [ ] **If AI tools were used**, I have disclosed which ones, and fully reviewed and verified their output.\n<!-- If AI tools were used, provide which tools were used here. -->\n\n#### Checklist\n- [x] This PR follows the [contribution guidelines](https://docs.djangoproject.com/en/stable/internals/contributing/writing-code/submitting-patches/).\n- [x] This PR **does not** disclose a security vulnerability (see [vulnerability reporting](https://docs.djangoproject.com/en/stable/internals/security/)).\n- [x] This PR targets the `main` branch. <!-- Backports will be evaluated and done by mergers, when necessary. -->\n- [x] The commit message is written in past tense, mentions the ticket number (if applicable), and ends with a period (see [guidelines](https://docs.djangoproject.com/en/dev/internals/contributing/committing-code/#committing-guidelines)).\n- [x] I have not requested, and will not request, an automated AI review for this PR. <!-- You are welcome to do so in your own fork. -->\n\n<!-- Leave the following items unchecked if not applicable. -->\n- [ ] I have checked the \"Has patch\" ticket flag in the Trac system.\n- [x] I have added or updated relevant tests.\n- [ ] I have added or updated relevant docs, including release notes if applicable.\n- [ ] I have attached screenshots in both light and dark modes for any UI changes.\n",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "f102d0c83fee1c8e2a4c745d1e757feb622923ec",
+        "baseSha": "e2a3da142687c3b3dfa9cbc63c1a1a4433a8f842",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": []
+    },
+    {
+      "id": "fastapi-fastapi-16205",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/fastapi/fastapi/pull/16205",
+        "title": "🌐 Update translations for fr (update-outdated)",
+        "description": "🌐 Update translations for fr (update-outdated)\n\nThis PR was created automatically using LLMs.\n\nIt uses the prompt file https://github.com/fastapi/fastapi/blob/master/docs/fr/llm-prompt.md.\n\nIn most cases, it's better to make PRs updating that file so that the LLM can do a better job generating the translations than suggesting changes in this PR.",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "9a49ef1c8f33768a52a108fd034b1ae074e12f6a",
+        "baseSha": "30a2a89487f63bb6a678760ed28efda96d297968",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": []
+    },
+    {
+      "id": "sveltejs-svelte-18752",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/sveltejs/svelte/pull/18752",
+        "title": "chore: bump packages",
+        "description": "esrap bump ensures a bugfix, devalue silences vulnerability reports\n\n",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "449f4ac5c2b7c07dc08177d325e5331479309181",
+        "baseSha": "b1142efe966cc7091fb6d79b1756e79ad97b4f59",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": []
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+import { buildReviewIntentGraph, hasReviewNavigationContext } from "./review-intent";
 import { selectCanonicalRequirements } from "./extractors";
 import {
   createVerificationValidationContextV2,
@@ -33,6 +34,14 @@ export function registerOrdinaryDocumentationValidationContext(summary: object, 
   ordinaryDocumentationContexts.set(summary, validate);
 }
 
+export type RuntimeReportFailureReason =
+  | "navigation_context_mismatch" | "intent_mismatch"
+  | "outcome_context_mismatch" | "static_context_mismatch" | "documentation_context_mismatch"
+  | "inbound_authority_rejected" | "review_candidate_invalid" | "report_invalid";
+// Exact existing validator sentinel; never copy a dynamic error string into a code.
+const validationReasonCodes=(errors:readonly string[]):RuntimeReportFailureReason[]=>
+  [...new Set(errors.map(error=>error==="Invalid review candidates."?"review_candidate_invalid" as const:"report_invalid" as const))];
+
 export type RuntimeReportValidation =
   | {
       valid: true;
@@ -42,6 +51,7 @@ export type RuntimeReportValidation =
   | {
       valid: false;
       errors: string[];
+      reasonCodes?: RuntimeReportFailureReason[];
     };
 
 export type RuntimeReportBoundaryInput =
@@ -73,19 +83,20 @@ export function validateRuntimeReportBoundary(
   }
 
   if (input.boundary === "inbound_untrusted_full") {
-    if ((input.report as VerificationReportV2).ordinaryRequirementOutcomes !== undefined) return { valid: false, errors: ["Inbound reports cannot supply source-derived requirement authority."] };
-    if ((input.report as VerificationReportV2).ordinaryStaticSummary !== undefined) return { valid: false, errors: ["Inbound reports cannot supply scoped static evidence."] };
-    if ((input.report as VerificationReportV2).ordinaryDocumentationSummary !== undefined) return { valid: false, errors: ["Inbound reports cannot supply scoped documentation verification."] };
+    if((input.report as VerificationReportV2).reviewCandidates?.navigation)return {valid:false,reasonCodes:["inbound_authority_rejected"],errors:["Inbound reports cannot supply model-ranked read authority."]};
+    if ((input.report as VerificationReportV2).ordinaryRequirementOutcomes !== undefined) return { valid: false, reasonCodes: ["inbound_authority_rejected"], errors: ["Inbound reports cannot supply source-derived requirement authority."] };
+    if ((input.report as VerificationReportV2).ordinaryStaticSummary !== undefined) return { valid: false, reasonCodes: ["inbound_authority_rejected"], errors: ["Inbound reports cannot supply scoped static evidence."] };
+    if ((input.report as VerificationReportV2).ordinaryDocumentationSummary !== undefined) return { valid: false, reasonCodes: ["inbound_authority_rejected"], errors: ["Inbound reports cannot supply scoped documentation verification."] };
     if (hasActiveV2ContractAuthority(input.report)) {
       return {
         valid: false,
-        errors: ["An inbound untrusted full report cannot carry active v2 contract authority."]
+        reasonCodes: ["inbound_authority_rejected"], errors: ["An inbound untrusted full report cannot carry active v2 contract authority."]
       };
     }
     if (hasReceiptGatedPositive(input.report)) {
       return {
         valid: false,
-        errors: ["An inbound untrusted full report cannot carry receipt-gated positive claims."]
+        reasonCodes: ["inbound_authority_rejected"], errors: ["An inbound untrusted full report cannot carry receipt-gated positive claims."]
       };
     }
     const validation = validateVerificationReport(input.report, {
@@ -93,7 +104,7 @@ export function validateRuntimeReportBoundary(
     });
     return validation.valid
       ? { valid: true, report: input.report, usedDeterministicFallback: false }
-      : { valid: false, errors: validation.errors };
+      : { valid: false, errors: validation.errors, reasonCodes: validationReasonCodes(validation.errors) };
   }
 
   const validation = validateVerificationReport(input.report, {
@@ -103,7 +114,7 @@ export function validateRuntimeReportBoundary(
   });
   return validation.valid
     ? { valid: true, report: input.report, usedDeterministicFallback: false }
-    : { valid: false, errors: validation.errors };
+    : { valid: false, errors: validation.errors, reasonCodes: validationReasonCodes(validation.errors) };
 }
 
 /**
@@ -132,12 +143,16 @@ export function resolveRuntimeReportValidation(input: {
 
 function resolveGeneratedPrivateFull(input: Extract<RuntimeReportBoundaryInput, { boundary: "generated_private_full" }>): RuntimeReportValidation {
   const v2 = isVerificationReportV2(input.report);
+  const navigation = (input.report as VerificationReportV2).reviewCandidates?.navigation;
+  if(navigation && !hasReviewNavigationContext(navigation,input.input))return {valid:false,reasonCodes:["navigation_context_mismatch"],errors:["Review navigation requires its bound source and exact read context."]};
+  const intent = (input.report as VerificationReportV2).reviewCandidates?.intentGraph;
+  if (intent && JSON.stringify(intent) !== JSON.stringify(buildReviewIntentGraph(input.input, input.report.requirements, input.report.evidenceIndex))) return { valid: false, reasonCodes: ["intent_mismatch"], errors: ["Review intent references require the original source and exact repository snapshot."] };
   const documentation = (input.report as VerificationReportV2).ordinaryDocumentationSummary;
   const staticSummary = (input.report as VerificationReportV2).ordinaryStaticSummary;
   const ordinaryOutcomes = (input.report as VerificationReportV2).ordinaryRequirementOutcomes;
-  if (ordinaryOutcomes && ordinaryOutcomeContexts.get(ordinaryOutcomes)?.(input.input, input.report) !== true) return { valid: false, errors: ["Source-derived outcomes require transient source, head, plan and artifact validation."] };
-  if (v2 && staticSummary && ordinaryStaticContexts.get(staticSummary)?.(input.input) !== true) return { valid: false, errors: ["Scoped static evidence requires separate transient source, plan and artifact context."] };
-  if (v2 && documentation && ordinaryDocumentationContexts.get(documentation)?.(input.input) !== true) return { valid: false, errors: ["Scoped documentation verification requires separate transient source, plan and artifact context."] };
+  if (ordinaryOutcomes && ordinaryOutcomeContexts.get(ordinaryOutcomes)?.(input.input, input.report) !== true) return { valid: false, reasonCodes: ["outcome_context_mismatch"], errors: ["Source-derived outcomes require transient source, head, plan and artifact validation."] };
+  if (v2 && staticSummary && ordinaryStaticContexts.get(staticSummary)?.(input.input) !== true) return { valid: false, reasonCodes: ["static_context_mismatch"], errors: ["Scoped static evidence requires separate transient source, plan and artifact context."] };
+  if (v2 && documentation && ordinaryDocumentationContexts.get(documentation)?.(input.input) !== true) return { valid: false, reasonCodes: ["documentation_context_mismatch"], errors: ["Scoped documentation verification requires separate transient source, plan and artifact context."] };
   const requirementLocalPromotionMode = input.requirementLocalPromotionMode ?? readRequirementLocalPromotionMode();
   if (v2 && requirementLocalPromotionMode === "off" &&
     (hasReceiptGatedPositive(input.report) || hasPrivateV2Receipts(input.report))) {
@@ -156,7 +171,7 @@ function resolveGeneratedPrivateFull(input: Extract<RuntimeReportBoundaryInput, 
     return { valid: true, report: input.report, usedDeterministicFallback: false };
   }
 
-  if (!input.report.planner) return { valid: false, errors: validation.errors };
+  if (!input.report.planner) return { valid: false, errors: validation.errors, reasonCodes: validationReasonCodes(validation.errors) };
 
   return validateGeneratedFallback(input, v2);
 }
@@ -179,7 +194,7 @@ function validateGeneratedFallback(
     ...(fallbackIsV2 ? { receiptValidationContext: createRuntimeValidationContextV2(input.input, input.verificationCapabilitiesV2) } : {}),
     ...(input.requireSourceProvenance ? { requireSourceProvenance: true } : {})
   });
-  if (!fallbackValidation.valid) return { valid: false, errors: fallbackValidation.errors };
+  if (!fallbackValidation.valid) return { valid: false, errors: fallbackValidation.errors, reasonCodes: validationReasonCodes(fallbackValidation.errors) };
 
   return { valid: true, report: fallback, usedDeterministicFallback: true };
 }

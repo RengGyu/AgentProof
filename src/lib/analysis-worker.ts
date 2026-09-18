@@ -1,3 +1,4 @@
+import { resolveNavigationProvider } from "./gemini-navigation";
 import {
   completeAnalysisJob,
   bindAnalysisJobPlannerSeed,
@@ -24,6 +25,7 @@ import {
   type AuditSemanticDiagnostics
 } from "./audit-log";
 import {
+  collectReviewArtifacts,
   buildGitHubPullRequestInput,
   fetchGitHubPullRequestAnchor,
   GitHubFetchError,
@@ -458,9 +460,20 @@ async function runPreflightedAnalysisJob(
     const semanticEligible = generalPrPolicy.semanticObservation === "eligible_public_pr" &&
       generalPrObservationService.isGeneralPrSemanticObserverEligibleV2(input) &&
       Boolean(generalPrObserverApiKey && generalPrObserverModel);
+    const navigationProvider = resolveNavigationProvider(env);
+    const navigationEligible = generalPrPolicy.semanticObservation === "eligible_public_pr" &&
+      generalPrObservationService.isGeneralPrSemanticObserverEligibleV2(input);
     const generalPrObservation = await generalPrObservationService.runGeneralPrObservationNowV2({
       policy: generalPrPolicy,
       input,
+      navigation: {
+        model: navigationProvider.model,
+        ...(navigationEligible && navigationProvider.provider ? {
+          provider: navigationProvider.provider,
+          readArtifacts: (paths,headSha) => collectReviewArtifacts(job.pull_request_url,token,paths,headSha),
+          readCurrentInput: () => buildGitHubPullRequestInput(job.pull_request_url,token,"",undefined,{expectedHeadSha:input.sourceProvenance?.headSha,expectedBaseSha:input.sourceProvenance?.baseSha})
+        } : {})
+      },
       generateReport: generateVerificationReportV2FromInput,
       // The generated/semantic report still crosses the existing worker
       // runtime boundary below; this only keeps observation collection off
@@ -495,7 +508,9 @@ async function runPreflightedAnalysisJob(
     });
     const deterministicReport = generalPrObservation.report;
     const protocol = resolveHybridWorkerProtocol(job, preflight.hybridPilotControlled === true);
-    const semanticResult = protocol === "legacy"
+    const semanticResult = generalPrPolicy.assessmentProjection === "advisory" && (deterministicReport as import("./types").VerificationReportV2).reviewCandidates?.navigation
+      ? { status: "ready" as const, report: deterministicReport }
+      : protocol === "legacy"
       ? await advanceQueuedSemanticAnalysis(
         job,
         input,

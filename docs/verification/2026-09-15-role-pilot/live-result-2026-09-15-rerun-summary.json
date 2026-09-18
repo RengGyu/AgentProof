@@ -1,0 +1,85 @@
+{
+  "schemaVersion": "requirement_role_live_comparison_summary.v1",
+  "sourceFreeze": {
+    "manifestSha256": "dabb5aaf3ed2eb71bd02b88b61df7425bd0d4c768347368ecfdda07a114bfa7c",
+    "sampleCorpusSha256": "76181cdfe050662c5ed6ce29db3b56e212bed5081f80c2e40fbe3c77ad61a463",
+    "caseCount": 4,
+    "distinctRepositories": 4,
+    "labelsInRunInput": 0
+  },
+  "tooling": {
+    "experimentSha256": "c62b32b6110d41eb58f19496ae2f37f954817e78021484cbdb87df5a42ae84d2",
+    "liveAdapterSha256": "9eec0ee66d4b8727546cbebc6ec8ae7b46f5bb44e0b184a5270fd0beb891f231",
+    "runnerSha256": "8fb37749fa81a4bf3a5b9e97eb2dc1a69d4e8f453dea9efd5eb3dcfd6aa5b90c"
+  },
+  "artifacts": {
+    "result": {
+      "path": "live-result-2026-09-15-rerun.json",
+      "sha256": "c990c65b5bfb1d1ab58277f8d67ef80ba034484dad5aef5b4fc51270ae725d41"
+    },
+    "callJournal": {
+      "path": "live-result-2026-09-15-rerun.json.calls.jsonl",
+      "sha256": "30183ab8c3810da89ce9e3c9870d4240f9de4dc37b1f4b4021ee436f149a522e"
+    }
+  },
+  "execution": {
+    "configuredModel": "gpt-5.6-luna",
+    "observedModels": ["gpt-5.6-luna"],
+    "startedAt": "2026-09-15T04:31:39.968Z",
+    "finishedAt": "2026-09-15T04:33:43.161Z",
+    "actualCallCount": 24,
+    "maximumCallCount": 30,
+    "journalStarted": 24,
+    "journalFinished": 24,
+    "providerSucceeded": 24,
+    "providerFailed": 0,
+    "validatedCalls": 24,
+    "invalidCalls": 0,
+    "unavailableCalls": 0,
+    "unexecutedCalls": 0,
+    "plannedInitialCalls": 24,
+    "plannedExpansionCalls": 0,
+    "requestTimeoutMs": 60000,
+    "maximumObservedCallLatencyMs": 12072,
+    "totalCallLatencyMs": 123037,
+    "inputTokens": 39908,
+    "outputTokens": 9376,
+    "totalTokens": 49284,
+    "totalTimeoutMs": 2100000,
+    "timedOut": false,
+    "retries": 0,
+    "completion": "complete",
+    "budgetScope": "This run only; prior unknown charges are excluded.",
+    "cost": "unknown because no verified price was introduced"
+  },
+  "versions": {
+    "V0": { "calls": 4, "units": 34, "selected": 23, "decided": 23, "abstained": 0, "unreviewed": 11, "totalTokens": 6450, "latencyMs": 25605, "machineLabelAgreement": { "numerator": 1475, "denominator": 2377, "rate": 0.6205300799326883, "requirementPreservationRate": 1, "nonRequirementMisclassificationRate": 0 } },
+    "V1": { "calls": 5, "units": 34, "selected": 29, "decided": 29, "abstained": 0, "unreviewed": 5, "totalTokens": 7672, "latencyMs": 27107, "machineLabelAgreement": { "numerator": 1329, "denominator": 2377, "rate": 0.559108119478334, "requirementPreservationRate": 1, "nonRequirementMisclassificationRate": 0.2161430119176598 } },
+    "V2": { "calls": 5, "units": 34, "selected": 29, "decided": 29, "abstained": 0, "unreviewed": 5, "totalTokens": 7534, "latencyMs": 24024, "machineLabelAgreement": { "numerator": 1240, "denominator": 2377, "rate": 0.5216659655027346, "requirementPreservationRate": 1, "nonRequirementMisclassificationRate": 0.26435536294691225 } },
+    "V3": { "calls": 5, "units": 34, "selected": 29, "decided": 29, "abstained": 0, "unreviewed": 5, "totalTokens": 13881, "latencyMs": 22968, "machineLabelAgreement": { "numerator": 1111, "denominator": 2377, "rate": 0.4673958771560791, "requirementPreservationRate": 1, "nonRequirementMisclassificationRate": 0.33423618634886243 } },
+    "V4": { "calls": 5, "units": 34, "selected": 29, "decided": 28, "abstained": 1, "unreviewed": 5, "totalTokens": 13747, "latencyMs": 23333, "machineLabelAgreement": { "numerator": 1262, "denominator": 2377, "rate": 0.5309213294068154, "requirementPreservationRate": 1, "nonRequirementMisclassificationRate": 0.34832069339111593 } }
+  },
+  "pairedChanges": {
+    "V0_to_V1": { "units": 34, "selectionChanged": 6, "statusChanged": 6, "semanticRoleChanged": 9 },
+    "V1_to_V2": { "units": 34, "selectionChanged": 0, "statusChanged": 0, "semanticRoleChanged": 8 },
+    "V2_to_V3": { "units": 34, "selectionChanged": 0, "statusChanged": 0, "semanticRoleChanged": 3 },
+    "V3_to_V4": { "units": 34, "selectionChanged": 0, "statusChanged": 1, "semanticRoleChanged": 4 }
+  },
+  "evaluationBoundary": {
+    "labelProvenance": "pre-existing machine-proposed labels frozen before evaluated outputs; not human gold",
+    "labelCount": 27,
+    "nonWhitespaceUtf16Characters": 2377,
+    "unreviewedCountsAsDisagreement": true,
+    "selectionCoverageDiffersBetweenV0AndV1ToV4": true,
+    "humanAccuracyClaim": false,
+    "superiorityOrAdoptionClaim": false,
+    "persistedRawSourceText": false
+  },
+  "observedComparison": {
+    "highestMachineLabelAgreement": "V0",
+    "nextHighestMachineLabelAgreement": "V1",
+    "allVersionsPreservedMachineLabeledRequirementCharacters": true,
+    "lowestNonRequirementMisclassification": "V0",
+    "interpretation": "This is one run over four fixed public PRs. Machine-label agreement is descriptive evidence only; differing selection coverage and lack of independent human labels prevent a generalization, superiority, or adoption conclusion."
+  }
+}

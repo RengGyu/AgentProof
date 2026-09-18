@@ -18,6 +18,53 @@ const PRIVATE_ASSESSMENT_TERMS = [
 ];
 
 describe("reportToGitHubComment", () => {
+  it("omits the missing-objective warning from a neutral change summary without mutating the report", () => {
+    const report = generateVerificationReportV2FromInput({
+      ...demoScenarios.clean,
+      title: "Maintenance",
+      taskText: "",
+      description: "",
+      checks: [{ name: "unit tests", status: "failed", summary: "1 failed" }],
+      logs: [],
+      limitations: ["Public GitHub metadata could not be fetched."]
+    });
+    report.generalPrAssessmentSummary = {
+      version: 1,
+      mode: "ordinary_pr",
+      sourceState: "missing",
+      overallConclusion: "no_assessable_claims",
+      counts: { evidence_supported: 0, evidence_partial: 0, not_demonstrated: 0, contradicted: 0, blocked: 0, not_assessable: 0 },
+      reasonCodes: ["source_missing"]
+    };
+    const before = structuredClone(report);
+
+    expect(report.limitations.join("\n")).toContain("No original task text was provided");
+    const comment = reportToGitHubComment(report);
+
+    expect(comment).not.toContain("No original task text was provided");
+    expect(comment).not.toContain("No approved verification contract");
+    expect(comment).not.toContain("no assessable");
+    expect(comment).not.toContain("Requirement Coverage");
+    expect(comment).not.toContain("Requirement Proof Gaps");
+    expect(comment).toContain("**FAILED**");
+    expect(comment).toContain("Public GitHub metadata could not be fetched.");
+    expect(report).toEqual(before);
+  });
+
+  it("redacts and escapes evidence URLs in candidate Markdown links", () => {
+    const report = generateVerificationReportV2FromInput(demoScenarios.clean);
+    const check = report.evidenceIndex.find((item) => item.kind === "check")!;
+    check.locator = "https://github.com/example/saas-app/actions/runs/7?token=ghp_123456789012345678901234567890123456&label=(unit)";
+    for (const surface of [reportToMarkdown(report), reportToGitHubComment(report)]) {
+      expect(surface).not.toContain("[Open evidence](https://github.com/example/saas-app/actions/runs/7?");
+      expect(surface).not.toContain("ghp_123456789012345678901234567890123456");
+    }
+    check.locator = "https://github.com/example/saas-app/actions/runs/7?label=(unit)";
+    for (const surface of [reportToMarkdown(report), reportToGitHubComment(report)]) {
+      expect(surface).toContain("[Open evidence](https://github.com/example/saas-app/actions/runs/7?label=%28unit%29)");
+    }
+  });
+
   it("omits private proof receipts from Markdown and GitHub comments", () => {
     const report = generateVerificationReport(demoScenarios.clean);
     const requirementId = report.requirements[0]!.requirementId;
@@ -78,21 +125,21 @@ describe("reportToGitHubComment", () => {
     expectNoSelectionSentinels(output);
   });
 
-  it("separates v2 no-contract outcomes from observed implementation and execution evidence", () => {
+  it("renders no-contract requirements as review candidates without strict outcome gates", () => {
     const report = generateVerificationReportV2FromInput(demoScenarios.clean);
     const markdown = reportToMarkdown(report);
     const comment = reportToGitHubComment(report);
     const output = `${markdown}\n${comment}`;
 
-    expect(output).toContain("Strict verification contract");
-    expect(output).toContain("**Outcome policy:** No approved verification contract; observed evidence does not establish the requirement outcome.");
-    expect(output).toContain("**Observed evidence:** implementation, targeted tests, and execution are listed below.");
-    expect(markdown.match(/Approved verification contract is missing\./g)).toHaveLength(1);
-    expect(comment.match(/Approved verification contract is missing\./g)).toHaveLength(1);
-    expect(output).not.toContain("Outcome was not assessed against an approved verification contract.");
+    expect(output).toContain("PR-to-Evidence Review");
+    expect(output).toContain("Candidate link");
+    expect(output).toContain("Inspect first");
+    expect(output).toContain("Observed evidence");
+    expect(output).toContain("individual test execution is not established");
+    expect(output).not.toMatch(/Strict verification contract|Approved verification contract is missing|Outcome policy|Requirement Coverage/);
   });
 
-  it("renders the target-free ordinary-PR assessment without turning it into a contract outcome", () => {
+  it("renders displayed requirement provenance without exposing companion conclusions or private fields", () => {
     const report = generateVerificationReportV2FromInput(demoScenarios.clean);
     report.generalPrAssessmentSummary = {
       version: 1,
@@ -111,13 +158,10 @@ describe("reportToGitHubComment", () => {
 
     const output = `${reportToMarkdown(report)}\n${reportToGitHubComment(report)}`;
 
-    expect(output).toContain("Ordinary PR evidence assessment");
-    expect(output).toContain("Partial observations; objective fulfillment remains unconfirmed");
-    expect(output).toContain("PR description claim — reviewer confirmation needed");
-    expect(output).toContain("Partial evidence: 1");
-    expect(output).toContain("Semantic assessment was unavailable.");
-    expect(output).toContain("The target-to-evidence relation remains unresolved.");
-    expect(output).toContain("Observed changed artifacts: 2");
+    expect(output).toContain("PR-to-Evidence Review");
+    expect(output).toContain("Linked issue requirement source");
+    expect(output).not.toContain("Ordinary PR evidence assessment");
+    expect(output).not.toContain("PR description claim — reviewer confirmation needed");
     expect(output).not.toContain("private-observation-sentinel");
     for (const forbidden of PRIVATE_ASSESSMENT_TERMS) expect(output).not.toContain(forbidden);
   });

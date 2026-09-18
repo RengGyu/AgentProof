@@ -1,0 +1,2574 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-15T09:55:12.834Z",
+  "fixtureHashes": {
+    "diverseSha256": "452c12d0e0a0ed4566b49c62ee406bae610a54167f29a2cf2831a39de6b30bcb",
+    "syntheticSha256": "1f8739055873a203a25caa872cf0723932427830ea3a4b354246c5e64fec9bc8",
+    "referenceSha256": "33f9671de044f467ed41ad0d38a4ccc06983ef5f44f35359d24e267b24089fb2"
+  },
+  "evaluationBoundary": {
+    "rawInputPersisted": false,
+    "providerOrNetworkCallsAllowed": false,
+    "semanticRelevanceGoldAvailable": false,
+    "humanUsabilityStudyRun": false,
+    "diverseFixtureIsHoldout": false,
+    "patchExcerptPolicy": "existing bounded fixture; at most 900 bytes per file and 1500 bytes per case",
+    "sourceAdaptation": "taskSource=issue only; as-is and source-adapted results remain separate"
+  },
+  "synthetic": {
+    "runnerStatus": "passed",
+    "caseCount": 3,
+    "expectationCheckCount": 18,
+    "productExpectationFailureCount": 0,
+    "cases": [
+      {
+        "result": {
+          "id": "issue-head-base-rename",
+          "profile": "as_is",
+          "status": "complete",
+          "validationUsedDeterministicFallback": false,
+          "advisorySourceState": "pr_author_claim",
+          "validatedSourceState": "pr_author_claim",
+          "analysisContext": "linked_issue",
+          "generatedRequirementCount": 1,
+          "observationBundleObjectiveCount": 1,
+          "assessmentOverallConclusion": "evidence_partial",
+          "assessmentTargetCount": 1,
+          "changeSummaryConditions": [],
+          "mode": "objectives",
+          "sourceKind": "linked_issue",
+          "objectiveCount": 1,
+          "reviewItemCount": 4,
+          "objectiveEvidenceCounts": [
+            {
+              "objectiveId": "req_1",
+              "codeCandidates": 1,
+              "testCandidates": 0,
+              "executionCandidates": 0
+            }
+          ],
+          "inputChangedFileCount": 3,
+          "displayedPaths": [
+            "src/reset.ts",
+            "src/reset.test.ts",
+            "src/legacy.ts"
+          ],
+          "displayedFileCoverage": {
+            "numerator": 3,
+            "denominator": 3,
+            "rate": 1,
+            "interpretation": "structural input-file display coverage; not semantic relevance accuracy"
+          },
+          "reportDirectCodeUrlCount": 0,
+          "projectionDirectCodeUrlCount": 3,
+          "projectionCodeLinks": [
+            "https://github.com/acme/widget/blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/src/reset.ts#L10",
+            "https://github.com/acme/widget/blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/src/reset.test.ts#L20",
+            "https://github.com/acme/widget/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/src/legacy.ts"
+          ],
+          "firstInspectionPath": "src/reset.ts",
+          "directLinkComparisonBoundary": "same generated report only; not a legacy-UI or human-time comparison",
+          "execution": {
+            "itemCount": 1,
+            "verifiedRelationCount": 0,
+            "unbackedItemCount": 0,
+            "passingLanguageWithoutPassingEvidenceCount": 0
+          },
+          "sourceLimitations": [],
+          "storageRoundTrip": {
+            "valid": true,
+            "displayedPathsPreserved": true,
+            "codeLinksPreserved": true
+          },
+          "portableSummaryContainsCodeLocation": false,
+          "ssr": {
+            "rendered": true,
+            "ciFailureVisible": true,
+            "collectedChangesVisible": false,
+            "purposeWarningVisible": false,
+            "inputLimitationsPreserved": true
+          }
+        },
+        "expectationFailures": []
+      },
+      {
+        "result": {
+          "id": "pr-author-claim",
+          "profile": "as_is",
+          "status": "complete",
+          "validationUsedDeterministicFallback": false,
+          "advisorySourceState": "pr_author_claim",
+          "validatedSourceState": "pr_author_claim",
+          "analysisContext": "unlinked_pr",
+          "generatedRequirementCount": 1,
+          "observationBundleObjectiveCount": 2,
+          "assessmentOverallConclusion": "evidence_partial",
+          "assessmentTargetCount": 2,
+          "changeSummaryConditions": [],
+          "mode": "objectives",
+          "sourceKind": "pr_author_claim",
+          "objectiveCount": 1,
+          "reviewItemCount": 2,
+          "objectiveEvidenceCounts": [
+            {
+              "objectiveId": "req_1",
+              "codeCandidates": 1,
+              "testCandidates": 0,
+              "executionCandidates": 0
+            }
+          ],
+          "inputChangedFileCount": 2,
+          "displayedPaths": [
+            "src/reset.ts",
+            "src/reset.test.ts"
+          ],
+          "displayedFileCoverage": {
+            "numerator": 2,
+            "denominator": 2,
+            "rate": 1,
+            "interpretation": "structural input-file display coverage; not semantic relevance accuracy"
+          },
+          "reportDirectCodeUrlCount": 0,
+          "projectionDirectCodeUrlCount": 2,
+          "projectionCodeLinks": [
+            "https://github.com/acme/widget/blob/dddddddddddddddddddddddddddddddddddddddd/src/reset.ts#L4",
+            "https://github.com/acme/widget/blob/dddddddddddddddddddddddddddddddddddddddd/src/reset.test.ts#L8"
+          ],
+          "firstInspectionPath": "src/reset.ts",
+          "directLinkComparisonBoundary": "same generated report only; not a legacy-UI or human-time comparison",
+          "execution": {
+            "itemCount": 0,
+            "verifiedRelationCount": 0,
+            "unbackedItemCount": 0,
+            "passingLanguageWithoutPassingEvidenceCount": 0
+          },
+          "sourceLimitations": [],
+          "storageRoundTrip": {
+            "valid": true,
+            "displayedPathsPreserved": true,
+            "codeLinksPreserved": true
+          },
+          "portableSummaryContainsCodeLocation": false,
+          "ssr": {
+            "rendered": true,
+            "ciFailureVisible": false,
+            "collectedChangesVisible": false,
+            "purposeWarningVisible": true,
+            "inputLimitationsPreserved": true
+          }
+        },
+        "expectationFailures": []
+      },
+      {
+        "result": {
+          "id": "missing-objective-failed-ci",
+          "profile": "as_is",
+          "status": "complete",
+          "validationUsedDeterministicFallback": false,
+          "advisorySourceState": "pr_author_claim",
+          "validatedSourceState": "pr_author_claim",
+          "analysisContext": "provided_requirement",
+          "generatedRequirementCount": 0,
+          "observationBundleObjectiveCount": 0,
+          "assessmentOverallConclusion": "no_assessable_claims",
+          "assessmentTargetCount": 0,
+          "changeSummaryConditions": [
+            "no_generated_requirements"
+          ],
+          "mode": "change_summary",
+          "sourceKind": null,
+          "objectiveCount": 0,
+          "reviewItemCount": 2,
+          "objectiveEvidenceCounts": [],
+          "inputChangedFileCount": 1,
+          "displayedPaths": [
+            "src/cache.ts"
+          ],
+          "displayedFileCoverage": {
+            "numerator": 1,
+            "denominator": 1,
+            "rate": 1,
+            "interpretation": "structural input-file display coverage; not semantic relevance accuracy"
+          },
+          "reportDirectCodeUrlCount": 0,
+          "projectionDirectCodeUrlCount": 1,
+          "projectionCodeLinks": [
+            "https://github.com/acme/widget/blob/1111111111111111111111111111111111111111/src/cache.ts#L3"
+          ],
+          "firstInspectionPath": "src/cache.ts",
+          "directLinkComparisonBoundary": "same generated report only; not a legacy-UI or human-time comparison",
+          "execution": {
+            "itemCount": 1,
+            "verifiedRelationCount": 0,
+            "unbackedItemCount": 0,
+            "passingLanguageWithoutPassingEvidenceCount": 0
+          },
+          "sourceLimitations": [],
+          "storageRoundTrip": {
+            "valid": true,
+            "displayedPathsPreserved": true,
+            "codeLinksPreserved": true
+          },
+          "portableSummaryContainsCodeLocation": false,
+          "ssr": {
+            "rendered": true,
+            "ciFailureVisible": true,
+            "collectedChangesVisible": true,
+            "purposeWarningVisible": false,
+            "inputLimitationsPreserved": true
+          }
+        },
+        "expectationFailures": []
+      }
+    ]
+  },
+  "profiles": {
+    "asIs": {
+      "summary": {
+        "caseCompletion": {
+          "numerator": 10,
+          "denominator": 10,
+          "rate": 1
+        },
+        "fullDisplayedFileCoverage": {
+          "numerator": 10,
+          "denominator": 10,
+          "rate": 1
+        },
+        "executionInvariantPass": {
+          "numerator": 10,
+          "denominator": 10,
+          "rate": 1
+        },
+        "semanticRelevanceAccuracy": null,
+        "humanTaskCompletionTime": null,
+        "humanLinkArrivalSuccess": null
+      },
+      "evaluation": {
+        "schemaVersion": 1,
+        "profile": "as_is",
+        "profileChange": "none",
+        "caseCount": 10,
+        "externalCallCount": 0,
+        "externalCallEvidence": "global fetch was replaced by a rejecting guard for the complete corpus and timing run",
+        "performance": {
+          "environment": {
+            "node": "v22.22.0",
+            "platform": "darwin",
+            "arch": "arm64",
+            "cpu": "Apple M1"
+          },
+          "warmupRuns": 1,
+          "measuredRuns": 3,
+          "expectedMeasuredSamples": 30,
+          "failedMeasuredSamples": 0,
+          "scope": {
+            "pipelineMs": "advisory no-provider report generation plus generated-private-full validation",
+            "projectionAndSsrMs": "PR-to-Evidence projection plus full ReportView server rendering; excludes persistence"
+          },
+          "pipelineMs": {
+            "count": 30,
+            "excludedCount": 0,
+            "unit": "ms",
+            "method": "nearest-rank",
+            "p50": 24.058208000000377,
+            "p95": 71.56683300000077
+          },
+          "projectionAndSsrMs": {
+            "count": 30,
+            "excludedCount": 0,
+            "unit": "ms",
+            "method": "nearest-rank",
+            "p50": 13.245958999999857,
+            "p95": 20.246499999999287
+          }
+        },
+        "semanticRelevanceAccuracy": null,
+        "humanTaskCompletionTime": null,
+        "humanLinkArrivalSuccess": null,
+        "notEvaluatedReasons": [
+          "fixture oracle is not PR-to-evidence relevance gold",
+          "fixtures are bounded development excerpts, not a holdout",
+          "no human reviewer timing or link-arrival study was run"
+        ],
+        "cases": [
+          {
+            "id": "matplotlib__matplotlib-14623",
+            "profile": "as_is",
+            "status": "complete",
+            "validationUsedDeterministicFallback": false,
+            "advisorySourceState": "ambiguous",
+            "validatedSourceState": "ambiguous",
+            "analysisContext": "linked_issue",
+            "generatedRequirementCount": 1,
+            "observationBundleObjectiveCount": 0,
+            "assessmentOverallConclusion": "no_assessable_claims",
+            "assessmentTargetCount": 0,
+            "changeSummaryConditions": [],
+            "mode": "objectives",
+            "sourceKind": "linked_issue",
+            "objectiveCount": 1,
+            "reviewItemCount": 4,
+            "objectiveEvidenceCounts": [
+              {
+                "objectiveId": "req_1",
+                "codeCandidates": 0,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              }
+            ],
+            "inputChangedFileCount": 4,
+            "displayedPaths": [
+              "lib/matplotlib/axes/_base.py",
+              "lib/matplotlib/ticker.py",
+              "lib/mpl_toolkits/mplot3d/axes3d.py",
+              "lib/matplotlib/tests/test_axes.py"
+            ],
+            "displayedFileCoverage": {
+              "numerator": 4,
+              "denominator": 4,
+              "rate": 1,
+              "interpretation": "structural input-file display coverage; not semantic relevance accuracy"
+            },
+            "reportDirectCodeUrlCount": 0,
+            "projectionDirectCodeUrlCount": 0,
+            "projectionCodeLinks": [],
+            "firstInspectionPath": null,
+            "directLinkComparisonBoundary": "same generated report only; not a legacy-UI or human-time comparison",
+            "execution": {
+              "itemCount": 0,
+              "verifiedRelationCount": 0,
+              "unbackedItemCount": 0,
+              "passingLanguageWithoutPassingEvidenceCount": 0
+            },
+            "sourceLimitations": [
+              "task_source_not_recorded",
+              "pull_request_url_not_available",
+              "exact_head_sha_not_available",
+              "exact_base_sha_not_available"
+            ],
+            "storageRoundTrip": {
+              "valid": true,
+              "displayedPathsPreserved": true,
+              "codeLinksPreserved": true
+            },
+            "portableSummaryContainsCodeLocation": false,
+            "ssr": {
+              "rendered": true,
+              "ciFailureVisible": false,
+              "collectedChangesVisible": false,
+              "purposeWarningVisible": false,
+              "inputLimitationsPreserved": true
+            }
+          },
+          {
+            "id": "mwaskom__seaborn-3187",
+            "profile": "as_is",
+            "status": "complete",
+            "validationUsedDeterministicFallback": false,
+            "advisorySourceState": "ambiguous",
+            "validatedSourceState": "ambiguous",
+            "analysisContext": "linked_issue",
+            "generatedRequirementCount": 8,
+            "observationBundleObjectiveCount": 0,
+            "assessmentOverallConclusion": "no_assessable_claims",
+            "assessmentTargetCount": 0,
+            "changeSummaryConditions": [],
+            "mode": "objectives",
+            "sourceKind": "linked_issue",
+            "objectiveCount": 8,
+            "reviewItemCount": 15,
+            "objectiveEvidenceCounts": [
+              {
+                "objectiveId": "req_1",
+                "codeCandidates": 2,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              },
+              {
+                "objectiveId": "req_2",
+                "codeCandidates": 2,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              },
+              {
+                "objectiveId": "req_3",
+                "codeCandidates": 0,
+                "testCandidates": 2,
+                "executionCandidates": 0
+              },
+              {
+                "objectiveId": "req_4",
+                "codeCandidates": 1,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              },
+              {
+                "objectiveId": "req_5",
+                "codeCandidates": 0,
+                "testCandidates": 2,
+                "executionCandidates": 0
+              },
+              {
+                "objectiveId": "req_6",
+                "codeCandidates": 2,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              },
+              {
+                "objectiveId": "req_7",
+                "codeCandidates": 2,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              },
+              {
+                "objectiveId": "req_8",
+                "codeCandidates": 2,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              }
+            ],
+            "inputChangedFileCount": 4,
+            "displayedPaths": [
+              "seaborn/_core/scales.py",
+              "seaborn/utils.py",
+              "tests/_core/test_plot.py",
+              "tests/test_relational.py"
+            ],
+            "displayedFileCoverage": {
+              "numerator": 4,
+              "denominator": 4,
+              "rate": 1,
+              "interpretation": "structural input-file display coverage; not semantic relevance accuracy"
+            },
+            "reportDirectCodeUrlCount": 0,
+            "projectionDirectCodeUrlCount": 0,
+            "projectionCodeLinks": [],
+            "firstInspectionPath": "seaborn/_core/scales.py",
+            "directLinkComparisonBoundary": "same generated report only; not a legacy-UI or human-time comparison",
+            "execution": {
+              "itemCount": 0,
+              "verifiedRelationCount": 0,
+              "unbackedItemCount": 0,
+              "passingLanguageWithoutPassingEvidenceCount": 0
+            },
+            "sourceLimitations": [
+              "task_source_not_recorded",
+              "pull_request_url_not_available",
+              "exact_head_sha_not_available",
+              "exact_base_sha_not_available"
+            ],
+            "storageRoundTrip": {
+              "valid": true,
+              "displayedPathsPreserved": true,
+              "codeLinksPreserved": true
+            },
+            "portableSummaryContainsCodeLocation": false,
+            "ssr": {
+              "rendered": true,
+              "ciFailureVisible": false,
+              "collectedChangesVisible": false,
+              "purposeWarningVisible": false,
+              "inputLimitationsPreserved": true
+            }
+          },
+          {
+            "id": "pallets__flask-5014",
+            "profile": "as_is",
+            "status": "complete",
+            "validationUsedDeterministicFallback": false,
+            "advisorySourceState": "ambiguous",
+            "validatedSourceState": "ambiguous",
+            "analysisContext": "linked_issue",
+            "generatedRequirementCount": 1,
+            "observationBundleObjectiveCount": 0,
+            "assessmentOverallConclusion": "no_assessable_claims",
+            "assessmentTargetCount": 0,
+            "changeSummaryConditions": [],
+            "mode": "objectives",
+            "sourceKind": "linked_issue",
+            "objectiveCount": 1,
+            "reviewItemCount": 2,
+            "objectiveEvidenceCounts": [
+              {
+                "objectiveId": "req_1",
+                "codeCandidates": 1,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              }
+            ],
+            "inputChangedFileCount": 2,
+            "displayedPaths": [
+              "src/flask/blueprints.py",
+              "tests/test_blueprints.py"
+            ],
+            "displayedFileCoverage": {
+              "numerator": 2,
+              "denominator": 2,
+              "rate": 1,
+              "interpretation": "structural input-file display coverage; not semantic relevance accuracy"
+            },
+            "reportDirectCodeUrlCount": 0,
+            "projectionDirectCodeUrlCount": 0,
+            "projectionCodeLinks": [],
+            "firstInspectionPath": "src/flask/blueprints.py",
+            "directLinkComparisonBoundary": "same generated report only; not a legacy-UI or human-time comparison",
+            "execution": {
+              "itemCount": 0,
+              "verifiedRelationCount": 0,
+              "unbackedItemCount": 0,
+              "passingLanguageWithoutPassingEvidenceCount": 0
+            },
+            "sourceLimitations": [
+              "task_source_not_recorded",
+              "pull_request_url_not_available",
+              "exact_head_sha_not_available",
+              "exact_base_sha_not_available"
+            ],
+            "storageRoundTrip": {
+              "valid": true,
+              "displayedPathsPreserved": true,
+              "codeLinksPreserved": true
+            },
+            "portableSummaryContainsCodeLocation": false,
+            "ssr": {
+              "rendered": true,
+              "ciFailureVisible": false,
+              "collectedChangesVisible": false,
+              "purposeWarningVisible": false,
+              "inputLimitationsPreserved": true
+            }
+          },
+          {
+            "id": "psf__requests-5414",
+            "profile": "as_is",
+            "status": "complete",
+            "validationUsedDeterministicFallback": false,
+            "advisorySourceState": "ambiguous",
+            "validatedSourceState": "ambiguous",
+            "analysisContext": "linked_issue",
+            "generatedRequirementCount": 1,
+            "observationBundleObjectiveCount": 0,
+            "assessmentOverallConclusion": "no_assessable_claims",
+            "assessmentTargetCount": 0,
+            "changeSummaryConditions": [],
+            "mode": "objectives",
+            "sourceKind": "linked_issue",
+            "objectiveCount": 1,
+            "reviewItemCount": 2,
+            "objectiveEvidenceCounts": [
+              {
+                "objectiveId": "req_1",
+                "codeCandidates": 0,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              }
+            ],
+            "inputChangedFileCount": 2,
+            "displayedPaths": [
+              "requests/models.py",
+              "tests/test_requests.py"
+            ],
+            "displayedFileCoverage": {
+              "numerator": 2,
+              "denominator": 2,
+              "rate": 1,
+              "interpretation": "structural input-file display coverage; not semantic relevance accuracy"
+            },
+            "reportDirectCodeUrlCount": 0,
+            "projectionDirectCodeUrlCount": 0,
+            "projectionCodeLinks": [],
+            "firstInspectionPath": null,
+            "directLinkComparisonBoundary": "same generated report only; not a legacy-UI or human-time comparison",
+            "execution": {
+              "itemCount": 0,
+              "verifiedRelationCount": 0,
+              "unbackedItemCount": 0,
+              "passingLanguageWithoutPassingEvidenceCount": 0
+            },
+            "sourceLimitations": [
+              "task_source_not_recorded",
+              "pull_request_url_not_available",
+              "exact_head_sha_not_available",
+              "exact_base_sha_not_available"
+            ],
+            "storageRoundTrip": {
+              "valid": true,
+              "displayedPathsPreserved": true,
+              "codeLinksPreserved": true
+            },
+            "portableSummaryContainsCodeLocation": false,
+            "ssr": {
+              "rendered": true,
+              "ciFailureVisible": false,
+              "collectedChangesVisible": false,
+              "purposeWarningVisible": false,
+              "inputLimitationsPreserved": true
+            }
+          },
+          {
+            "id": "pydata__xarray-4687",
+            "profile": "as_is",
+            "status": "complete",
+            "validationUsedDeterministicFallback": false,
+            "advisorySourceState": "ambiguous",
+            "validatedSourceState": "ambiguous",
+            "analysisContext": "linked_issue",
+            "generatedRequirementCount": 2,
+            "observationBundleObjectiveCount": 0,
+            "assessmentOverallConclusion": "no_assessable_claims",
+            "assessmentTargetCount": 0,
+            "changeSummaryConditions": [],
+            "mode": "objectives",
+            "sourceKind": "linked_issue",
+            "objectiveCount": 2,
+            "reviewItemCount": 3,
+            "objectiveEvidenceCounts": [
+              {
+                "objectiveId": "req_1",
+                "codeCandidates": 0,
+                "testCandidates": 1,
+                "executionCandidates": 0
+              },
+              {
+                "objectiveId": "req_2",
+                "codeCandidates": 0,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              }
+            ],
+            "inputChangedFileCount": 3,
+            "displayedPaths": [
+              "xarray/core/computation.py",
+              "xarray/tests/test_computation.py",
+              "xarray/tests/test_units.py"
+            ],
+            "displayedFileCoverage": {
+              "numerator": 3,
+              "denominator": 3,
+              "rate": 1,
+              "interpretation": "structural input-file display coverage; not semantic relevance accuracy"
+            },
+            "reportDirectCodeUrlCount": 0,
+            "projectionDirectCodeUrlCount": 0,
+            "projectionCodeLinks": [],
+            "firstInspectionPath": "xarray/tests/test_computation.py",
+            "directLinkComparisonBoundary": "same generated report only; not a legacy-UI or human-time comparison",
+            "execution": {
+              "itemCount": 0,
+              "verifiedRelationCount": 0,
+              "unbackedItemCount": 0,
+              "passingLanguageWithoutPassingEvidenceCount": 0
+            },
+            "sourceLimitations": [
+              "task_source_not_recorded",
+              "pull_request_url_not_available",
+              "exact_head_sha_not_available",
+              "exact_base_sha_not_available"
+            ],
+            "storageRoundTrip": {
+              "valid": true,
+              "displayedPathsPreserved": false,
+              "codeLinksPreserved": true
+            },
+            "portableSummaryContainsCodeLocation": false,
+            "ssr": {
+              "rendered": true,
+              "ciFailureVisible": false,
+              "collectedChangesVisible": false,
+              "purposeWarningVisible": false,
+              "inputLimitationsPreserved": true
+            }
+          },
+          {
+            "id": "pylint-dev__pylint-6386",
+            "profile": "as_is",
+            "status": "complete",
+            "validationUsedDeterministicFallback": false,
+            "advisorySourceState": "ambiguous",
+            "validatedSourceState": "ambiguous",
+            "analysisContext": "linked_issue",
+            "generatedRequirementCount": 3,
+            "observationBundleObjectiveCount": 0,
+            "assessmentOverallConclusion": "no_assessable_claims",
+            "assessmentTargetCount": 0,
+            "changeSummaryConditions": [],
+            "mode": "objectives",
+            "sourceKind": "linked_issue",
+            "objectiveCount": 3,
+            "reviewItemCount": 11,
+            "objectiveEvidenceCounts": [
+              {
+                "objectiveId": "req_1",
+                "codeCandidates": 4,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              },
+              {
+                "objectiveId": "req_2",
+                "codeCandidates": 3,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              },
+              {
+                "objectiveId": "req_3",
+                "codeCandidates": 3,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              }
+            ],
+            "inputChangedFileCount": 5,
+            "displayedPaths": [
+              "pylint/config/argument.py",
+              "pylint/config/arguments_manager.py",
+              "pylint/config/utils.py",
+              "pylint/lint/base_options.py",
+              "tests/config/test_config.py"
+            ],
+            "displayedFileCoverage": {
+              "numerator": 5,
+              "denominator": 5,
+              "rate": 1,
+              "interpretation": "structural input-file display coverage; not semantic relevance accuracy"
+            },
+            "reportDirectCodeUrlCount": 0,
+            "projectionDirectCodeUrlCount": 0,
+            "projectionCodeLinks": [],
+            "firstInspectionPath": "pylint/config/argument.py",
+            "directLinkComparisonBoundary": "same generated report only; not a legacy-UI or human-time comparison",
+            "execution": {
+              "itemCount": 0,
+              "verifiedRelationCount": 0,
+              "unbackedItemCount": 0,
+              "passingLanguageWithoutPassingEvidenceCount": 0
+            },
+            "sourceLimitations": [
+              "task_source_not_recorded",
+              "pull_request_url_not_available",
+              "exact_head_sha_not_available",
+              "exact_base_sha_not_available"
+            ],
+            "storageRoundTrip": {
+              "valid": true,
+              "displayedPathsPreserved": true,
+              "codeLinksPreserved": true
+            },
+            "portableSummaryContainsCodeLocation": false,
+            "ssr": {
+              "rendered": true,
+              "ciFailureVisible": false,
+              "collectedChangesVisible": false,
+              "purposeWarningVisible": false,
+              "inputLimitationsPreserved": true
+            }
+          },
+          {
+            "id": "pytest-dev__pytest-5631",
+            "profile": "as_is",
+            "status": "complete",
+            "validationUsedDeterministicFallback": false,
+            "advisorySourceState": "ambiguous",
+            "validatedSourceState": "ambiguous",
+            "analysisContext": "linked_issue",
+            "generatedRequirementCount": 1,
+            "observationBundleObjectiveCount": 0,
+            "assessmentOverallConclusion": "no_assessable_claims",
+            "assessmentTargetCount": 0,
+            "changeSummaryConditions": [],
+            "mode": "objectives",
+            "sourceKind": "linked_issue",
+            "objectiveCount": 1,
+            "reviewItemCount": 2,
+            "objectiveEvidenceCounts": [
+              {
+                "objectiveId": "req_1",
+                "codeCandidates": 1,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              }
+            ],
+            "inputChangedFileCount": 2,
+            "displayedPaths": [
+              "src/_pytest/compat.py",
+              "testing/python/integration.py"
+            ],
+            "displayedFileCoverage": {
+              "numerator": 2,
+              "denominator": 2,
+              "rate": 1,
+              "interpretation": "structural input-file display coverage; not semantic relevance accuracy"
+            },
+            "reportDirectCodeUrlCount": 0,
+            "projectionDirectCodeUrlCount": 0,
+            "projectionCodeLinks": [],
+            "firstInspectionPath": "testing/python/integration.py",
+            "directLinkComparisonBoundary": "same generated report only; not a legacy-UI or human-time comparison",
+            "execution": {
+              "itemCount": 0,
+              "verifiedRelationCount": 0,
+              "unbackedItemCount": 0,
+              "passingLanguageWithoutPassingEvidenceCount": 0
+            },
+            "sourceLimitations": [
+              "task_source_not_recorded",
+              "pull_request_url_not_available",
+              "exact_head_sha_not_available",
+              "exact_base_sha_not_available"
+            ],
+            "storageRoundTrip": {
+              "valid": true,
+              "displayedPathsPreserved": false,
+              "codeLinksPreserved": true
+            },
+            "portableSummaryContainsCodeLocation": false,
+            "ssr": {
+              "rendered": true,
+              "ciFailureVisible": false,
+              "collectedChangesVisible": false,
+              "purposeWarningVisible": false,
+              "inputLimitationsPreserved": true
+            }
+          },
+          {
+            "id": "scikit-learn__scikit-learn-13142",
+            "profile": "as_is",
+            "status": "complete",
+            "validationUsedDeterministicFallback": false,
+            "advisorySourceState": "ambiguous",
+            "validatedSourceState": "ambiguous",
+            "analysisContext": "linked_issue",
+            "generatedRequirementCount": 4,
+            "observationBundleObjectiveCount": 0,
+            "assessmentOverallConclusion": "no_assessable_claims",
+            "assessmentTargetCount": 0,
+            "changeSummaryConditions": [],
+            "mode": "objectives",
+            "sourceKind": "linked_issue",
+            "objectiveCount": 4,
+            "reviewItemCount": 5,
+            "objectiveEvidenceCounts": [
+              {
+                "objectiveId": "req_1",
+                "codeCandidates": 1,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              },
+              {
+                "objectiveId": "req_2",
+                "codeCandidates": 1,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              },
+              {
+                "objectiveId": "req_3",
+                "codeCandidates": 1,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              },
+              {
+                "objectiveId": "req_4",
+                "codeCandidates": 0,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              }
+            ],
+            "inputChangedFileCount": 3,
+            "displayedPaths": [
+              "sklearn/mixture/base.py",
+              "sklearn/mixture/tests/test_bayesian_mixture.py",
+              "sklearn/mixture/tests/test_gaussian_mixture.py"
+            ],
+            "displayedFileCoverage": {
+              "numerator": 3,
+              "denominator": 3,
+              "rate": 1,
+              "interpretation": "structural input-file display coverage; not semantic relevance accuracy"
+            },
+            "reportDirectCodeUrlCount": 0,
+            "projectionDirectCodeUrlCount": 0,
+            "projectionCodeLinks": [],
+            "firstInspectionPath": "sklearn/mixture/base.py",
+            "directLinkComparisonBoundary": "same generated report only; not a legacy-UI or human-time comparison",
+            "execution": {
+              "itemCount": 0,
+              "verifiedRelationCount": 0,
+              "unbackedItemCount": 0,
+              "passingLanguageWithoutPassingEvidenceCount": 0
+            },
+            "sourceLimitations": [
+              "task_source_not_recorded",
+              "pull_request_url_not_available",
+              "exact_head_sha_not_available",
+              "exact_base_sha_not_available"
+            ],
+            "storageRoundTrip": {
+              "valid": true,
+              "displayedPathsPreserved": true,
+              "codeLinksPreserved": true
+            },
+            "portableSummaryContainsCodeLocation": false,
+            "ssr": {
+              "rendered": true,
+              "ciFailureVisible": false,
+              "collectedChangesVisible": false,
+              "purposeWarningVisible": false,
+              "inputLimitationsPreserved": true
+            }
+          },
+          {
+            "id": "sphinx-doc__sphinx-7462",
+            "profile": "as_is",
+            "status": "complete",
+            "validationUsedDeterministicFallback": false,
+            "advisorySourceState": "ambiguous",
+            "validatedSourceState": "ambiguous",
+            "analysisContext": "linked_issue",
+            "generatedRequirementCount": 3,
+            "observationBundleObjectiveCount": 0,
+            "assessmentOverallConclusion": "no_assessable_claims",
+            "assessmentTargetCount": 0,
+            "changeSummaryConditions": [],
+            "mode": "objectives",
+            "sourceKind": "linked_issue",
+            "objectiveCount": 3,
+            "reviewItemCount": 4,
+            "objectiveEvidenceCounts": [
+              {
+                "objectiveId": "req_1",
+                "codeCandidates": 1,
+                "testCandidates": 2,
+                "executionCandidates": 0
+              },
+              {
+                "objectiveId": "req_2",
+                "codeCandidates": 0,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              },
+              {
+                "objectiveId": "req_3",
+                "codeCandidates": 0,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              }
+            ],
+            "inputChangedFileCount": 4,
+            "displayedPaths": [
+              "sphinx/domains/python.py",
+              "sphinx/pycode/ast.py",
+              "tests/test_domain_py.py",
+              "tests/test_pycode_ast.py"
+            ],
+            "displayedFileCoverage": {
+              "numerator": 4,
+              "denominator": 4,
+              "rate": 1,
+              "interpretation": "structural input-file display coverage; not semantic relevance accuracy"
+            },
+            "reportDirectCodeUrlCount": 0,
+            "projectionDirectCodeUrlCount": 0,
+            "projectionCodeLinks": [],
+            "firstInspectionPath": "sphinx/domains/python.py",
+            "directLinkComparisonBoundary": "same generated report only; not a legacy-UI or human-time comparison",
+            "execution": {
+              "itemCount": 0,
+              "verifiedRelationCount": 0,
+              "unbackedItemCount": 0,
+              "passingLanguageWithoutPassingEvidenceCount": 0
+            },
+            "sourceLimitations": [
+              "task_source_not_recorded",
+              "pull_request_url_not_available",
+              "exact_head_sha_not_available",
+              "exact_base_sha_not_available"
+            ],
+            "storageRoundTrip": {
+              "valid": true,
+              "displayedPathsPreserved": false,
+              "codeLinksPreserved": true
+            },
+            "portableSummaryContainsCodeLocation": false,
+            "ssr": {
+              "rendered": true,
+              "ciFailureVisible": false,
+              "collectedChangesVisible": false,
+              "purposeWarningVisible": false,
+              "inputLimitationsPreserved": true
+            }
+          },
+          {
+            "id": "sympy__sympy-19783",
+            "profile": "as_is",
+            "status": "complete",
+            "validationUsedDeterministicFallback": false,
+            "advisorySourceState": "ambiguous",
+            "validatedSourceState": "ambiguous",
+            "analysisContext": "linked_issue",
+            "generatedRequirementCount": 2,
+            "observationBundleObjectiveCount": 0,
+            "assessmentOverallConclusion": "no_assessable_claims",
+            "assessmentTargetCount": 0,
+            "changeSummaryConditions": [],
+            "mode": "objectives",
+            "sourceKind": "linked_issue",
+            "objectiveCount": 2,
+            "reviewItemCount": 4,
+            "objectiveEvidenceCounts": [
+              {
+                "objectiveId": "req_1",
+                "codeCandidates": 2,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              },
+              {
+                "objectiveId": "req_2",
+                "codeCandidates": 0,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              }
+            ],
+            "inputChangedFileCount": 4,
+            "displayedPaths": [
+              "sympy/physics/quantum/dagger.py",
+              "sympy/physics/quantum/operator.py",
+              "sympy/physics/quantum/tests/test_dagger.py",
+              "sympy/physics/quantum/tests/test_operator.py"
+            ],
+            "displayedFileCoverage": {
+              "numerator": 4,
+              "denominator": 4,
+              "rate": 1,
+              "interpretation": "structural input-file display coverage; not semantic relevance accuracy"
+            },
+            "reportDirectCodeUrlCount": 0,
+            "projectionDirectCodeUrlCount": 0,
+            "projectionCodeLinks": [],
+            "firstInspectionPath": "sympy/physics/quantum/dagger.py",
+            "directLinkComparisonBoundary": "same generated report only; not a legacy-UI or human-time comparison",
+            "execution": {
+              "itemCount": 0,
+              "verifiedRelationCount": 0,
+              "unbackedItemCount": 0,
+              "passingLanguageWithoutPassingEvidenceCount": 0
+            },
+            "sourceLimitations": [
+              "task_source_not_recorded",
+              "pull_request_url_not_available",
+              "exact_head_sha_not_available",
+              "exact_base_sha_not_available"
+            ],
+            "storageRoundTrip": {
+              "valid": true,
+              "displayedPathsPreserved": true,
+              "codeLinksPreserved": true
+            },
+            "portableSummaryContainsCodeLocation": false,
+            "ssr": {
+              "rendered": true,
+              "ciFailureVisible": false,
+              "collectedChangesVisible": false,
+              "purposeWarningVisible": false,
+              "inputLimitationsPreserved": true
+            }
+          }
+        ]
+      }
+    },
+    "sourceAdapted": {
+      "summary": {
+        "caseCompletion": {
+          "numerator": 10,
+          "denominator": 10,
+          "rate": 1
+        },
+        "fullDisplayedFileCoverage": {
+          "numerator": 10,
+          "denominator": 10,
+          "rate": 1
+        },
+        "executionInvariantPass": {
+          "numerator": 10,
+          "denominator": 10,
+          "rate": 1
+        },
+        "semanticRelevanceAccuracy": null,
+        "humanTaskCompletionTime": null,
+        "humanLinkArrivalSuccess": null
+      },
+      "evaluation": {
+        "schemaVersion": 1,
+        "profile": "source_adapted",
+        "profileChange": "taskSource set to issue for every case; all other input fields unchanged",
+        "caseCount": 10,
+        "externalCallCount": 0,
+        "externalCallEvidence": "global fetch was replaced by a rejecting guard for the complete corpus and timing run",
+        "performance": {
+          "environment": {
+            "node": "v22.22.0",
+            "platform": "darwin",
+            "arch": "arm64",
+            "cpu": "Apple M1"
+          },
+          "warmupRuns": 1,
+          "measuredRuns": 3,
+          "expectedMeasuredSamples": 30,
+          "failedMeasuredSamples": 0,
+          "scope": {
+            "pipelineMs": "advisory no-provider report generation plus generated-private-full validation",
+            "projectionAndSsrMs": "PR-to-Evidence projection plus full ReportView server rendering; excludes persistence"
+          },
+          "pipelineMs": {
+            "count": 30,
+            "excludedCount": 0,
+            "unit": "ms",
+            "method": "nearest-rank",
+            "p50": 27.640542000001005,
+            "p95": 71.95454199999949
+          },
+          "projectionAndSsrMs": {
+            "count": 30,
+            "excludedCount": 0,
+            "unit": "ms",
+            "method": "nearest-rank",
+            "p50": 15.741791999998895,
+            "p95": 23.201499999999214
+          }
+        },
+        "semanticRelevanceAccuracy": null,
+        "humanTaskCompletionTime": null,
+        "humanLinkArrivalSuccess": null,
+        "notEvaluatedReasons": [
+          "fixture oracle is not PR-to-evidence relevance gold",
+          "fixtures are bounded development excerpts, not a holdout",
+          "no human reviewer timing or link-arrival study was run"
+        ],
+        "cases": [
+          {
+            "id": "matplotlib__matplotlib-14623",
+            "profile": "source_adapted",
+            "status": "complete",
+            "validationUsedDeterministicFallback": false,
+            "advisorySourceState": "linked_issue",
+            "validatedSourceState": "linked_issue",
+            "analysisContext": "linked_issue",
+            "generatedRequirementCount": 1,
+            "observationBundleObjectiveCount": 0,
+            "assessmentOverallConclusion": "no_assessable_claims",
+            "assessmentTargetCount": 0,
+            "changeSummaryConditions": [],
+            "mode": "objectives",
+            "sourceKind": "linked_issue",
+            "objectiveCount": 1,
+            "reviewItemCount": 4,
+            "objectiveEvidenceCounts": [
+              {
+                "objectiveId": "req_1",
+                "codeCandidates": 0,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              }
+            ],
+            "inputChangedFileCount": 4,
+            "displayedPaths": [
+              "lib/matplotlib/axes/_base.py",
+              "lib/matplotlib/ticker.py",
+              "lib/mpl_toolkits/mplot3d/axes3d.py",
+              "lib/matplotlib/tests/test_axes.py"
+            ],
+            "displayedFileCoverage": {
+              "numerator": 4,
+              "denominator": 4,
+              "rate": 1,
+              "interpretation": "structural input-file display coverage; not semantic relevance accuracy"
+            },
+            "reportDirectCodeUrlCount": 0,
+            "projectionDirectCodeUrlCount": 0,
+            "projectionCodeLinks": [],
+            "firstInspectionPath": null,
+            "directLinkComparisonBoundary": "same generated report only; not a legacy-UI or human-time comparison",
+            "execution": {
+              "itemCount": 0,
+              "verifiedRelationCount": 0,
+              "unbackedItemCount": 0,
+              "passingLanguageWithoutPassingEvidenceCount": 0
+            },
+            "sourceLimitations": [
+              "pull_request_url_not_available",
+              "exact_head_sha_not_available",
+              "exact_base_sha_not_available"
+            ],
+            "storageRoundTrip": {
+              "valid": true,
+              "displayedPathsPreserved": true,
+              "codeLinksPreserved": true
+            },
+            "portableSummaryContainsCodeLocation": false,
+            "ssr": {
+              "rendered": true,
+              "ciFailureVisible": false,
+              "collectedChangesVisible": false,
+              "purposeWarningVisible": false,
+              "inputLimitationsPreserved": true
+            }
+          },
+          {
+            "id": "mwaskom__seaborn-3187",
+            "profile": "source_adapted",
+            "status": "complete",
+            "validationUsedDeterministicFallback": false,
+            "advisorySourceState": "linked_issue",
+            "validatedSourceState": "linked_issue",
+            "analysisContext": "linked_issue",
+            "generatedRequirementCount": 8,
+            "observationBundleObjectiveCount": 0,
+            "assessmentOverallConclusion": "no_assessable_claims",
+            "assessmentTargetCount": 0,
+            "changeSummaryConditions": [],
+            "mode": "objectives",
+            "sourceKind": "linked_issue",
+            "objectiveCount": 8,
+            "reviewItemCount": 15,
+            "objectiveEvidenceCounts": [
+              {
+                "objectiveId": "req_1",
+                "codeCandidates": 2,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              },
+              {
+                "objectiveId": "req_2",
+                "codeCandidates": 2,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              },
+              {
+                "objectiveId": "req_3",
+                "codeCandidates": 0,
+                "testCandidates": 2,
+                "executionCandidates": 0
+              },
+              {
+                "objectiveId": "req_4",
+                "codeCandidates": 1,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              },
+              {
+                "objectiveId": "req_5",
+                "codeCandidates": 0,
+                "testCandidates": 2,
+                "executionCandidates": 0
+              },
+              {
+                "objectiveId": "req_6",
+                "codeCandidates": 2,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              },
+              {
+                "objectiveId": "req_7",
+                "codeCandidates": 2,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              },
+              {
+                "objectiveId": "req_8",
+                "codeCandidates": 2,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              }
+            ],
+            "inputChangedFileCount": 4,
+            "displayedPaths": [
+              "seaborn/_core/scales.py",
+              "seaborn/utils.py",
+              "tests/_core/test_plot.py",
+              "tests/test_relational.py"
+            ],
+            "displayedFileCoverage": {
+              "numerator": 4,
+              "denominator": 4,
+              "rate": 1,
+              "interpretation": "structural input-file display coverage; not semantic relevance accuracy"
+            },
+            "reportDirectCodeUrlCount": 0,
+            "projectionDirectCodeUrlCount": 0,
+            "projectionCodeLinks": [],
+            "firstInspectionPath": "seaborn/_core/scales.py",
+            "directLinkComparisonBoundary": "same generated report only; not a legacy-UI or human-time comparison",
+            "execution": {
+              "itemCount": 0,
+              "verifiedRelationCount": 0,
+              "unbackedItemCount": 0,
+              "passingLanguageWithoutPassingEvidenceCount": 0
+            },
+            "sourceLimitations": [
+              "pull_request_url_not_available",
+              "exact_head_sha_not_available",
+              "exact_base_sha_not_available"
+            ],
+            "storageRoundTrip": {
+              "valid": true,
+              "displayedPathsPreserved": true,
+              "codeLinksPreserved": true
+            },
+            "portableSummaryContainsCodeLocation": false,
+            "ssr": {
+              "rendered": true,
+              "ciFailureVisible": false,
+              "collectedChangesVisible": false,
+              "purposeWarningVisible": false,
+              "inputLimitationsPreserved": true
+            }
+          },
+          {
+            "id": "pallets__flask-5014",
+            "profile": "source_adapted",
+            "status": "complete",
+            "validationUsedDeterministicFallback": false,
+            "advisorySourceState": "linked_issue",
+            "validatedSourceState": "linked_issue",
+            "analysisContext": "linked_issue",
+            "generatedRequirementCount": 1,
+            "observationBundleObjectiveCount": 0,
+            "assessmentOverallConclusion": "no_assessable_claims",
+            "assessmentTargetCount": 0,
+            "changeSummaryConditions": [],
+            "mode": "objectives",
+            "sourceKind": "linked_issue",
+            "objectiveCount": 1,
+            "reviewItemCount": 2,
+            "objectiveEvidenceCounts": [
+              {
+                "objectiveId": "req_1",
+                "codeCandidates": 1,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              }
+            ],
+            "inputChangedFileCount": 2,
+            "displayedPaths": [
+              "src/flask/blueprints.py",
+              "tests/test_blueprints.py"
+            ],
+            "displayedFileCoverage": {
+              "numerator": 2,
+              "denominator": 2,
+              "rate": 1,
+              "interpretation": "structural input-file display coverage; not semantic relevance accuracy"
+            },
+            "reportDirectCodeUrlCount": 0,
+            "projectionDirectCodeUrlCount": 0,
+            "projectionCodeLinks": [],
+            "firstInspectionPath": "src/flask/blueprints.py",
+            "directLinkComparisonBoundary": "same generated report only; not a legacy-UI or human-time comparison",
+            "execution": {
+              "itemCount": 0,
+              "verifiedRelationCount": 0,
+              "unbackedItemCount": 0,
+              "passingLanguageWithoutPassingEvidenceCount": 0
+            },
+            "sourceLimitations": [
+              "pull_request_url_not_available",
+              "exact_head_sha_not_available",
+              "exact_base_sha_not_available"
+            ],
+            "storageRoundTrip": {
+              "valid": true,
+              "displayedPathsPreserved": true,
+              "codeLinksPreserved": true
+            },
+            "portableSummaryContainsCodeLocation": false,
+            "ssr": {
+              "rendered": true,
+              "ciFailureVisible": false,
+              "collectedChangesVisible": false,
+              "purposeWarningVisible": false,
+              "inputLimitationsPreserved": true
+            }
+          },
+          {
+            "id": "psf__requests-5414",
+            "profile": "source_adapted",
+            "status": "complete",
+            "validationUsedDeterministicFallback": false,
+            "advisorySourceState": "linked_issue",
+            "validatedSourceState": "linked_issue",
+            "analysisContext": "linked_issue",
+            "generatedRequirementCount": 1,
+            "observationBundleObjectiveCount": 0,
+            "assessmentOverallConclusion": "no_assessable_claims",
+            "assessmentTargetCount": 0,
+            "changeSummaryConditions": [],
+            "mode": "objectives",
+            "sourceKind": "linked_issue",
+            "objectiveCount": 1,
+            "reviewItemCount": 2,
+            "objectiveEvidenceCounts": [
+              {
+                "objectiveId": "req_1",
+                "codeCandidates": 0,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              }
+            ],
+            "inputChangedFileCount": 2,
+            "displayedPaths": [
+              "requests/models.py",
+              "tests/test_requests.py"
+            ],
+            "displayedFileCoverage": {
+              "numerator": 2,
+              "denominator": 2,
+              "rate": 1,
+              "interpretation": "structural input-file display coverage; not semantic relevance accuracy"
+            },
+            "reportDirectCodeUrlCount": 0,
+            "projectionDirectCodeUrlCount": 0,
+            "projectionCodeLinks": [],
+            "firstInspectionPath": null,
+            "directLinkComparisonBoundary": "same generated report only; not a legacy-UI or human-time comparison",
+            "execution": {
+              "itemCount": 0,
+              "verifiedRelationCount": 0,
+              "unbackedItemCount": 0,
+              "passingLanguageWithoutPassingEvidenceCount": 0
+            },
+            "sourceLimitations": [
+              "pull_request_url_not_available",
+              "exact_head_sha_not_available",
+              "exact_base_sha_not_available"
+            ],
+            "storageRoundTrip": {
+              "valid": true,
+              "displayedPathsPreserved": true,
+              "codeLinksPreserved": true
+            },
+            "portableSummaryContainsCodeLocation": false,
+            "ssr": {
+              "rendered": true,
+              "ciFailureVisible": false,
+              "collectedChangesVisible": false,
+              "purposeWarningVisible": false,
+              "inputLimitationsPreserved": true
+            }
+          },
+          {
+            "id": "pydata__xarray-4687",
+            "profile": "source_adapted",
+            "status": "complete",
+            "validationUsedDeterministicFallback": false,
+            "advisorySourceState": "linked_issue",
+            "validatedSourceState": "linked_issue",
+            "analysisContext": "linked_issue",
+            "generatedRequirementCount": 2,
+            "observationBundleObjectiveCount": 0,
+            "assessmentOverallConclusion": "no_assessable_claims",
+            "assessmentTargetCount": 0,
+            "changeSummaryConditions": [],
+            "mode": "objectives",
+            "sourceKind": "linked_issue",
+            "objectiveCount": 2,
+            "reviewItemCount": 3,
+            "objectiveEvidenceCounts": [
+              {
+                "objectiveId": "req_1",
+                "codeCandidates": 0,
+                "testCandidates": 1,
+                "executionCandidates": 0
+              },
+              {
+                "objectiveId": "req_2",
+                "codeCandidates": 0,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              }
+            ],
+            "inputChangedFileCount": 3,
+            "displayedPaths": [
+              "xarray/core/computation.py",
+              "xarray/tests/test_computation.py",
+              "xarray/tests/test_units.py"
+            ],
+            "displayedFileCoverage": {
+              "numerator": 3,
+              "denominator": 3,
+              "rate": 1,
+              "interpretation": "structural input-file display coverage; not semantic relevance accuracy"
+            },
+            "reportDirectCodeUrlCount": 0,
+            "projectionDirectCodeUrlCount": 0,
+            "projectionCodeLinks": [],
+            "firstInspectionPath": "xarray/tests/test_computation.py",
+            "directLinkComparisonBoundary": "same generated report only; not a legacy-UI or human-time comparison",
+            "execution": {
+              "itemCount": 0,
+              "verifiedRelationCount": 0,
+              "unbackedItemCount": 0,
+              "passingLanguageWithoutPassingEvidenceCount": 0
+            },
+            "sourceLimitations": [
+              "pull_request_url_not_available",
+              "exact_head_sha_not_available",
+              "exact_base_sha_not_available"
+            ],
+            "storageRoundTrip": {
+              "valid": true,
+              "displayedPathsPreserved": false,
+              "codeLinksPreserved": true
+            },
+            "portableSummaryContainsCodeLocation": false,
+            "ssr": {
+              "rendered": true,
+              "ciFailureVisible": false,
+              "collectedChangesVisible": false,
+              "purposeWarningVisible": false,
+              "inputLimitationsPreserved": true
+            }
+          },
+          {
+            "id": "pylint-dev__pylint-6386",
+            "profile": "source_adapted",
+            "status": "complete",
+            "validationUsedDeterministicFallback": false,
+            "advisorySourceState": "linked_issue",
+            "validatedSourceState": "linked_issue",
+            "analysisContext": "linked_issue",
+            "generatedRequirementCount": 3,
+            "observationBundleObjectiveCount": 0,
+            "assessmentOverallConclusion": "no_assessable_claims",
+            "assessmentTargetCount": 0,
+            "changeSummaryConditions": [],
+            "mode": "objectives",
+            "sourceKind": "linked_issue",
+            "objectiveCount": 3,
+            "reviewItemCount": 11,
+            "objectiveEvidenceCounts": [
+              {
+                "objectiveId": "req_1",
+                "codeCandidates": 4,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              },
+              {
+                "objectiveId": "req_2",
+                "codeCandidates": 3,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              },
+              {
+                "objectiveId": "req_3",
+                "codeCandidates": 3,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              }
+            ],
+            "inputChangedFileCount": 5,
+            "displayedPaths": [
+              "pylint/config/argument.py",
+              "pylint/config/arguments_manager.py",
+              "pylint/config/utils.py",
+              "pylint/lint/base_options.py",
+              "tests/config/test_config.py"
+            ],
+            "displayedFileCoverage": {
+              "numerator": 5,
+              "denominator": 5,
+              "rate": 1,
+              "interpretation": "structural input-file display coverage; not semantic relevance accuracy"
+            },
+            "reportDirectCodeUrlCount": 0,
+            "projectionDirectCodeUrlCount": 0,
+            "projectionCodeLinks": [],
+            "firstInspectionPath": "pylint/config/argument.py",
+            "directLinkComparisonBoundary": "same generated report only; not a legacy-UI or human-time comparison",
+            "execution": {
+              "itemCount": 0,
+              "verifiedRelationCount": 0,
+              "unbackedItemCount": 0,
+              "passingLanguageWithoutPassingEvidenceCount": 0
+            },
+            "sourceLimitations": [
+              "pull_request_url_not_available",
+              "exact_head_sha_not_available",
+              "exact_base_sha_not_available"
+            ],
+            "storageRoundTrip": {
+              "valid": true,
+              "displayedPathsPreserved": true,
+              "codeLinksPreserved": true
+            },
+            "portableSummaryContainsCodeLocation": false,
+            "ssr": {
+              "rendered": true,
+              "ciFailureVisible": false,
+              "collectedChangesVisible": false,
+              "purposeWarningVisible": false,
+              "inputLimitationsPreserved": true
+            }
+          },
+          {
+            "id": "pytest-dev__pytest-5631",
+            "profile": "source_adapted",
+            "status": "complete",
+            "validationUsedDeterministicFallback": false,
+            "advisorySourceState": "linked_issue",
+            "validatedSourceState": "linked_issue",
+            "analysisContext": "linked_issue",
+            "generatedRequirementCount": 1,
+            "observationBundleObjectiveCount": 0,
+            "assessmentOverallConclusion": "no_assessable_claims",
+            "assessmentTargetCount": 0,
+            "changeSummaryConditions": [],
+            "mode": "objectives",
+            "sourceKind": "linked_issue",
+            "objectiveCount": 1,
+            "reviewItemCount": 2,
+            "objectiveEvidenceCounts": [
+              {
+                "objectiveId": "req_1",
+                "codeCandidates": 1,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              }
+            ],
+            "inputChangedFileCount": 2,
+            "displayedPaths": [
+              "src/_pytest/compat.py",
+              "testing/python/integration.py"
+            ],
+            "displayedFileCoverage": {
+              "numerator": 2,
+              "denominator": 2,
+              "rate": 1,
+              "interpretation": "structural input-file display coverage; not semantic relevance accuracy"
+            },
+            "reportDirectCodeUrlCount": 0,
+            "projectionDirectCodeUrlCount": 0,
+            "projectionCodeLinks": [],
+            "firstInspectionPath": "testing/python/integration.py",
+            "directLinkComparisonBoundary": "same generated report only; not a legacy-UI or human-time comparison",
+            "execution": {
+              "itemCount": 0,
+              "verifiedRelationCount": 0,
+              "unbackedItemCount": 0,
+              "passingLanguageWithoutPassingEvidenceCount": 0
+            },
+            "sourceLimitations": [
+              "pull_request_url_not_available",
+              "exact_head_sha_not_available",
+              "exact_base_sha_not_available"
+            ],
+            "storageRoundTrip": {
+              "valid": true,
+              "displayedPathsPreserved": false,
+              "codeLinksPreserved": true
+            },
+            "portableSummaryContainsCodeLocation": false,
+            "ssr": {
+              "rendered": true,
+              "ciFailureVisible": false,
+              "collectedChangesVisible": false,
+              "purposeWarningVisible": false,
+              "inputLimitationsPreserved": true
+            }
+          },
+          {
+            "id": "scikit-learn__scikit-learn-13142",
+            "profile": "source_adapted",
+            "status": "complete",
+            "validationUsedDeterministicFallback": false,
+            "advisorySourceState": "linked_issue",
+            "validatedSourceState": "linked_issue",
+            "analysisContext": "linked_issue",
+            "generatedRequirementCount": 4,
+            "observationBundleObjectiveCount": 0,
+            "assessmentOverallConclusion": "no_assessable_claims",
+            "assessmentTargetCount": 0,
+            "changeSummaryConditions": [],
+            "mode": "objectives",
+            "sourceKind": "linked_issue",
+            "objectiveCount": 4,
+            "reviewItemCount": 5,
+            "objectiveEvidenceCounts": [
+              {
+                "objectiveId": "req_1",
+                "codeCandidates": 1,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              },
+              {
+                "objectiveId": "req_2",
+                "codeCandidates": 1,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              },
+              {
+                "objectiveId": "req_3",
+                "codeCandidates": 1,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              },
+              {
+                "objectiveId": "req_4",
+                "codeCandidates": 0,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              }
+            ],
+            "inputChangedFileCount": 3,
+            "displayedPaths": [
+              "sklearn/mixture/base.py",
+              "sklearn/mixture/tests/test_bayesian_mixture.py",
+              "sklearn/mixture/tests/test_gaussian_mixture.py"
+            ],
+            "displayedFileCoverage": {
+              "numerator": 3,
+              "denominator": 3,
+              "rate": 1,
+              "interpretation": "structural input-file display coverage; not semantic relevance accuracy"
+            },
+            "reportDirectCodeUrlCount": 0,
+            "projectionDirectCodeUrlCount": 0,
+            "projectionCodeLinks": [],
+            "firstInspectionPath": "sklearn/mixture/base.py",
+            "directLinkComparisonBoundary": "same generated report only; not a legacy-UI or human-time comparison",
+            "execution": {
+              "itemCount": 0,
+              "verifiedRelationCount": 0,
+              "unbackedItemCount": 0,
+              "passingLanguageWithoutPassingEvidenceCount": 0
+            },
+            "sourceLimitations": [
+              "pull_request_url_not_available",
+              "exact_head_sha_not_available",
+              "exact_base_sha_not_available"
+            ],
+            "storageRoundTrip": {
+              "valid": true,
+              "displayedPathsPreserved": true,
+              "codeLinksPreserved": true
+            },
+            "portableSummaryContainsCodeLocation": false,
+            "ssr": {
+              "rendered": true,
+              "ciFailureVisible": false,
+              "collectedChangesVisible": false,
+              "purposeWarningVisible": false,
+              "inputLimitationsPreserved": true
+            }
+          },
+          {
+            "id": "sphinx-doc__sphinx-7462",
+            "profile": "source_adapted",
+            "status": "complete",
+            "validationUsedDeterministicFallback": false,
+            "advisorySourceState": "linked_issue",
+            "validatedSourceState": "linked_issue",
+            "analysisContext": "linked_issue",
+            "generatedRequirementCount": 3,
+            "observationBundleObjectiveCount": 0,
+            "assessmentOverallConclusion": "no_assessable_claims",
+            "assessmentTargetCount": 0,
+            "changeSummaryConditions": [],
+            "mode": "objectives",
+            "sourceKind": "linked_issue",
+            "objectiveCount": 3,
+            "reviewItemCount": 4,
+            "objectiveEvidenceCounts": [
+              {
+                "objectiveId": "req_1",
+                "codeCandidates": 1,
+                "testCandidates": 2,
+                "executionCandidates": 0
+              },
+              {
+                "objectiveId": "req_2",
+                "codeCandidates": 0,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              },
+              {
+                "objectiveId": "req_3",
+                "codeCandidates": 0,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              }
+            ],
+            "inputChangedFileCount": 4,
+            "displayedPaths": [
+              "sphinx/domains/python.py",
+              "sphinx/pycode/ast.py",
+              "tests/test_domain_py.py",
+              "tests/test_pycode_ast.py"
+            ],
+            "displayedFileCoverage": {
+              "numerator": 4,
+              "denominator": 4,
+              "rate": 1,
+              "interpretation": "structural input-file display coverage; not semantic relevance accuracy"
+            },
+            "reportDirectCodeUrlCount": 0,
+            "projectionDirectCodeUrlCount": 0,
+            "projectionCodeLinks": [],
+            "firstInspectionPath": "sphinx/domains/python.py",
+            "directLinkComparisonBoundary": "same generated report only; not a legacy-UI or human-time comparison",
+            "execution": {
+              "itemCount": 0,
+              "verifiedRelationCount": 0,
+              "unbackedItemCount": 0,
+              "passingLanguageWithoutPassingEvidenceCount": 0
+            },
+            "sourceLimitations": [
+              "pull_request_url_not_available",
+              "exact_head_sha_not_available",
+              "exact_base_sha_not_available"
+            ],
+            "storageRoundTrip": {
+              "valid": true,
+              "displayedPathsPreserved": false,
+              "codeLinksPreserved": true
+            },
+            "portableSummaryContainsCodeLocation": false,
+            "ssr": {
+              "rendered": true,
+              "ciFailureVisible": false,
+              "collectedChangesVisible": false,
+              "purposeWarningVisible": false,
+              "inputLimitationsPreserved": true
+            }
+          },
+          {
+            "id": "sympy__sympy-19783",
+            "profile": "source_adapted",
+            "status": "complete",
+            "validationUsedDeterministicFallback": false,
+            "advisorySourceState": "linked_issue",
+            "validatedSourceState": "linked_issue",
+            "analysisContext": "linked_issue",
+            "generatedRequirementCount": 2,
+            "observationBundleObjectiveCount": 0,
+            "assessmentOverallConclusion": "no_assessable_claims",
+            "assessmentTargetCount": 0,
+            "changeSummaryConditions": [],
+            "mode": "objectives",
+            "sourceKind": "linked_issue",
+            "objectiveCount": 2,
+            "reviewItemCount": 4,
+            "objectiveEvidenceCounts": [
+              {
+                "objectiveId": "req_1",
+                "codeCandidates": 2,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              },
+              {
+                "objectiveId": "req_2",
+                "codeCandidates": 0,
+                "testCandidates": 0,
+                "executionCandidates": 0
+              }
+            ],
+            "inputChangedFileCount": 4,
+            "displayedPaths": [
+              "sympy/physics/quantum/dagger.py",
+              "sympy/physics/quantum/operator.py",
+              "sympy/physics/quantum/tests/test_dagger.py",
+              "sympy/physics/quantum/tests/test_operator.py"
+            ],
+            "displayedFileCoverage": {
+              "numerator": 4,
+              "denominator": 4,
+              "rate": 1,
+              "interpretation": "structural input-file display coverage; not semantic relevance accuracy"
+            },
+            "reportDirectCodeUrlCount": 0,
+            "projectionDirectCodeUrlCount": 0,
+            "projectionCodeLinks": [],
+            "firstInspectionPath": "sympy/physics/quantum/dagger.py",
+            "directLinkComparisonBoundary": "same generated report only; not a legacy-UI or human-time comparison",
+            "execution": {
+              "itemCount": 0,
+              "verifiedRelationCount": 0,
+              "unbackedItemCount": 0,
+              "passingLanguageWithoutPassingEvidenceCount": 0
+            },
+            "sourceLimitations": [
+              "pull_request_url_not_available",
+              "exact_head_sha_not_available",
+              "exact_base_sha_not_available"
+            ],
+            "storageRoundTrip": {
+              "valid": true,
+              "displayedPathsPreserved": true,
+              "codeLinksPreserved": true
+            },
+            "portableSummaryContainsCodeLocation": false,
+            "ssr": {
+              "rendered": true,
+              "ciFailureVisible": false,
+              "collectedChangesVisible": false,
+              "purposeWarningVisible": false,
+              "inputLimitationsPreserved": true
+            }
+          }
+        ]
+      }
+    }
+  },
+  "scoring": {
+    "referenceProvenance": "supervisor AI-reviewed provisional; not human gold or holdout",
+    "firstInspection": {
+      "baselineFirstChangedFile": {
+        "hitAt1": {
+          "numerator": 9,
+          "denominator": 10,
+          "rate": 0.9
+        },
+        "precisionWhenPresented": {
+          "numerator": 9,
+          "denominator": 10,
+          "rate": 0.9
+        },
+        "coverage": {
+          "numerator": 10,
+          "denominator": 10,
+          "rate": 1
+        },
+        "missingCount": 0,
+        "perCase": [
+          {
+            "id": "matplotlib__matplotlib-14623",
+            "firstPath": "lib/matplotlib/axes/_base.py",
+            "hitAt1": true,
+            "presented": true,
+            "rankedPathCount": 1,
+            "allowedPaths": [
+              "lib/matplotlib/axes/_base.py",
+              "lib/matplotlib/tests/test_axes.py"
+            ],
+            "rationale": "set_ylim swaps reversed bounds; test_inverted_limits explicitly asserts log-axis reversed limits. Ticker helper and 3D changes are secondary, not the first direct 2D behavior evidence.",
+            "selectionLimitation": "AI-reviewed provisional file-level proxy; secondary omissions are not scored as irrelevance"
+          },
+          {
+            "id": "mwaskom__seaborn-3187",
+            "firstPath": "seaborn/_core/scales.py",
+            "hitAt1": true,
+            "presented": true,
+            "rankedPathCount": 1,
+            "allowedPaths": [
+              "seaborn/_core/scales.py",
+              "seaborn/utils.py",
+              "tests/_core/test_plot.py",
+              "tests/test_relational.py"
+            ],
+            "rationale": "Both formatter paths disable unrepresented offset/scientific formatting; both tests assert large legend values.",
+            "selectionLimitation": "AI-reviewed provisional file-level proxy; secondary omissions are not scored as irrelevance"
+          },
+          {
+            "id": "pallets__flask-5014",
+            "firstPath": "src/flask/blueprints.py",
+            "hitAt1": true,
+            "presented": true,
+            "rankedPathCount": 1,
+            "allowedPaths": [
+              "src/flask/blueprints.py",
+              "tests/test_blueprints.py"
+            ],
+            "rationale": "Constructor adds empty-name ValueError; test supplies an empty name and expects ValueError.",
+            "selectionLimitation": "AI-reviewed provisional file-level proxy; secondary omissions are not scored as irrelevance"
+          },
+          {
+            "id": "psf__requests-5414",
+            "firstPath": "requests/models.py",
+            "hitAt1": true,
+            "presented": true,
+            "rankedPathCount": 1,
+            "allowedPaths": [
+              "requests/models.py",
+              "tests/test_requests.py"
+            ],
+            "rationale": "prepare_url extends invalid-host check to dot prefix; test supplies http://.example.com with InvalidURL.",
+            "selectionLimitation": "AI-reviewed provisional file-level proxy; secondary omissions are not scored as irrelevance"
+          },
+          {
+            "id": "pydata__xarray-4687",
+            "firstPath": "xarray/core/computation.py",
+            "hitAt1": true,
+            "presented": true,
+            "rankedPathCount": 1,
+            "allowedPaths": [
+              "xarray/core/computation.py",
+              "xarray/tests/test_computation.py"
+            ],
+            "rationale": "where adds and forwards keep_attrs; test_where_attrs asserts attributes. test_units excerpt is formatting-only, not direct attributes evidence.",
+            "selectionLimitation": "AI-reviewed provisional file-level proxy; secondary omissions are not scored as irrelevance"
+          },
+          {
+            "id": "pylint-dev__pylint-6386",
+            "firstPath": "pylint/config/argument.py",
+            "hitAt1": false,
+            "presented": true,
+            "rankedPathCount": 1,
+            "allowedPaths": [
+              "pylint/config/utils.py",
+              "tests/config/test_config.py"
+            ],
+            "rationale": "utils registers -v and handles single-hyphen preprocessing; test_short_verbose calls -v without a value. Other excerpts only show generic metavar plumbing, not this behavioral route.",
+            "selectionLimitation": "AI-reviewed provisional file-level proxy; secondary omissions are not scored as irrelevance"
+          },
+          {
+            "id": "pytest-dev__pytest-5631",
+            "firstPath": "src/_pytest/compat.py",
+            "hitAt1": true,
+            "presented": true,
+            "rankedPathCount": 1,
+            "allowedPaths": [
+              "src/_pytest/compat.py",
+              "testing/python/integration.py"
+            ],
+            "rationale": "num_mock_patch_args replaces equality membership with identity; integration test excerpt names a numpy-like sentinel regression, although full test is truncated.",
+            "selectionLimitation": "AI-reviewed provisional file-level proxy; secondary omissions are not scored as irrelevance"
+          },
+          {
+            "id": "scikit-learn__scikit-learn-13142",
+            "firstPath": "sklearn/mixture/base.py",
+            "hitAt1": true,
+            "presented": true,
+            "rankedPathCount": 1,
+            "allowedPaths": [
+              "sklearn/mixture/base.py",
+              "sklearn/mixture/tests/test_gaussian_mixture.py"
+            ],
+            "rationale": "Shared fit_predict moves final E-step; GaussianMixture test sets n_init=5 and compares results. Bayesian-specific test is a secondary extension.",
+            "selectionLimitation": "AI-reviewed provisional file-level proxy; secondary omissions are not scored as irrelevance"
+          },
+          {
+            "id": "sphinx-doc__sphinx-7462",
+            "firstPath": "sphinx/domains/python.py",
+            "hitAt1": true,
+            "presented": true,
+            "rankedPathCount": 1,
+            "allowedPaths": [
+              "sphinx/domains/python.py",
+              "sphinx/pycode/ast.py",
+              "tests/test_domain_py.py",
+              "tests/test_pycode_ast.py"
+            ],
+            "rationale": "Both unparsers handle empty tuples; tests cover Tuple[()] or empty tuple rendering.",
+            "selectionLimitation": "AI-reviewed provisional file-level proxy; secondary omissions are not scored as irrelevance"
+          },
+          {
+            "id": "sympy__sympy-19783",
+            "firstPath": "sympy/physics/quantum/dagger.py",
+            "hitAt1": true,
+            "presented": true,
+            "rankedPathCount": 1,
+            "allowedPaths": [
+              "sympy/physics/quantum/dagger.py",
+              "sympy/physics/quantum/operator.py",
+              "sympy/physics/quantum/tests/test_dagger.py",
+              "sympy/physics/quantum/tests/test_operator.py"
+            ],
+            "rationale": "Dagger multiplication and Operator dispatch handle identity; tests assert Dagger/identity products.",
+            "selectionLimitation": "AI-reviewed provisional file-level proxy; secondary omissions are not scored as irrelevance"
+          }
+        ]
+      },
+      "asIs": {
+        "hitAt1": {
+          "numerator": 7,
+          "denominator": 10,
+          "rate": 0.7
+        },
+        "precisionWhenPresented": {
+          "numerator": 7,
+          "denominator": 8,
+          "rate": 0.875
+        },
+        "coverage": {
+          "numerator": 8,
+          "denominator": 10,
+          "rate": 0.8
+        },
+        "missingCount": 2,
+        "perCase": [
+          {
+            "id": "matplotlib__matplotlib-14623",
+            "firstPath": null,
+            "hitAt1": false,
+            "presented": false,
+            "rankedPathCount": 0,
+            "allowedPaths": [
+              "lib/matplotlib/axes/_base.py",
+              "lib/matplotlib/tests/test_axes.py"
+            ],
+            "rationale": "set_ylim swaps reversed bounds; test_inverted_limits explicitly asserts log-axis reversed limits. Ticker helper and 3D changes are secondary, not the first direct 2D behavior evidence.",
+            "selectionLimitation": "AI-reviewed provisional file-level proxy; secondary omissions are not scored as irrelevance"
+          },
+          {
+            "id": "mwaskom__seaborn-3187",
+            "firstPath": "seaborn/_core/scales.py",
+            "hitAt1": true,
+            "presented": true,
+            "rankedPathCount": 1,
+            "allowedPaths": [
+              "seaborn/_core/scales.py",
+              "seaborn/utils.py",
+              "tests/_core/test_plot.py",
+              "tests/test_relational.py"
+            ],
+            "rationale": "Both formatter paths disable unrepresented offset/scientific formatting; both tests assert large legend values.",
+            "selectionLimitation": "AI-reviewed provisional file-level proxy; secondary omissions are not scored as irrelevance"
+          },
+          {
+            "id": "pallets__flask-5014",
+            "firstPath": "src/flask/blueprints.py",
+            "hitAt1": true,
+            "presented": true,
+            "rankedPathCount": 1,
+            "allowedPaths": [
+              "src/flask/blueprints.py",
+              "tests/test_blueprints.py"
+            ],
+            "rationale": "Constructor adds empty-name ValueError; test supplies an empty name and expects ValueError.",
+            "selectionLimitation": "AI-reviewed provisional file-level proxy; secondary omissions are not scored as irrelevance"
+          },
+          {
+            "id": "psf__requests-5414",
+            "firstPath": null,
+            "hitAt1": false,
+            "presented": false,
+            "rankedPathCount": 0,
+            "allowedPaths": [
+              "requests/models.py",
+              "tests/test_requests.py"
+            ],
+            "rationale": "prepare_url extends invalid-host check to dot prefix; test supplies http://.example.com with InvalidURL.",
+            "selectionLimitation": "AI-reviewed provisional file-level proxy; secondary omissions are not scored as irrelevance"
+          },
+          {
+            "id": "pydata__xarray-4687",
+            "firstPath": "xarray/tests/test_computation.py",
+            "hitAt1": true,
+            "presented": true,
+            "rankedPathCount": 1,
+            "allowedPaths": [
+              "xarray/core/computation.py",
+              "xarray/tests/test_computation.py"
+            ],
+            "rationale": "where adds and forwards keep_attrs; test_where_attrs asserts attributes. test_units excerpt is formatting-only, not direct attributes evidence.",
+            "selectionLimitation": "AI-reviewed provisional file-level proxy; secondary omissions are not scored as irrelevance"
+          },
+          {
+            "id": "pylint-dev__pylint-6386",
+            "firstPath": "pylint/config/argument.py",
+            "hitAt1": false,
+            "presented": true,
+            "rankedPathCount": 1,
+            "allowedPaths": [
+              "pylint/config/utils.py",
+              "tests/config/test_config.py"
+            ],
+            "rationale": "utils registers -v and handles single-hyphen preprocessing; test_short_verbose calls -v without a value. Other excerpts only show generic metavar plumbing, not this behavioral route.",
+            "selectionLimitation": "AI-reviewed provisional file-level proxy; secondary omissions are not scored as irrelevance"
+          },
+          {
+            "id": "pytest-dev__pytest-5631",
+            "firstPath": "testing/python/integration.py",
+            "hitAt1": true,
+            "presented": true,
+            "rankedPathCount": 1,
+            "allowedPaths": [
+              "src/_pytest/compat.py",
+              "testing/python/integration.py"
+            ],
+            "rationale": "num_mock_patch_args replaces equality membership with identity; integration test excerpt names a numpy-like sentinel regression, although full test is truncated.",
+            "selectionLimitation": "AI-reviewed provisional file-level proxy; secondary omissions are not scored as irrelevance"
+          },
+          {
+            "id": "scikit-learn__scikit-learn-13142",
+            "firstPath": "sklearn/mixture/base.py",
+            "hitAt1": true,
+            "presented": true,
+            "rankedPathCount": 1,
+            "allowedPaths": [
+              "sklearn/mixture/base.py",
+              "sklearn/mixture/tests/test_gaussian_mixture.py"
+            ],
+            "rationale": "Shared fit_predict moves final E-step; GaussianMixture test sets n_init=5 and compares results. Bayesian-specific test is a secondary extension.",
+            "selectionLimitation": "AI-reviewed provisional file-level proxy; secondary omissions are not scored as irrelevance"
+          },
+          {
+            "id": "sphinx-doc__sphinx-7462",
+            "firstPath": "sphinx/domains/python.py",
+            "hitAt1": true,
+            "presented": true,
+            "rankedPathCount": 1,
+            "allowedPaths": [
+              "sphinx/domains/python.py",
+              "sphinx/pycode/ast.py",
+              "tests/test_domain_py.py",
+              "tests/test_pycode_ast.py"
+            ],
+            "rationale": "Both unparsers handle empty tuples; tests cover Tuple[()] or empty tuple rendering.",
+            "selectionLimitation": "AI-reviewed provisional file-level proxy; secondary omissions are not scored as irrelevance"
+          },
+          {
+            "id": "sympy__sympy-19783",
+            "firstPath": "sympy/physics/quantum/dagger.py",
+            "hitAt1": true,
+            "presented": true,
+            "rankedPathCount": 1,
+            "allowedPaths": [
+              "sympy/physics/quantum/dagger.py",
+              "sympy/physics/quantum/operator.py",
+              "sympy/physics/quantum/tests/test_dagger.py",
+              "sympy/physics/quantum/tests/test_operator.py"
+            ],
+            "rationale": "Dagger multiplication and Operator dispatch handle identity; tests assert Dagger/identity products.",
+            "selectionLimitation": "AI-reviewed provisional file-level proxy; secondary omissions are not scored as irrelevance"
+          }
+        ]
+      },
+      "sourceAdapted": {
+        "hitAt1": {
+          "numerator": 7,
+          "denominator": 10,
+          "rate": 0.7
+        },
+        "precisionWhenPresented": {
+          "numerator": 7,
+          "denominator": 8,
+          "rate": 0.875
+        },
+        "coverage": {
+          "numerator": 8,
+          "denominator": 10,
+          "rate": 0.8
+        },
+        "missingCount": 2,
+        "perCase": [
+          {
+            "id": "matplotlib__matplotlib-14623",
+            "firstPath": null,
+            "hitAt1": false,
+            "presented": false,
+            "rankedPathCount": 0,
+            "allowedPaths": [
+              "lib/matplotlib/axes/_base.py",
+              "lib/matplotlib/tests/test_axes.py"
+            ],
+            "rationale": "set_ylim swaps reversed bounds; test_inverted_limits explicitly asserts log-axis reversed limits. Ticker helper and 3D changes are secondary, not the first direct 2D behavior evidence.",
+            "selectionLimitation": "AI-reviewed provisional file-level proxy; secondary omissions are not scored as irrelevance"
+          },
+          {
+            "id": "mwaskom__seaborn-3187",
+            "firstPath": "seaborn/_core/scales.py",
+            "hitAt1": true,
+            "presented": true,
+            "rankedPathCount": 1,
+            "allowedPaths": [
+              "seaborn/_core/scales.py",
+              "seaborn/utils.py",
+              "tests/_core/test_plot.py",
+              "tests/test_relational.py"
+            ],
+            "rationale": "Both formatter paths disable unrepresented offset/scientific formatting; both tests assert large legend values.",
+            "selectionLimitation": "AI-reviewed provisional file-level proxy; secondary omissions are not scored as irrelevance"
+          },
+          {
+            "id": "pallets__flask-5014",
+            "firstPath": "src/flask/blueprints.py",
+            "hitAt1": true,
+            "presented": true,
+            "rankedPathCount": 1,
+            "allowedPaths": [
+              "src/flask/blueprints.py",
+              "tests/test_blueprints.py"
+            ],
+            "rationale": "Constructor adds empty-name ValueError; test supplies an empty name and expects ValueError.",
+            "selectionLimitation": "AI-reviewed provisional file-level proxy; secondary omissions are not scored as irrelevance"
+          },
+          {
+            "id": "psf__requests-5414",
+            "firstPath": null,
+            "hitAt1": false,
+            "presented": false,
+            "rankedPathCount": 0,
+            "allowedPaths": [
+              "requests/models.py",
+              "tests/test_requests.py"
+            ],
+            "rationale": "prepare_url extends invalid-host check to dot prefix; test supplies http://.example.com with InvalidURL.",
+            "selectionLimitation": "AI-reviewed provisional file-level proxy; secondary omissions are not scored as irrelevance"
+          },
+          {
+            "id": "pydata__xarray-4687",
+            "firstPath": "xarray/tests/test_computation.py",
+            "hitAt1": true,
+            "presented": true,
+            "rankedPathCount": 1,
+            "allowedPaths": [
+              "xarray/core/computation.py",
+              "xarray/tests/test_computation.py"
+            ],
+            "rationale": "where adds and forwards keep_attrs; test_where_attrs asserts attributes. test_units excerpt is formatting-only, not direct attributes evidence.",
+            "selectionLimitation": "AI-reviewed provisional file-level proxy; secondary omissions are not scored as irrelevance"
+          },
+          {
+            "id": "pylint-dev__pylint-6386",
+            "firstPath": "pylint/config/argument.py",
+            "hitAt1": false,
+            "presented": true,
+            "rankedPathCount": 1,
+            "allowedPaths": [
+              "pylint/config/utils.py",
+              "tests/config/test_config.py"
+            ],
+            "rationale": "utils registers -v and handles single-hyphen preprocessing; test_short_verbose calls -v without a value. Other excerpts only show generic metavar plumbing, not this behavioral route.",
+            "selectionLimitation": "AI-reviewed provisional file-level proxy; secondary omissions are not scored as irrelevance"
+          },
+          {
+            "id": "pytest-dev__pytest-5631",
+            "firstPath": "testing/python/integration.py",
+            "hitAt1": true,
+            "presented": true,
+            "rankedPathCount": 1,
+            "allowedPaths": [
+              "src/_pytest/compat.py",
+              "testing/python/integration.py"
+            ],
+            "rationale": "num_mock_patch_args replaces equality membership with identity; integration test excerpt names a numpy-like sentinel regression, although full test is truncated.",
+            "selectionLimitation": "AI-reviewed provisional file-level proxy; secondary omissions are not scored as irrelevance"
+          },
+          {
+            "id": "scikit-learn__scikit-learn-13142",
+            "firstPath": "sklearn/mixture/base.py",
+            "hitAt1": true,
+            "presented": true,
+            "rankedPathCount": 1,
+            "allowedPaths": [
+              "sklearn/mixture/base.py",
+              "sklearn/mixture/tests/test_gaussian_mixture.py"
+            ],
+            "rationale": "Shared fit_predict moves final E-step; GaussianMixture test sets n_init=5 and compares results. Bayesian-specific test is a secondary extension.",
+            "selectionLimitation": "AI-reviewed provisional file-level proxy; secondary omissions are not scored as irrelevance"
+          },
+          {
+            "id": "sphinx-doc__sphinx-7462",
+            "firstPath": "sphinx/domains/python.py",
+            "hitAt1": true,
+            "presented": true,
+            "rankedPathCount": 1,
+            "allowedPaths": [
+              "sphinx/domains/python.py",
+              "sphinx/pycode/ast.py",
+              "tests/test_domain_py.py",
+              "tests/test_pycode_ast.py"
+            ],
+            "rationale": "Both unparsers handle empty tuples; tests cover Tuple[()] or empty tuple rendering.",
+            "selectionLimitation": "AI-reviewed provisional file-level proxy; secondary omissions are not scored as irrelevance"
+          },
+          {
+            "id": "sympy__sympy-19783",
+            "firstPath": "sympy/physics/quantum/dagger.py",
+            "hitAt1": true,
+            "presented": true,
+            "rankedPathCount": 1,
+            "allowedPaths": [
+              "sympy/physics/quantum/dagger.py",
+              "sympy/physics/quantum/operator.py",
+              "sympy/physics/quantum/tests/test_dagger.py",
+              "sympy/physics/quantum/tests/test_operator.py"
+            ],
+            "rationale": "Dagger multiplication and Operator dispatch handle identity; tests assert Dagger/identity products.",
+            "selectionLimitation": "AI-reviewed provisional file-level proxy; secondary omissions are not scored as irrelevance"
+          }
+        ]
+      }
+    },
+    "displayedSource": {
+      "asIs": {
+        "correctOverAll": {
+          "numerator": 10,
+          "denominator": 10,
+          "rate": 1
+        },
+        "accuracyWhenPresented": {
+          "numerator": 10,
+          "denominator": 10,
+          "rate": 1
+        },
+        "coverage": {
+          "numerator": 10,
+          "denominator": 10,
+          "rate": 1
+        },
+        "unpresentedCount": 0,
+        "perCase": [
+          {
+            "id": "matplotlib__matplotlib-14623",
+            "expectedSourceKind": "linked_issue",
+            "sourceKind": "linked_issue",
+            "presented": true,
+            "correct": true
+          },
+          {
+            "id": "mwaskom__seaborn-3187",
+            "expectedSourceKind": "linked_issue",
+            "sourceKind": "linked_issue",
+            "presented": true,
+            "correct": true
+          },
+          {
+            "id": "pallets__flask-5014",
+            "expectedSourceKind": "linked_issue",
+            "sourceKind": "linked_issue",
+            "presented": true,
+            "correct": true
+          },
+          {
+            "id": "psf__requests-5414",
+            "expectedSourceKind": "linked_issue",
+            "sourceKind": "linked_issue",
+            "presented": true,
+            "correct": true
+          },
+          {
+            "id": "pydata__xarray-4687",
+            "expectedSourceKind": "linked_issue",
+            "sourceKind": "linked_issue",
+            "presented": true,
+            "correct": true
+          },
+          {
+            "id": "pylint-dev__pylint-6386",
+            "expectedSourceKind": "linked_issue",
+            "sourceKind": "linked_issue",
+            "presented": true,
+            "correct": true
+          },
+          {
+            "id": "pytest-dev__pytest-5631",
+            "expectedSourceKind": "linked_issue",
+            "sourceKind": "linked_issue",
+            "presented": true,
+            "correct": true
+          },
+          {
+            "id": "scikit-learn__scikit-learn-13142",
+            "expectedSourceKind": "linked_issue",
+            "sourceKind": "linked_issue",
+            "presented": true,
+            "correct": true
+          },
+          {
+            "id": "sphinx-doc__sphinx-7462",
+            "expectedSourceKind": "linked_issue",
+            "sourceKind": "linked_issue",
+            "presented": true,
+            "correct": true
+          },
+          {
+            "id": "sympy__sympy-19783",
+            "expectedSourceKind": "linked_issue",
+            "sourceKind": "linked_issue",
+            "presented": true,
+            "correct": true
+          }
+        ]
+      },
+      "sourceAdapted": {
+        "correctOverAll": {
+          "numerator": 10,
+          "denominator": 10,
+          "rate": 1
+        },
+        "accuracyWhenPresented": {
+          "numerator": 10,
+          "denominator": 10,
+          "rate": 1
+        },
+        "coverage": {
+          "numerator": 10,
+          "denominator": 10,
+          "rate": 1
+        },
+        "unpresentedCount": 0,
+        "perCase": [
+          {
+            "id": "matplotlib__matplotlib-14623",
+            "expectedSourceKind": "linked_issue",
+            "sourceKind": "linked_issue",
+            "presented": true,
+            "correct": true
+          },
+          {
+            "id": "mwaskom__seaborn-3187",
+            "expectedSourceKind": "linked_issue",
+            "sourceKind": "linked_issue",
+            "presented": true,
+            "correct": true
+          },
+          {
+            "id": "pallets__flask-5014",
+            "expectedSourceKind": "linked_issue",
+            "sourceKind": "linked_issue",
+            "presented": true,
+            "correct": true
+          },
+          {
+            "id": "psf__requests-5414",
+            "expectedSourceKind": "linked_issue",
+            "sourceKind": "linked_issue",
+            "presented": true,
+            "correct": true
+          },
+          {
+            "id": "pydata__xarray-4687",
+            "expectedSourceKind": "linked_issue",
+            "sourceKind": "linked_issue",
+            "presented": true,
+            "correct": true
+          },
+          {
+            "id": "pylint-dev__pylint-6386",
+            "expectedSourceKind": "linked_issue",
+            "sourceKind": "linked_issue",
+            "presented": true,
+            "correct": true
+          },
+          {
+            "id": "pytest-dev__pytest-5631",
+            "expectedSourceKind": "linked_issue",
+            "sourceKind": "linked_issue",
+            "presented": true,
+            "correct": true
+          },
+          {
+            "id": "scikit-learn__scikit-learn-13142",
+            "expectedSourceKind": "linked_issue",
+            "sourceKind": "linked_issue",
+            "presented": true,
+            "correct": true
+          },
+          {
+            "id": "sphinx-doc__sphinx-7462",
+            "expectedSourceKind": "linked_issue",
+            "sourceKind": "linked_issue",
+            "presented": true,
+            "correct": true
+          },
+          {
+            "id": "sympy__sympy-19783",
+            "expectedSourceKind": "linked_issue",
+            "sourceKind": "linked_issue",
+            "presented": true,
+            "correct": true
+          }
+        ]
+      }
+    }
+  }
+}

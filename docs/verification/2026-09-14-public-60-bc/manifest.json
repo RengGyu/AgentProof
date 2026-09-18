@@ -1,0 +1,39 @@
+{
+  "algorithm": "SHA256",
+  "scope": "Exact UTF8 artifact-file bytes; manifest excludes itself; no keys or raw provider response bodies retained.",
+  "verifiedAt": "2026-09-14T02:07:27.125Z",
+  "verification": {
+    "actualRequests": 120,
+    "maxRequests": 120,
+    "retries": 0,
+    "allObservedModels": "gpt-5.6-luna",
+    "allHttpStatuses": 200,
+    "preLiveReviewHashesUnchanged": true,
+    "originalArtifactHashesUnchanged": 15,
+    "independentlyRecomputedRows": 1022,
+    "productSourceFiles": 485,
+    "productSourceFreeze": "007d878504213357845f999792badc886796bbd3c81b3ca3ad67d7f647067469"
+  },
+  "files": {
+    "REPORT.md": "19e267e468bde370aab169dd656ce19d55b1252c562b9088f9f2c096416cc490",
+    "batch-1.json": "be596c70b0af390947400a29455c302d90369ddba60a45a32baf833379869452",
+    "batch-2.json": "76aeda44d36b3e8cc12ff666abdcbbfbefc4a9890100161d5e7eb7a28cd0fece",
+    "batch-3.json": "488d3f8a52a4c0591353f381a45d3de36222dcdabe0f0108b05249e30c42b60f",
+    "batch-4.json": "722c06c4d99124deac0968090e79761ec62b25bd747a1ae6a1d166692e0d0052",
+    "dry-1.json": "a2e7cafeb621d04e00c8e78fe6e2fe92240b817b2a4c587a5d351ddb9c4c6272",
+    "dry-2.json": "48ec78152219f607c0b5b095f4031826b59f7d27ae56e2f56a2962c51dc2bd64",
+    "dry-3.json": "5288c273fa81831dc02a2292bd07f4fc7dc66f75cab3c2d291cdf2d5d556f056",
+    "dry-4.json": "1aebb2b41a41241f1649f358f40d5cd4a03d4cd1b7be20e7f4f2fc5f8cb21a42",
+    "label-review.json": "3f28b6c097237effecd3ec731d333b31791caea12c881784f5d2c178b06043b1",
+    "live-1.json": "d0b85df2634fedc7dcb3ca96429d70a0aeff8e3d978fa0eba43e51e06b474fb3",
+    "live-2.json": "8a028d785018c97a84ca6ce9841e38e68c9f0c36c4c3eb3b68253002e558576e",
+    "live-3.json": "427665452d0ff3c339176ba8d984470b2a386014c9600deffb0c3173dbfc1fd0",
+    "live-4.json": "48239fbdba608fbe297f23456270d3f8ddbca3cf648aa06a1ab61b2fdd22f938",
+    "prepare.mjs": "2f5a68e506125cb21bdf1bb0ea0a5dda3d28a96946c9de8f8c5f9925c669a1ae",
+    "reviewed-corpus.json": "f2c58a4afb8bfdcd0b5fe7e848af0e319b50b275e550ad9f8c77fb7f0d569c7f",
+    "self-check.mjs": "4a3de92e09a1536af3a78a86b67220cca462b337cfe63c57f5e4ca56e024ddfb",
+    "summarize.mjs": "e5e3341c232308e60ed73168335902fd3e02c98f053178fa4b23f5ed5b798335",
+    "summary.json": "4235bb1660c60b679ece158c43a216947b0823c376b86a42d535af19c3793c47",
+    "supervisor-audit.json": "e4f592dbcaee7dae1d8101001834498389d0f6ef6a565e5ae1fa288f4b81f4a7"
+  }
+}

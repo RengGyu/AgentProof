@@ -1,0 +1,61 @@
+{
+  "status": "OFFLINE_PREPARATION_VALID_HUMAN_REVIEW_PENDING",
+  "completedAt": "2026-09-13T16:20:00.880Z",
+  "caseCount": 60,
+  "repositories": 10,
+  "casesPerRepository": 6,
+  "uniqueUrls": 60,
+  "knownExclusionUrls": 69,
+  "knownOverlap": 0,
+  "labels": {
+    "total": 511,
+    "requirement": 85,
+    "non_requirement": 385,
+    "ambiguous": 41
+  },
+  "humanAcceptedLabels": 0,
+  "noPositiveRequirementCases": [
+    "django-django-21900",
+    "django-django-21808",
+    "django-django-21897",
+    "django-django-21787",
+    "django-django-21802",
+    "rust-lang-rust-162532",
+    "rust-lang-rust-162526"
+  ],
+  "privacy": {
+    "quarantined": 0,
+    "replacements": 0,
+    "sourceLimitBytes": 64000,
+    "redactionApplied": false,
+    "validatorPrivacyCheck": "passed"
+  },
+  "coverage": {
+    "allMeaningfulNonWhitespaceCovered": true,
+    "nonWhitespaceUtf16Positions": 95390,
+    "gaps": "Exact whitespace-only gaps recorded per source in integrity-and-coverage.json",
+    "semanticLimit": "Paragraph/list/block units may mix subroles; human boundary review required."
+  },
+  "offline": {
+    "command": "node scripts/run-requirement-source-ablation.mjs --input docs/verification/2026-09-14-public-60/corpus.json --output docs/verification/2026-09-14-public-60/offline-result.json --model gpt-5.6-luna",
+    "exitCode": 0,
+    "testFilesPassed": 1,
+    "testsPassed": 1,
+    "testsSkipped": 1,
+    "caseCount": 60,
+    "actualRequestCount": 0,
+    "liveRequested": false,
+    "corpusHash": "babb22919047c0e9692ea109a7c1aa174adaaa86172f07154e40d2c940cb5455"
+  },
+  "amendment": "Supervisor approved golang/go -> gofiber/fiber only after zero eligible merged candidates. Original frozen protocol and empty frame retained; no label/model result influenced amendment.",
+  "limitations": [
+    "Not human gold; every label remains pending human review.",
+    "Not implementation correctness or evidence that author test/security claims are true.",
+    "Title/body only; no external requirement authority, linked issues, diffs, code, CI, comments.",
+    "Repository-stratified recent-PR frame is not a representative public-PR population sample.",
+    "Future GitHub search results may change; reproducibility uses frozen frame and source hashes.",
+    "No model quality comparison ran. Offline arm metrics are diagnostic packaging artifacts, not live semantic accuracy.",
+    "Future live work requires separate authority and four batches of 15 cases (two arms, maximum30 calls/batch); guard unchanged."
+  ],
+  "changedScope": "Only new docs/verification/2026-09-14-public-60 artifact directory; no commit."
+}

@@ -79,23 +79,19 @@ describe("dashboard report export", () => {
     expect(json.requirements[0]).toMatchObject({ coverage: "met", source_authority: "pr_description" });
   });
 
-  it("renders v2 contract guidance once while preserving a card's local observation gap", () => {
+  it("renders ordinary candidates without contract verdicts while preserving the JSON contract", () => {
     const strictDetail = structuredClone(detail) as DashboardReportDetail & { repositoryFullName: string };
     strictDetail.report = generatedSearchEmptyStateReport();
 
     const markdown = dashboardReportToMarkdown(strictDetail);
     const json = JSON.parse(dashboardReportToJson(strictDetail));
 
-    expect(markdown).toContain("**Policy:** Strict verification contract");
-    expect(markdown).toContain("**Outcome policy:** No approved verification contract; observed evidence does not establish the requirement outcome.");
-    expect(markdown).toContain("Observed evidence: Partially supported");
-    expect(markdown).toContain("Requirement outcome: Unclear");
-    expect(markdown.match(/Approved verification contract is missing\./g)).toHaveLength(1);
-    expect(markdown).toContain("**Contract guidance:** Approved verification contract is missing.");
-    expect(markdown).toContain("Key gap: Execution evidence was collected, but no validated requirement-local test-relation receipt authorizes promotion.");
-    expect(markdown).not.toContain("Key gap: Approved verification contract is missing.");
-    expect(markdown).not.toContain("Key gap: User-facing interaction needs component or browser evidence beyond logic and suite execution.");
-    expect(markdown.indexOf("**Contract guidance:**")).toBeLessThan(markdown.indexOf("Key gap:"));
+    expect(markdown).toContain("PR-to-Evidence Review");
+    expect(markdown).toContain("Candidate link");
+    expect(markdown).toContain("Inspect first");
+    expect(markdown).toContain("Observed evidence");
+    expect(markdown).toContain("src/repositories/RepositorySearch.js");
+    expect(markdown).not.toMatch(/Strict verification contract|Outcome policy|Contract guidance|Requirement outcome/);
     expect(json).toMatchObject({
       verification_policy: "Strict verification contract",
       verification_outcome_note: "No approved verification contract; observed evidence does not establish the requirement outcome."
@@ -148,9 +144,9 @@ describe("dashboard report export", () => {
     const json = JSON.parse(dashboardReportToJson(assessmentDetail));
     const output = `${markdown}\n${JSON.stringify(json)}`;
 
-    expect(markdown).toContain("## Ordinary PR Evidence Assessment");
-    expect(markdown).toContain("Partial observations; objective fulfillment remains unconfirmed");
-    expect(markdown).toContain("Semantic assessment was unavailable.");
+    expect(markdown).toContain("PR-to-Evidence Review");
+    expect(markdown).not.toContain("Ordinary PR Evidence Assessment");
+    expect(markdown).not.toContain("Semantic assessment was unavailable.");
     expect(json.ordinary_pr_assessment).toMatchObject({
       version: 1,
       mode: "ordinary_pr",

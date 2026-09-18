@@ -1,0 +1,81 @@
+{
+  "schema": "agentproof.pydantic-navigation-live.v1",
+  "runId": "18191745-cdfa-437e-b8ed-073132ae3013",
+  "prUrl": "https://github.com/pydantic/pydantic/pull/13819",
+  "base": "7b15a786a755ec4089a34c9bb5f957f8b8ce3690",
+  "head": "299309892717854a738bb385a33e7f655cb62bf1",
+  "model": "gpt-5.6-luna",
+  "startedAt": "2026-09-17T09:03:10.974Z",
+  "finishedAt": "2026-09-17T09:04:43.437Z",
+  "status": "completed",
+  "input": {
+    "titleSha256": "a148e2933b1126dc4cd14e70dbcf487ff27e823a09610f72a37e6b64422a18c7",
+    "descriptionSha256": "47c378257ccfaa6a9c9f6631a91dab05e7ee479606613de84cb03b98d036fa47",
+    "changedPaths": [
+      "pydantic-core/src/definitions.rs",
+      "pydantic-core/src/py_gc.rs",
+      "pydantic-core/src/serializers/type_serializers/function.rs",
+      "pydantic-core/src/serializers/type_serializers/generator.rs",
+      "pydantic-core/src/validators/function.rs",
+      "pydantic-core/src/validators/generator.rs",
+      "pydantic-core/tests/test_garbage_collection.py"
+    ],
+    "headSha": "299309892717854a738bb385a33e7f655cb62bf1",
+    "baseSha": "7b15a786a755ec4089a34c9bb5f957f8b8ce3690"
+  },
+  "calls": {
+    "attempted": 3,
+    "observedUsage": [
+      {
+        "callId": "18191745-cdfa-437e-b8ed-073132ae3013:1",
+        "stage": "intent",
+        "model": "gpt-5.6-luna",
+        "inputTokens": 926,
+        "outputTokens": 514,
+        "latencyMs": 10547
+      },
+      {
+        "callId": "18191745-cdfa-437e-b8ed-073132ae3013:2",
+        "stage": "ranking",
+        "model": "gpt-5.6-luna",
+        "inputTokens": 3802,
+        "outputTokens": 2198,
+        "latencyMs": 31355
+      },
+      {
+        "callId": "18191745-cdfa-437e-b8ed-073132ae3013:3",
+        "stage": "ranking",
+        "model": "gpt-5.6-luna",
+        "inputTokens": 16033,
+        "outputTokens": 2426,
+        "latencyMs": 33540
+      }
+    ]
+  },
+  "navigation": {
+    "state": "partial",
+    "rankingStatus": "ready",
+    "coverageStatus": "partial",
+    "goalCount": 5,
+    "artifactCount": 25,
+    "firstInspectionPaths": [
+      "pydantic-core/src/validators/generator.rs",
+      "pydantic-core/src/serializers/type_serializers/function.rs",
+      "pydantic-core/src/serializers/type_serializers/function.rs",
+      "pydantic-core/src/definitions.rs",
+      "pydantic-core/tests/test_garbage_collection.py"
+    ],
+    "failures": [],
+    "limitations": [
+      "artifact_context_truncated"
+    ]
+  },
+  "cards": {
+    "mode": "objectives",
+    "count": 5
+  },
+  "boundary": {
+    "valid": true,
+    "reasonCodes": []
+  }
+}

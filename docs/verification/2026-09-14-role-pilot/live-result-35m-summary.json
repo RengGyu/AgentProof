@@ -1,0 +1,181 @@
+{
+  "schemaVersion": "requirement_role_live_comparison_summary.v1",
+  "sourceFreeze": {
+    "manifestSha256": "dabb5aaf3ed2eb71bd02b88b61df7425bd0d4c768347368ecfdda07a114bfa7c",
+    "sampleCorpusSha256": "76181cdfe050662c5ed6ce29db3b56e212bed5081f80c2e40fbe3c77ad61a463",
+    "caseCount": 4,
+    "distinctRepositories": 4,
+    "labelsInRunInput": 0
+  },
+  "artifacts": {
+    "result": {
+      "path": "live-result-35m.json",
+      "sha256": "477925d3690b427ad85fcb1f4a0d685f405ba2454da6eeaf537769170d9167ef"
+    },
+    "callJournal": {
+      "path": "live-result-35m.json.calls.jsonl",
+      "sha256": "3c7c418faf0eadcf83a12b9c43f40c737f41f07895f4441f01227d387a9a979d"
+    }
+  },
+  "execution": {
+    "configuredModel": "gpt-5.6-luna",
+    "observedModels": [
+      "gpt-5.6-luna"
+    ],
+    "startedAt": "2026-09-14T08:17:11.962Z",
+    "finishedAt": "2026-09-14T08:19:20.621Z",
+    "actualCallCount": 24,
+    "maximumCallCount": 30,
+    "journalStarted": 24,
+    "journalFinished": 24,
+    "providerSucceeded": 24,
+    "providerFailed": 0,
+    "validatedCalls": 24,
+    "invalidCalls": 0,
+    "unavailableCalls": 0,
+    "unexecutedCalls": 0,
+    "plannedInitialCalls": 24,
+    "plannedExpansionCalls": 0,
+    "requestTimeoutMs": 60000,
+    "maximumObservedCallLatencyMs": 14229,
+    "totalCallLatencyMs": 128303,
+    "inputTokens": 39908,
+    "outputTokens": 9783,
+    "totalTokens": 49691,
+    "totalTimeoutMs": 2100000,
+    "timedOut": false,
+    "retries": 0,
+    "completion": "complete"
+  },
+  "versions": {
+    "V0": {
+      "calls": 4,
+      "units": 34,
+      "selected": 23,
+      "decided": 23,
+      "abstained": 0,
+      "unreviewed": 11,
+      "totalTokens": 6082,
+      "latencyMs": 22553,
+      "machineLabelAgreement": {
+        "numerator": 1475,
+        "denominator": 2377,
+        "rate": 0.6205300799326883,
+        "requirementPreservationRate": 1,
+        "nonRequirementMisclassificationRate": 0
+      }
+    },
+    "V1": {
+      "calls": 5,
+      "units": 34,
+      "selected": 29,
+      "decided": 29,
+      "abstained": 0,
+      "unreviewed": 5,
+      "totalTokens": 7945,
+      "latencyMs": 27531,
+      "machineLabelAgreement": {
+        "numerator": 1179,
+        "denominator": 2377,
+        "rate": 0.4960033655868742,
+        "requirementPreservationRate": 1,
+        "nonRequirementMisclassificationRate": 0.2973997833152763
+      }
+    },
+    "V2": {
+      "calls": 5,
+      "units": 34,
+      "selected": 29,
+      "decided": 28,
+      "abstained": 1,
+      "unreviewed": 5,
+      "totalTokens": 7543,
+      "latencyMs": 23650,
+      "machineLabelAgreement": {
+        "numerator": 1397,
+        "denominator": 2377,
+        "rate": 0.5877156079091291,
+        "requirementPreservationRate": 1,
+        "nonRequirementMisclassificationRate": 0.27518959913326113
+      }
+    },
+    "V3": {
+      "calls": 5,
+      "units": 34,
+      "selected": 29,
+      "decided": 29,
+      "abstained": 0,
+      "unreviewed": 5,
+      "totalTokens": 14325,
+      "latencyMs": 33101,
+      "machineLabelAgreement": {
+        "numerator": 976,
+        "denominator": 2377,
+        "rate": 0.4106015986537653,
+        "requirementPreservationRate": 1,
+        "nonRequirementMisclassificationRate": 0.40736728060671723
+      }
+    },
+    "V4": {
+      "calls": 5,
+      "units": 34,
+      "selected": 29,
+      "decided": 29,
+      "abstained": 0,
+      "unreviewed": 5,
+      "totalTokens": 13796,
+      "latencyMs": 21468,
+      "machineLabelAgreement": {
+        "numerator": 1085,
+        "denominator": 2377,
+        "rate": 0.45645771981489275,
+        "requirementPreservationRate": 1,
+        "nonRequirementMisclassificationRate": 0.34832069339111593
+      }
+    }
+  },
+  "pairedChanges": {
+    "V0_to_V1": {
+      "units": 34,
+      "selectionChanged": 6,
+      "statusChanged": 6,
+      "semanticRoleChanged": 13
+    },
+    "V1_to_V2": {
+      "units": 34,
+      "selectionChanged": 0,
+      "statusChanged": 1,
+      "semanticRoleChanged": 8
+    },
+    "V2_to_V3": {
+      "units": 34,
+      "selectionChanged": 0,
+      "statusChanged": 1,
+      "semanticRoleChanged": 6
+    },
+    "V3_to_V4": {
+      "units": 34,
+      "selectionChanged": 0,
+      "statusChanged": 0,
+      "semanticRoleChanged": 1
+    }
+  },
+  "evaluationBoundary": {
+    "labelProvenance": "pre-existing machine-proposed labels frozen before evaluated outputs; not human gold",
+    "labelCount": 27,
+    "nonWhitespaceUtf16Characters": 2377,
+    "labelTextMismatches": 0,
+    "registryBindingErrors": 0,
+    "unreviewedCountsAsDisagreement": true,
+    "selectionCoverageDiffersBetweenV0AndV1ToV4": true,
+    "humanAccuracyClaim": false,
+    "superiorityOrAdoptionClaim": false
+  },
+  "observedComparison": {
+    "highestMachineLabelAgreement": "V0",
+    "nextHighestMachineLabelAgreement": "V2",
+    "allVersionsPreservedMachineLabeledRequirementCharacters": true,
+    "lowestNonRequirementMisclassification": "V0",
+    "interpretation": "This is one run over four fixed public PRs. Machine-label agreement is descriptive evidence only; differing selection coverage and lack of independent human labels prevent a generalization, superiority, or adoption conclusion."
+  }
+}

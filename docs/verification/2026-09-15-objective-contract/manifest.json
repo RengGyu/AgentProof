@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "requirement_role_objective_manifest.v1",
+  "source": {
+    "path": "docs/verification/2026-09-14-role-pilot/sample-corpus.json",
+    "sha256": "76181cdfe050662c5ed6ce29db3b56e212bed5081f80c2e40fbe3c77ad61a463",
+    "cases": 4,
+    "registryUnits": 34,
+    "v0SelectedUnits": 23
+  },
+  "artifacts": {
+    "offlineComparison": {
+      "path": "offline-comparison.json",
+      "sha256": "0cd4db569c768c1f00e3a7917efb7c373f062f5843d80f1b7c8dc47389e8ff2d"
+    },
+    "reviewTemplate": {
+      "path": "review-template.json",
+      "sha256": "145f2ab0b6e85b333bafa9c845c2601077c15008ced2991e2e4c05b1e6bfd072"
+    }
+  },
+  "contract": {
+    "contractHash": "4a35ffcd44a49aae0566ec882e2af5ca43d5854244da0bdbb95be686404ffac7",
+    "reviewTemplateHash": "fad05aacc6849ecace2163cce79f65869ef8999c7d74a509e2ea997a77eb8e30",
+    "annotatorSlots": 2,
+    "allJudgmentsEmpty": true
+  },
+  "execution": {
+    "offline": true,
+    "plannedCallsPerArm": 4,
+    "actualCalls": 0,
+    "maximumCalls": 30,
+    "retries": 0,
+    "rawSourcePersisted": false,
+    "rawProviderOutputPersisted": false
+  },
+  "evaluation": {
+    "status": "not_evaluated",
+    "reason": "adjudicated_labels_not_supplied",
+    "denominator": 0,
+    "labelProvenanceHash": null,
+    "labelSetHash": null
+  },
+  "integrity": {
+    "reviewTemplateMatchesEmbeddedCopy": true,
+    "legacyV0RegistryAndSelectionMatchFrozenLiveResult": true,
+    "frozenPilotArtifactsMatchRecordedHashes": true
+  }
+}

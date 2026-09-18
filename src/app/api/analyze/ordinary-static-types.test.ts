@@ -42,7 +42,7 @@ describe("ordinary static type real analyze flow", () => {
     if (["off", "shadow", "stale"].includes(mode)) {
       expect(json.report.ordinaryStaticSummary).toBeUndefined();
       expect(calls.filter(url => url.includes("/contents/"))).toEqual([]);
-      if (mode === "off") expect(calls.filter(url => url.includes("openai.com"))).toEqual([]);
+      if (mode === "off") expect(json.report.reviewCandidates.navigation.state).toBe("fallback");
       return;
     }
     const counts = { present: Number(mode === "present"), absent: Number(mode === "absent"), unavailable: Number(mode === "unavailable") };

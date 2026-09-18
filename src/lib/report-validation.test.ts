@@ -338,6 +338,7 @@ describe("validateVerificationReport", () => {
 
     const invalid = structuredClone(absent);
     invalid.verificationContract.state = "invalid";
+    delete invalid.reviewCandidates; // Ordinary review metadata is absent for invalid contracts.
     invalid.verificationContract.gaps = [{
       kind: "verification_contract_invalid",
       message: "The supplied verification contract was invalid."

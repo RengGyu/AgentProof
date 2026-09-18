@@ -1,0 +1,22 @@
+{
+  "algorithm": "SHA256",
+  "scope": "Exact UTF8 artifact-file bytes; manifest excludes itself.",
+  "frozenAt": "2026-09-13T16:21:17.243Z",
+  "files": {
+    "README.md": "b1b4ea17b7a4154ac5e4efbc4f111a6611b676818e6025858cee512355ac4bfe",
+    "REVIEW.md": "95407223345abdb676fc90805ed36d609954f54f60502da91298cc01300d7ee7",
+    "annotation-decisions.json": "2d63c08cc1f0a2605e4a12483d4937874fdfe039372acbe70d4f13497fbf2ded",
+    "candidate-frames.json": "92475e29d1120f89cda921ed0d2b961504b40ea0430143efb56f8cd25840100f",
+    "corpus.json": "9e2c7eb7cd679f44d4ede3b316fc98890d2d6cd18ad667ae0464b26c8865b78f",
+    "integrity-and-coverage.json": "1ad6b3167bfbae5de52141ab6da80908c882564b9c3abd0d7dc07ca591e35dc4",
+    "offline-result.json": "26563b8742342fa3dda2ee6f67ba64b18a3c0dd2a3d3f99a691865d95d3e7120",
+    "protocol-amendment.json": "a8629be118cbe1eefc48a0b130c4dde2769b70b35c1ec50dab22ea3ea568cca9",
+    "protocol.json": "f9eb17895f5d74bd7085c6a47b32b32dd1167e7b5c6419fb3086f64bbd741f16",
+    "replacement-frame.json": "cbbf4cd55d08cb54f3dd7a37a8edbbf65d3ff033fe398a73b79ec42624587e08",
+    "review-pack.json": "f92f50afad08c0ec2bc5e2901458d40ff83992d11330c6ee3b284322fc9c6c0b",
+    "selection-ledger.json": "3b47114107988aea625738bef71be1e60fa1b795779fc80bc696092c4aa2828e",
+    "sources.json": "b96e21b48261ce9ec7a81520259cc1e74f799801153fb62bc99ab2c3163ae918",
+    "status.json": "1c4cb949da0525240c17dda60a3633d4260af9a2de5e7be3972eb4f5aed08d90",
+    "validation-receipt.json": "adb5de48fdbced6ed96fc98e55ae6df6e8ec946bdab01abc0575f7d58cd4436a"
+  }
+}

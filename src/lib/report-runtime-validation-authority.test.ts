@@ -18,6 +18,7 @@ describe("inbound untrusted v2 authority", () => {
       report
     })).toEqual({
       valid: false,
+      reasonCodes: ["inbound_authority_rejected"],
       errors: ["An inbound untrusted full report cannot carry active v2 contract authority."]
     });
   });
@@ -33,6 +34,7 @@ describe("inbound untrusted v2 authority", () => {
       report
     })).toEqual({
       valid: false,
+      reasonCodes: ["inbound_authority_rejected"],
       errors: ["An inbound untrusted full report cannot carry active v2 contract authority."]
     });
   });

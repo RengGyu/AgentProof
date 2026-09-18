@@ -1,0 +1,1075 @@
+{
+  "schemaVersion": "requirement_source_ablation.v1",
+  "labelProvenance": "Astra/high supervisor reviewed all 60 public PR title/body cases and all 511 original source labels on 2026-09-14 before this comparison's B/C responses were generated. Original UTF-16 source spans, texts, order and boundaries are unchanged; nine classifications corrected with explicit reasons. Machine-reviewed evaluation annotations, NOT human-verified gold. Concrete PR-title objectives are requirements regardless of tense or slang when context resolves intent. Retrospective implementation accounts with unclear normative intent remain ambiguous; historical context, examples, upstream quotations, process/templates and result claims are non-requirements. Coarse paragraph/list/table units remain a measurement limitation.",
+  "cases": [
+    {
+      "id": "astral-sh-ruff-28443",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/astral-sh/ruff/pull/28443",
+        "title": "Expose hidden lexer token metadata accessors",
+        "description": "## Summary\n\nAdd `#[doc(hidden)]` to `lex` and make `Lexer::current_flags` and `Lexer::current_range` public with the same attribute.\n\nObligatory warning. This APIs are not part of Ruff's public API. They may change without notice or even be removed without a replacement. \n\nCloses https://github.com/astral-sh/ruff/issues/28415\n\n## Test Plan\n\nTesting: Parser crate tests and repository hooks passed; an external caller compiled and generated documentation omits the hidden items.\n",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "20858510d27fd44d1c2b6657ac916b2729ba1bd5",
+        "baseSha": "55df129251a16c54883ea623fc833c87b9f2cbb9",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 44,
+          "text": "Expose hidden lexer token metadata accessors",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 10,
+          "text": "## Summary",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 12,
+          "end": 132,
+          "text": "Add `#[doc(hidden)]` to `lex` and make `Lexer::current_flags` and `Lexer::current_range` public with the same attribute.",
+          "label": "requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 134,
+          "end": 271,
+          "text": "Obligatory warning. This APIs are not part of Ruff's public API. They may change without notice or even be removed without a replacement.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 274,
+          "end": 327,
+          "text": "Closes https://github.com/astral-sh/ruff/issues/28415",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-6",
+          "sourceKind": "pr_body",
+          "start": 329,
+          "end": 341,
+          "text": "## Test Plan",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-7",
+          "sourceKind": "pr_body",
+          "start": 343,
+          "end": 479,
+          "text": "Testing: Parser crate tests and repository hooks passed; an external caller compiled and generated documentation omits the hidden items.",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "astral-sh-ruff-28412",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/astral-sh/ruff/pull/28412",
+        "title": "[ty] Avoid excess capacity in multi-binding tables",
+        "description": "## Summary\n\n`MultiBindingsByUse` currently builds and sorts a temporary `Vec`, then allocates again when collecting into a `ThinVec`. For tables with one to three entries, that final collection also retains four slots.\n\nWe now build the `ThinVec` directly with capacity reserved to the map's length and sort it in place, removing the intermediate allocation and excess capacity.\n",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "79dc11c304076f3caed8b8b7591a5dc1c314b4fa",
+        "baseSha": "b7122efb9e2d4e1ff80dcf64f92751dc5d4924ef",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 50,
+          "text": "[ty] Avoid excess capacity in multi-binding tables",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 10,
+          "text": "## Summary",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 12,
+          "end": 218,
+          "text": "`MultiBindingsByUse` currently builds and sorts a temporary `Vec`, then allocates again when collecting into a `ThinVec`. For tables with one to three entries, that final collection also retains four slots.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 220,
+          "end": 378,
+          "text": "We now build the `ThinVec` directly with capacity reserved to the map's length and sort it in place, removing the intermediate allocation and excess capacity.",
+          "label": "ambiguous"
+        }
+      ]
+    },
+    {
+      "id": "astral-sh-ruff-28460",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/astral-sh/ruff/pull/28460",
+        "title": "[ty] Preserve wrapped functions in precise `functools.partial` relations",
+        "description": "## Summary\n\nA union of `partial(boolean)` and `partial(integer)` must retain both partials. Their reduced call signatures are related because `bool` is a subtype of `int`, but `.func` exposes two different wrapped functions. Comparing only the reduced signatures can drop the boolean-returning partial and incorrectly reveal an identity comparison as `Literal[False]`.\n\n```py\nfrom functools import partial\n\ndef integer() -> int:\n    return 1\n\ndef boolean() -> bool:\n    return True\n\nint_partial = partial(integer)\nbool_partial = partial(boolean)\n\ndef choose(flag: bool) -> None:\n    selected = bool_partial if flag else int_partial\n    reveal_type(selected.func)  # (def boolean() -> bool) | (def integer() -> int)\n    reveal_type(selected is bool_partial)  # bool\n```\n\nCheck the wrapped function type as well as the reduced call signature when relating precise partials. The regression example covers the preserved union, `.func`, and identity comparison.\n\nThis addresses https://github.com/astral-sh/ruff/pull/28409#discussion_r3968505853\n",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "9a32f897974da24a2d4ba0155e1e03fe98752cb2",
+        "baseSha": "cb5c69f50b13ac054302f1f84347d8edb2f6f861",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 72,
+          "text": "[ty] Preserve wrapped functions in precise `functools.partial` relations",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 10,
+          "text": "## Summary",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 12,
+          "end": 91,
+          "text": "A union of `partial(boolean)` and `partial(integer)` must retain both partials.",
+          "label": "requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 92,
+          "end": 368,
+          "text": "Their reduced call signatures are related because `bool` is a subtype of `int`, but `.func` exposes two different wrapped functions. Comparing only the reduced signatures can drop the boolean-returning partial and incorrectly reveal an identity comparison as `Literal[False]`.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 370,
+          "end": 768,
+          "text": "```py\nfrom functools import partial\n\ndef integer() -> int:\n    return 1\n\ndef boolean() -> bool:\n    return True\n\nint_partial = partial(integer)\nbool_partial = partial(boolean)\n\ndef choose(flag: bool) -> None:\n    selected = bool_partial if flag else int_partial\n    reveal_type(selected.func)  # (def boolean() -> bool) | (def integer() -> int)\n    reveal_type(selected is bool_partial)  # bool\n```",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-6",
+          "sourceKind": "pr_body",
+          "start": 770,
+          "end": 871,
+          "text": "Check the wrapped function type as well as the reduced call signature when relating precise partials.",
+          "label": "requirement"
+        },
+        {
+          "id": "label-7",
+          "sourceKind": "pr_body",
+          "start": 872,
+          "end": 956,
+          "text": "The regression example covers the preserved union, `.func`, and identity comparison.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-8",
+          "sourceKind": "pr_body",
+          "start": 958,
+          "end": 1040,
+          "text": "This addresses https://github.com/astral-sh/ruff/pull/28409#discussion_r3968505853",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "astral-sh-ruff-28451",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/astral-sh/ruff/pull/28451",
+        "title": "[ty] Fix `--force-exclude` for directories with an excluded ancestor",
+        "description": "## Summary\n\nWhen `--force-exclude` is used with a directory inside an excluded ancestor, ty still checks the directory's files. Check its ancestors before walking it, consistent with how explicitly passed files are handled.\n\nRelated to https://github.com/astral-sh/uv/issues/21551\n\n## Test Plan\n\nAdded CLI test\n",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "a18d22abb6c8ff6614e16d72dc4c83661211d429",
+        "baseSha": "5d805dce45cb1d1f62bca58a3b2914607ad15939",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 68,
+          "text": "[ty] Fix `--force-exclude` for directories with an excluded ancestor",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 10,
+          "text": "## Summary",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 12,
+          "end": 127,
+          "text": "When `--force-exclude` is used with a directory inside an excluded ancestor, ty still checks the directory's files.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 128,
+          "end": 223,
+          "text": "Check its ancestors before walking it, consistent with how explicitly passed files are handled.",
+          "label": "requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 225,
+          "end": 280,
+          "text": "Related to https://github.com/astral-sh/uv/issues/21551",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-6",
+          "sourceKind": "pr_body",
+          "start": 282,
+          "end": 294,
+          "text": "## Test Plan",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-7",
+          "sourceKind": "pr_body",
+          "start": 296,
+          "end": 310,
+          "text": "Added CLI test",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "astral-sh-ruff-28433",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/astral-sh/ruff/pull/28433",
+        "title": "Update Rust crate clap to v4.6.6",
+        "description": "This PR contains the following updates:\n\n| Package | Type | Update | Change |\n|---|---|---|---|\n| [clap](https://redirect.github.com/clap-rs/clap) | workspace.dependencies | patch | `4.6.5` → `4.6.6` |\n\n---\n\n### Release Notes\n\n<details>\n<summary>clap-rs/clap (clap)</summary>\n\n### [`v4.6.6`](https://redirect.github.com/clap-rs/clap/blob/HEAD/CHANGELOG.md#466---2026-08-06)\n\n[Compare Source](https://redirect.github.com/clap-rs/clap/compare/v4.6.5...v4.6.6)\n\n##### Features\n\n- Add `Command::get_overridden_usage`\n\n</details>\n\n---\n\n### Configuration\n\n📅 **Schedule**: (UTC)\n\n- Branch creation\n  - \"before 4am on Wednesday\"\n- Automerge\n  - At any time (no schedule defined)\n\n🚦 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.\n\n♻ **Rebasing**: Whenever PR becomes conflicted, or you tick the rebase/retry checkbox.\n\n🔕 **Ignore**: Close this PR and you won't be reminded about this update again.\n\n---\n\n - [ ] <!-- rebase-check -->If you want to rebase/retry this PR, check this box\n\n---\n\nThis PR was generated by [Mend Renovate](https://mend.io/renovate/). View the [repository job log](https://developer.mend.io/github/astral-sh/ruff).\n<!--renovate-debug:eyJjcmVhdGVkSW5WZXIiOiI0NC42OS4xIiwidXBkYXRlZEluVmVyIjoiNDQuNjkuMSIsInRhcmdldEJyYW5jaCI6Im1haW4iLCJsYWJlbHMiOlsiaW50ZXJuYWwiXX0=-->\n",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "f66a05faed2d5ae7243d471c38b9e17d4a685279",
+        "baseSha": "ffeadbdcb48860c61e5daaf4477d6d53de98b483",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 32,
+          "text": "Update Rust crate clap to v4.6.6",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 39,
+          "text": "This PR contains the following updates:",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 41,
+          "end": 201,
+          "text": "| Package | Type | Update | Change |\n|---|---|---|---|\n| [clap](https://redirect.github.com/clap-rs/clap) | workspace.dependencies | patch | `4.6.5` → `4.6.6` |",
+          "label": "requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 203,
+          "end": 206,
+          "text": "---",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 208,
+          "end": 225,
+          "text": "### Release Notes",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-6",
+          "sourceKind": "pr_body",
+          "start": 227,
+          "end": 524,
+          "text": "<details>\n<summary>clap-rs/clap (clap)</summary>\n\n### [`v4.6.6`](https://redirect.github.com/clap-rs/clap/blob/HEAD/CHANGELOG.md#466---2026-08-06)\n\n[Compare Source](https://redirect.github.com/clap-rs/clap/compare/v4.6.5...v4.6.6)\n\n##### Features\n\n- Add `Command::get_overridden_usage`\n\n</details>",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-7",
+          "sourceKind": "pr_body",
+          "start": 526,
+          "end": 529,
+          "text": "---",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-8",
+          "sourceKind": "pr_body",
+          "start": 531,
+          "end": 548,
+          "text": "### Configuration",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-9",
+          "sourceKind": "pr_body",
+          "start": 550,
+          "end": 572,
+          "text": "📅 **Schedule**: (UTC)",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-10",
+          "sourceKind": "pr_body",
+          "start": 574,
+          "end": 671,
+          "text": "- Branch creation\n  - \"before 4am on Wednesday\"\n- Automerge\n  - At any time (no schedule defined)",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-11",
+          "sourceKind": "pr_body",
+          "start": 673,
+          "end": 761,
+          "text": "🚦 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-12",
+          "sourceKind": "pr_body",
+          "start": 763,
+          "end": 849,
+          "text": "♻ **Rebasing**: Whenever PR becomes conflicted, or you tick the rebase/retry checkbox.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-13",
+          "sourceKind": "pr_body",
+          "start": 851,
+          "end": 930,
+          "text": "🔕 **Ignore**: Close this PR and you won't be reminded about this update again.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-14",
+          "sourceKind": "pr_body",
+          "start": 932,
+          "end": 935,
+          "text": "---",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-15",
+          "sourceKind": "pr_body",
+          "start": 938,
+          "end": 1016,
+          "text": "- [ ] <!-- rebase-check -->If you want to rebase/retry this PR, check this box",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-16",
+          "sourceKind": "pr_body",
+          "start": 1018,
+          "end": 1021,
+          "text": "---",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-17",
+          "sourceKind": "pr_body",
+          "start": 1023,
+          "end": 1171,
+          "text": "This PR was generated by [Mend Renovate](https://mend.io/renovate/). View the [repository job log](https://developer.mend.io/github/astral-sh/ruff).",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-18",
+          "sourceKind": "pr_body",
+          "start": 1172,
+          "end": 1322,
+          "text": "<!--renovate-debug:eyJjcmVhdGVkSW5WZXIiOiI0NC42OS4xIiwidXBkYXRlZEluVmVyIjoiNDQuNjkuMSIsInRhcmdldEJyYW5jaCI6Im1haW4iLCJsYWJlbHMiOlsiaW50ZXJuYWwiXX0=-->",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "astral-sh-ruff-28426",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/astral-sh/ruff/pull/28426",
+        "title": "[ty] Infer tuple variance more precisely",
+        "description": "When inferring the variance of a tuple type, we currently go through the `Tuple::tuple_class_type` helper, which unions all elements of the tuple. This can lead to type variables getting simplified out of the target type, e.g., in the case of `tuple[T, object]`, leading to incorrect variance results. This PR adds a separate path that infers variance from the elements of the tuple directly.",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "e0b1fba6b6d71855e5f31ab6258d176437f6fdc7",
+        "baseSha": "d38008443d04b3d0e7953328362b7d712f682ed8",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 40,
+          "text": "[ty] Infer tuple variance more precisely",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 301,
+          "text": "When inferring the variance of a tuple type, we currently go through the `Tuple::tuple_class_type` helper, which unions all elements of the tuple. This can lead to type variables getting simplified out of the target type, e.g., in the case of `tuple[T, object]`, leading to incorrect variance results.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 302,
+          "end": 392,
+          "text": "This PR adds a separate path that infers variance from the elements of the tuple directly.",
+          "label": "ambiguous"
+        }
+      ]
+    },
+    {
+      "id": "rust-lang-rust-162475",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/rust-lang/rust/pull/162475",
+        "title": "Fix unsoundness bug on next trait solver for dyn const generics placeholder",
+        "description": "<!-- homu-ignore:start -->\n<!--\nPlease read our [LLM policy] before opening a PR,\nIf you used an LLM to generate any part of this PR, including the PR description, please disclose that according to our [guidelines][disclosure guidelines].\nLLM contributions are not banned, but are held to a higher standard of review and correctness.\n\n[LLM policy]: https://forge.rust-lang.org/policies/llm-usage.html\n[disclosure guidelines]: https://rustc-dev-guide.rust-lang.org/llm-guidance/writing.html#disclosure-guidelines\n\nIf this PR is related to an unstable feature or an otherwise tracked effort,\nplease link to the relevant tracking issue here. If you don't know of a related\ntracking issue or there are none, feel free to ignore this.\n\nThis PR will get automatically assigned to a reviewer. In case you would like\na specific user to review your work, you can assign it to them by using\n\n    r? <reviewer name>\n\nWhen merged, your PR's description becomes part of the commit message of a merge commit.\nIf you do not want certain parts of it (such as your LLM disclosure) to show up in the permanent git history,\nsurround them with a pair of HTML comments containing `homu-ignore:start` and `homu-ignore:end`.\n-->\n<!-- homu-ignore:end -->\n\nThis seem to fix the related test, which would compile on next trait solver and should not.\nIt's related to the linked issue where it'd lead to a segmentation fault.\n\nCloses https://github.com/rust-lang/trait-system-refactor-initiative/issues/296\n\nr? @BoxyUwU ",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "265ca102b5ec5755a92bfa50c246df39a4943732",
+        "baseSha": "745de6eca673de5329ec68f2689629a5ca45ab35",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 75,
+          "text": "Fix unsoundness bug on next trait solver for dyn const generics placeholder",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 26,
+          "text": "<!-- homu-ignore:start -->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 27,
+          "end": 1205,
+          "text": "<!--\nPlease read our [LLM policy] before opening a PR,\nIf you used an LLM to generate any part of this PR, including the PR description, please disclose that according to our [guidelines][disclosure guidelines].\nLLM contributions are not banned, but are held to a higher standard of review and correctness.\n\n[LLM policy]: https://forge.rust-lang.org/policies/llm-usage.html\n[disclosure guidelines]: https://rustc-dev-guide.rust-lang.org/llm-guidance/writing.html#disclosure-guidelines\n\nIf this PR is related to an unstable feature or an otherwise tracked effort,\nplease link to the relevant tracking issue here. If you don't know of a related\ntracking issue or there are none, feel free to ignore this.\n\nThis PR will get automatically assigned to a reviewer. In case you would like\na specific user to review your work, you can assign it to them by using\n\n    r? <reviewer name>\n\nWhen merged, your PR's description becomes part of the commit message of a merge commit.\nIf you do not want certain parts of it (such as your LLM disclosure) to show up in the permanent git history,\nsurround them with a pair of HTML comments containing `homu-ignore:start` and `homu-ignore:end`.\n-->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 1206,
+          "end": 1230,
+          "text": "<!-- homu-ignore:end -->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 1232,
+          "end": 1397,
+          "text": "This seem to fix the related test, which would compile on next trait solver and should not.\nIt's related to the linked issue where it'd lead to a segmentation fault.",
+          "label": "ambiguous"
+        },
+        {
+          "id": "label-6",
+          "sourceKind": "pr_body",
+          "start": 1399,
+          "end": 1478,
+          "text": "Closes https://github.com/rust-lang/trait-system-refactor-initiative/issues/296",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-7",
+          "sourceKind": "pr_body",
+          "start": 1480,
+          "end": 1491,
+          "text": "r? @BoxyUwU",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "rust-lang-rust-162509",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/rust-lang/rust/pull/162509",
+        "title": "Avoid suggesting gated generic arguments for Fn-family traits",
+        "description": "Fixes rust-lang/rust#136407",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "4cca91ca2697868cb73610842cd8b7f35430f3c6",
+        "baseSha": "0d31508599a7814a7044e9a7a871e3dc5f037753",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 61,
+          "text": "Avoid suggesting gated generic arguments for Fn-family traits",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 27,
+          "text": "Fixes rust-lang/rust#136407",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "rust-lang-rust-162532",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/rust-lang/rust/pull/162532",
+        "title": "Rollup of 5 pull requests",
+        "description": "Successful merges:\n\n - rust-lang/rust#162470 (Subtree sync for rustc_codegen_cranelift)\n - rust-lang/rust#161734 (miri: enforce proper types for c-variadic arguments in shims)\n - rust-lang/rust#161821 (Add missing option to `-Zself-profile-event` help message as well as information about what the default options are)\n - rust-lang/rust#162453 (Minimize `DiagCtxt` methods)\n - rust-lang/rust#162528 (Add a mention to docs about promoting and demoting platform support)\n\n<!-- homu-ignore:start -->\nr? @ghost\n\n[Create a similar rollup](https://bors.rust-lang.org/queue/rust?prs=162470,161734,161821,162453,162528)\n<!-- homu-ignore:end -->\n\n",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "20886ac8ab513e762d9123d1793114b7d34724b7",
+        "baseSha": "eca445e5ae4a6679cc27d3a09106ce245e13a5a6",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 25,
+          "text": "Rollup of 5 pull requests",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 18,
+          "text": "Successful merges:",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 21,
+          "end": 468,
+          "text": "- rust-lang/rust#162470 (Subtree sync for rustc_codegen_cranelift)\n - rust-lang/rust#161734 (miri: enforce proper types for c-variadic arguments in shims)\n - rust-lang/rust#161821 (Add missing option to `-Zself-profile-event` help message as well as information about what the default options are)\n - rust-lang/rust#162453 (Minimize `DiagCtxt` methods)\n - rust-lang/rust#162528 (Add a mention to docs about promoting and demoting platform support)",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 470,
+          "end": 496,
+          "text": "<!-- homu-ignore:start -->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 497,
+          "end": 506,
+          "text": "r? @ghost",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-6",
+          "sourceKind": "pr_body",
+          "start": 508,
+          "end": 611,
+          "text": "[Create a similar rollup](https://bors.rust-lang.org/queue/rust?prs=162470,161734,161821,162453,162528)",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-7",
+          "sourceKind": "pr_body",
+          "start": 612,
+          "end": 636,
+          "text": "<!-- homu-ignore:end -->",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "rust-lang-rust-162521",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/rust-lang/rust/pull/162521",
+        "title": "Don't explicitly specify `OnDuplicate::Error` as it is the default",
+        "description": "<!-- homu-ignore:start -->\n<!--\nPlease read our [LLM policy] before opening a PR,\nIf you used an LLM to generate any part of this PR, including the PR description, please disclose that according to our [guidelines][disclosure guidelines].\nLLM contributions are not banned, but are held to a higher standard of review and correctness.\n\n[LLM policy]: https://forge.rust-lang.org/policies/llm-usage.html\n[disclosure guidelines]: https://rustc-dev-guide.rust-lang.org/llm-guidance/writing.html#disclosure-guidelines\n\nIf this PR is related to an unstable feature or an otherwise tracked effort,\nplease link to the relevant tracking issue here. If you don't know of a related\ntracking issue or there are none, feel free to ignore this.\n\nThis PR will get automatically assigned to a reviewer. In case you would like\na specific user to review your work, you can assign it to them by using\n\n    r? <reviewer name>\n\nWhen merged, your PR's description becomes part of the commit message of a merge commit.\nIf you do not want certain parts of it (such as your LLM disclosure) to show up in the permanent git history,\nsurround them with a pair of HTML comments containing `homu-ignore:start` and `homu-ignore:end`.\n-->\n<!-- homu-ignore:end -->\n",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "4669d7b07149c449ce12045d11ce819ba2ee8d45",
+        "baseSha": "eca445e5ae4a6679cc27d3a09106ce245e13a5a6",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 66,
+          "text": "Don't explicitly specify `OnDuplicate::Error` as it is the default",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 26,
+          "text": "<!-- homu-ignore:start -->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 27,
+          "end": 1205,
+          "text": "<!--\nPlease read our [LLM policy] before opening a PR,\nIf you used an LLM to generate any part of this PR, including the PR description, please disclose that according to our [guidelines][disclosure guidelines].\nLLM contributions are not banned, but are held to a higher standard of review and correctness.\n\n[LLM policy]: https://forge.rust-lang.org/policies/llm-usage.html\n[disclosure guidelines]: https://rustc-dev-guide.rust-lang.org/llm-guidance/writing.html#disclosure-guidelines\n\nIf this PR is related to an unstable feature or an otherwise tracked effort,\nplease link to the relevant tracking issue here. If you don't know of a related\ntracking issue or there are none, feel free to ignore this.\n\nThis PR will get automatically assigned to a reviewer. In case you would like\na specific user to review your work, you can assign it to them by using\n\n    r? <reviewer name>\n\nWhen merged, your PR's description becomes part of the commit message of a merge commit.\nIf you do not want certain parts of it (such as your LLM disclosure) to show up in the permanent git history,\nsurround them with a pair of HTML comments containing `homu-ignore:start` and `homu-ignore:end`.\n-->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 1206,
+          "end": 1230,
+          "text": "<!-- homu-ignore:end -->",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "rust-lang-rust-162526",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/rust-lang/rust/pull/162526",
+        "title": "yeet VisitorExt",
+        "description": "This existed to stop people from overriding some methods, but `final fn` exists now.\n\nIt's already being used in std here and there with no problems, so I figure it's fine to use in the compiler.",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "b2416a5d34c06f9913fca34b3efc40e671fb7409",
+        "baseSha": "eca445e5ae4a6679cc27d3a09106ce245e13a5a6",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 15,
+          "text": "yeet VisitorExt",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 84,
+          "text": "This existed to stop people from overriding some methods, but `final fn` exists now.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 86,
+          "end": 195,
+          "text": "It's already being used in std here and there with no problems, so I figure it's fine to use in the compiler.",
+          "label": "ambiguous"
+        }
+      ]
+    },
+    {
+      "id": "rust-lang-rust-162500",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/rust-lang/rust/pull/162500",
+        "title": "Move the `expect-item-after-attribute.rs` test to the correct directory",
+        "description": "To address the comment here: https://github.com/rust-lang/rust/pull/162386#issuecomment-5591496225\n\nr? @GuillaumeGomez ",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "71a523b7fda4548a2fef2f8a9eaa05d2c9d4e22e",
+        "baseSha": "0b1760a65ab20bb78ca29be1fd951cd6b52ca3dd",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 71,
+          "text": "Move the `expect-item-after-attribute.rs` test to the correct directory",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 98,
+          "text": "To address the comment here: https://github.com/rust-lang/rust/pull/162386#issuecomment-5591496225",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 100,
+          "end": 118,
+          "text": "r? @GuillaumeGomez",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "denoland-deno-36685",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/denoland/deno/pull/36685",
+        "title": "docs: drop the removed typescript_go_client crate",
+        "description": "Closes #36632.\n\n`libs/typescript_go_client` was removed in `1e4b28cfec` (\"chore: remove the dead forked typescript-go integration\", #35935). Two developer docs still name it.\n\n- `doc/architecture.md` carried a bullet describing it as the client for the out-of-process TypeScript type-checker. Removed rather than repointed, because that commit deleted the integration instead of moving it.\n- `doc/codebase-map.md` listed it under **Other building blocks**. Dropped from the list and the line re-wrapped.\n\nVerified against `main` at `ff672314`: `libs/` holds 26 crates and this is not among them, while every other crate named in the `architecture.md` list resolves.\n\n**Disclosure: AI tools were used.** The first reference was found by [docproof](https://github.com/melbinjp/docproof), which resolves documented paths against the repository and its git history. The second is a bare backticked name the checker cannot see, found by reading. Both were checked against `main` by hand before this was sent.\n",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "82f4fb90568cc9ed4dadae6057ed015eaaa20408",
+        "baseSha": "ff672314e361ec6b88690ae9d75fb3b67a0953ac",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 49,
+          "text": "docs: drop the removed typescript_go_client crate",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 14,
+          "text": "Closes #36632.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 16,
+          "end": 174,
+          "text": "`libs/typescript_go_client` was removed in `1e4b28cfec` (\"chore: remove the dead forked typescript-go integration\", #35935). Two developer docs still name it.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 176,
+          "end": 503,
+          "text": "- `doc/architecture.md` carried a bullet describing it as the client for the out-of-process TypeScript type-checker. Removed rather than repointed, because that commit deleted the integration instead of moving it.\n- `doc/codebase-map.md` listed it under **Other building blocks**. Dropped from the list and the line re-wrapped.",
+          "label": "ambiguous"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 505,
+          "end": 665,
+          "text": "Verified against `main` at `ff672314`: `libs/` holds 26 crates and this is not among them, while every other crate named in the `architecture.md` list resolves.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-6",
+          "sourceKind": "pr_body",
+          "start": 667,
+          "end": 1003,
+          "text": "**Disclosure: AI tools were used.** The first reference was found by [docproof](https://github.com/melbinjp/docproof), which resolves documented paths against the repository and its git history. The second is a bare backticked name the checker cannot see, found by reading. Both were checked against `main` by hand before this was sent.",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "denoland-deno-36784",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/denoland/deno/pull/36784",
+        "title": "fix(ext/node): normalize resourceUsage maxRSS on macOS",
+        "description": "\n\nFixes `process.resourceUsage().maxRSS` on macOS and iOS.\n\nApple platforms report `getrusage(2).ru_maxrss` in bytes, but Node.js/libuv expose this value in kilobytes. Deno was returning the raw Apple value, causing `maxRSS` to be approximately 1024 times larger than Node.js.\n\nFixes https://github.com/denoland/deno/issues/36783\n\n\nI used CodeX to help investigate the platform-specific `ru_maxrss` behavior, review  and prepare this change.",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "be5062f857e1d8d47c41ce80f01d5492e0df8a19",
+        "baseSha": "83bb8d5780505d0b4f30c089680ce98b0e7a4770",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 54,
+          "text": "fix(ext/node): normalize resourceUsage maxRSS on macOS",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 2,
+          "end": 58,
+          "text": "Fixes `process.resourceUsage().maxRSS` on macOS and iOS.",
+          "label": "ambiguous"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 60,
+          "end": 276,
+          "text": "Apple platforms report `getrusage(2).ru_maxrss` in bytes, but Node.js/libuv expose this value in kilobytes. Deno was returning the raw Apple value, causing `maxRSS` to be approximately 1024 times larger than Node.js.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 278,
+          "end": 329,
+          "text": "Fixes https://github.com/denoland/deno/issues/36783",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 332,
+          "end": 441,
+          "text": "I used CodeX to help investigate the platform-specific `ru_maxrss` behavior, review  and prepare this change.",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "denoland-deno-36753",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/denoland/deno/pull/36753",
+        "title": "fix(cli): accept all valid sys permission descriptors",
+        "description": "## Summary\n\n### Regression\n\nDeno 2.9.6 has a regression (compared to 2.9.5) where it stops accepting valid granular sys permissions during CLI parsing. For example:\n\n```console\n$ deno run --allow-sys=inspector 'data:application/javascript,console.log(\"ok\")'\nerror: unknown sys descriptor: 'inspector'\n```\n\nThe `deno_cli_parser` cutover introduced a second sys-descriptor allowlist that had drifted from `deno_permissions::SysDescriptor::parse`. It omitted `inspector` and other valid descriptors such as `setuid` and `umask`.\n\n### Fix\n\nThis PR removes the duplicate list and validates both `--allow-sys` and `--deny-sys` values with the runtime parser. Validation does not replace the original flag value, so aliases such as `username` retain their existing CLI representation.\n\nParser tests cover accepted descriptors, rejected descriptors, and alias preservation for both flags.\n\nRelated: #36519, which covers `node:inspector` sys-permission behavior and needs `--allow-sys=inspector`.\n\n## Testing done\n\n```sh\ncargo test -p deno_cli_parser --features deno_core/v8\n./x build\n./target/debug/deno run --allow-sys=inspector 'data:application/javascript,console.log(\"ok\")'\n./x fmt\n./x lint\n```\n\n## AI usage\n\nI used OpenAI GPT-5.6 models via OpenCode for all of this.",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "5ec7877a7d4bc4080cc459cd0a285ccae9dd3ad0",
+        "baseSha": "a961cdec3b1948844414ebeecc697dcad76df2d1",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 53,
+          "text": "fix(cli): accept all valid sys permission descriptors",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 10,
+          "text": "## Summary",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 12,
+          "end": 26,
+          "text": "### Regression",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 28,
+          "end": 164,
+          "text": "Deno 2.9.6 has a regression (compared to 2.9.5) where it stops accepting valid granular sys permissions during CLI parsing. For example:",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 166,
+          "end": 304,
+          "text": "```console\n$ deno run --allow-sys=inspector 'data:application/javascript,console.log(\"ok\")'\nerror: unknown sys descriptor: 'inspector'\n```",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-6",
+          "sourceKind": "pr_body",
+          "start": 306,
+          "end": 525,
+          "text": "The `deno_cli_parser` cutover introduced a second sys-descriptor allowlist that had drifted from `deno_permissions::SysDescriptor::parse`. It omitted `inspector` and other valid descriptors such as `setuid` and `umask`.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-7",
+          "sourceKind": "pr_body",
+          "start": 527,
+          "end": 534,
+          "text": "### Fix",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-8",
+          "sourceKind": "pr_body",
+          "start": 536,
+          "end": 777,
+          "text": "This PR removes the duplicate list and validates both `--allow-sys` and `--deny-sys` values with the runtime parser. Validation does not replace the original flag value, so aliases such as `username` retain their existing CLI representation.",
+          "label": "ambiguous"
+        },
+        {
+          "id": "label-9",
+          "sourceKind": "pr_body",
+          "start": 779,
+          "end": 880,
+          "text": "Parser tests cover accepted descriptors, rejected descriptors, and alias preservation for both flags.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-10",
+          "sourceKind": "pr_body",
+          "start": 882,
+          "end": 987,
+          "text": "Related: #36519, which covers `node:inspector` sys-permission behavior and needs `--allow-sys=inspector`.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-11",
+          "sourceKind": "pr_body",
+          "start": 989,
+          "end": 1004,
+          "text": "## Testing done",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-12",
+          "sourceKind": "pr_body",
+          "start": 1006,
+          "end": 1190,
+          "text": "```sh\ncargo test -p deno_cli_parser --features deno_core/v8\n./x build\n./target/debug/deno run --allow-sys=inspector 'data:application/javascript,console.log(\"ok\")'\n./x fmt\n./x lint\n```",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-13",
+          "sourceKind": "pr_body",
+          "start": 1192,
+          "end": 1203,
+          "text": "## AI usage",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-14",
+          "sourceKind": "pr_body",
+          "start": 1205,
+          "end": 1263,
+          "text": "I used OpenAI GPT-5.6 models via OpenCode for all of this.",
+          "label": "non_requirement"
+        }
+      ]
+    }
+  ]
+}

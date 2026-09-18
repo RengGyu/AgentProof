@@ -1,0 +1,310 @@
+{
+  "schema": "agentproof.pydantic-structural-live.v1",
+  "runId": "235d884a-d463-473a-a74e-ccc50c294ee8",
+  "prUrl": "https://github.com/pydantic/pydantic/pull/13819",
+  "base": "7b15a786a755ec4089a34c9bb5f957f8b8ce3690",
+  "head": "299309892717854a738bb385a33e7f655cb62bf1",
+  "model": "gpt-5.6-luna",
+  "startedAt": "2026-09-17T13:55:25.778Z",
+  "finishedAt": "2026-09-17T13:56:29.888Z",
+  "status": "completed",
+  "input": {
+    "titleSha256": "a148e2933b1126dc4cd14e70dbcf487ff27e823a09610f72a37e6b64422a18c7",
+    "descriptionSha256": "47c378257ccfaa6a9c9f6631a91dab05e7ee479606613de84cb03b98d036fa47",
+    "taskSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "taskSource": null,
+    "changedPaths": [
+      "pydantic-core/src/definitions.rs",
+      "pydantic-core/src/py_gc.rs",
+      "pydantic-core/src/serializers/type_serializers/function.rs",
+      "pydantic-core/src/serializers/type_serializers/generator.rs",
+      "pydantic-core/src/validators/function.rs",
+      "pydantic-core/src/validators/generator.rs",
+      "pydantic-core/tests/test_garbage_collection.py"
+    ],
+    "headSha": "299309892717854a738bb385a33e7f655cb62bf1",
+    "baseSha": "7b15a786a755ec4089a34c9bb5f957f8b8ce3690"
+  },
+  "calls": {
+    "attempted": 3,
+    "observed": [
+      {
+        "runId": "235d884a-d463-473a-a74e-ccc50c294ee8",
+        "callId": "235d884a-d463-473a-a74e-ccc50c294ee8:1",
+        "event": "finished",
+        "stage": "intent",
+        "status": "provider_succeeded",
+        "usage": {
+          "callId": "235d884a-d463-473a-a74e-ccc50c294ee8:1",
+          "stage": "intent",
+          "model": "gpt-5.6-luna",
+          "inputTokens": 926,
+          "outputTokens": 560,
+          "latencyMs": 9597
+        },
+        "at": "2026-09-17T13:55:44.938Z"
+      },
+      {
+        "runId": "235d884a-d463-473a-a74e-ccc50c294ee8",
+        "callId": "235d884a-d463-473a-a74e-ccc50c294ee8:2",
+        "event": "finished",
+        "stage": "ranking",
+        "status": "provider_succeeded",
+        "usage": {
+          "callId": "235d884a-d463-473a-a74e-ccc50c294ee8:2",
+          "stage": "ranking",
+          "model": "gpt-5.6-luna",
+          "inputTokens": 2367,
+          "outputTokens": 1939,
+          "latencyMs": 19187
+        },
+        "at": "2026-09-17T13:56:04.130Z"
+      },
+      {
+        "runId": "235d884a-d463-473a-a74e-ccc50c294ee8",
+        "callId": "235d884a-d463-473a-a74e-ccc50c294ee8:3",
+        "event": "finished",
+        "stage": "ranking",
+        "status": "provider_succeeded",
+        "usage": {
+          "callId": "235d884a-d463-473a-a74e-ccc50c294ee8:3",
+          "stage": "ranking",
+          "model": "gpt-5.6-luna",
+          "inputTokens": 3201,
+          "outputTokens": 1789,
+          "latencyMs": 18579
+        },
+        "at": "2026-09-17T13:56:25.025Z"
+      }
+    ]
+  },
+  "reads": [
+    {
+      "requestedPaths": [
+        "pydantic-core/src/validators/function.rs",
+        "pydantic-core/src/validators/generator.rs",
+        "pydantic-core/src/serializers/type_serializers/function.rs",
+        "pydantic-core/src/serializers/type_serializers/generator.rs",
+        "pydantic-core/src/definitions.rs",
+        "pydantic-core/src/py_gc.rs",
+        "pydantic-core/tests/test_garbage_collection.py"
+      ],
+      "revision": "299309892717854a738bb385a33e7f655cb62bf1",
+      "returned": [
+        {
+          "path": "pydantic-core/src/validators/function.rs",
+          "bytes": 19019
+        },
+        {
+          "path": "pydantic-core/src/validators/generator.rs",
+          "bytes": 13422
+        },
+        {
+          "path": "pydantic-core/src/serializers/type_serializers/function.rs",
+          "bytes": 26105
+        },
+        {
+          "path": "pydantic-core/src/serializers/type_serializers/generator.rs",
+          "bytes": 7316
+        },
+        {
+          "path": "pydantic-core/src/definitions.rs",
+          "bytes": 8812
+        },
+        {
+          "path": "pydantic-core/src/py_gc.rs",
+          "bytes": 3182
+        },
+        {
+          "path": "pydantic-core/tests/test_garbage_collection.py",
+          "bytes": 8606
+        }
+      ]
+    }
+  ],
+  "navigation": {
+    "state": "partial",
+    "rankingStatus": "ready",
+    "coverageStatus": "partial",
+    "goalCount": 3,
+    "artifactCount": 9,
+    "goals": [
+      {
+        "id": "goal_1",
+        "summary": "Correct GC traversal ownership so validator and serializer callable structures do not traverse Arc-owned subtrees through duplicate ownership paths.",
+        "emphasis": "primary",
+        "authority": "pr_author_claim",
+        "facets": [
+          {
+            "kind": "condition",
+            "summary": "Do not traverse the internal validator through ValidatorCallable, AssignmentValidatorCallable, or ValidatorIterator GC hooks when it is an Arc clone of a subtree already owned and traversed by SchemaValidator."
+          },
+          {
+            "kind": "condition",
+            "summary": "Apply the corresponding traversal correction to SerializationCallable.serializer and SerializationIterator.item_serializer."
+          },
+          {
+            "kind": "motivation",
+            "summary": "The duplicated traversal causes objects inside the shared subtree to be visited twice for one reference."
+          }
+        ],
+        "firstInspection": {
+          "path": "pydantic-core/src/validators/generator.rs",
+          "startLine": 363,
+          "endLine": 372,
+          "kind": "code",
+          "origin": "diff"
+        },
+        "candidates": [
+          {
+            "path": "pydantic-core/src/validators/generator.rs",
+            "startLine": 363,
+            "endLine": 372,
+            "kind": "code",
+            "origin": "diff",
+            "relevance": "relevant"
+          },
+          {
+            "path": "pydantic-core/src/serializers/type_serializers/generator.rs",
+            "startLine": 137,
+            "endLine": 146,
+            "kind": "code",
+            "origin": "snapshot",
+            "relevance": "relevant"
+          },
+          {
+            "path": "pydantic-core/tests/test_garbage_collection.py",
+            "startLine": 197,
+            "endLine": 206,
+            "kind": "test",
+            "origin": "snapshot",
+            "relevance": "possible"
+          }
+        ],
+        "uncertainty": [
+          "The supplied artifacts do not include the validator callable, serializer callable, schema owners, or full iterator bodies.",
+          "No repository-wide search was performed, so additional traversal paths remain unassessed."
+        ]
+      },
+      {
+        "id": "goal_2",
+        "summary": "Ensure the relevant validation and serialization types participate in Python GC tracking by placing their traversal and clearing methods in the required pymethods context.",
+        "emphasis": "primary",
+        "authority": "pr_author_claim",
+        "facets": [],
+        "firstInspection": {
+          "path": "pydantic-core/src/serializers/type_serializers/generator.rs",
+          "startLine": 157,
+          "endLine": 166,
+          "kind": "code",
+          "origin": "snapshot"
+        },
+        "candidates": [
+          {
+            "path": "pydantic-core/src/serializers/type_serializers/generator.rs",
+            "startLine": 157,
+            "endLine": 166,
+            "kind": "code",
+            "origin": "snapshot",
+            "relevance": "relevant"
+          },
+          {
+            "path": "pydantic-core/tests/test_garbage_collection.py",
+            "startLine": 207,
+            "endLine": 216,
+            "kind": "test",
+            "origin": "snapshot",
+            "relevance": "possible"
+          }
+        ],
+        "uncertainty": [
+          "No clear methods or complete pymethods blocks are supplied for the affected validation and serialization types.",
+          "The available test excerpts do not show assertions proving Python GC tracking behavior."
+        ]
+      },
+      {
+        "id": "goal_3",
+        "summary": "Remove obsolete DefinitionRef GC traversal support and document the unique-owner rule for traversing Arc values.",
+        "emphasis": "supporting",
+        "authority": "pr_author_claim",
+        "facets": [
+          {
+            "kind": "condition",
+            "summary": "Remove the unused PyGcTraverse implementation for DefinitionRef."
+          },
+          {
+            "kind": "acceptance",
+            "summary": "Document that an Arc must be traversed only by its unique owner."
+          }
+        ],
+        "firstInspection": {
+          "path": "pydantic-core/src/validators/generator.rs",
+          "startLine": 363,
+          "endLine": 372,
+          "kind": "code",
+          "origin": "diff"
+        },
+        "candidates": [
+          {
+            "path": "pydantic-core/src/validators/generator.rs",
+            "startLine": 363,
+            "endLine": 372,
+            "kind": "code",
+            "origin": "diff",
+            "relevance": "relevant"
+          },
+          {
+            "path": "pydantic-core/src/serializers/type_serializers/generator.rs",
+            "startLine": 137,
+            "endLine": 146,
+            "kind": "code",
+            "origin": "snapshot",
+            "relevance": "relevant"
+          },
+          {
+            "path": "pydantic-core/tests/test_garbage_collection.py",
+            "startLine": 197,
+            "endLine": 206,
+            "kind": "test",
+            "origin": "snapshot",
+            "relevance": "possible"
+          }
+        ],
+        "uncertainty": [
+          "No definitions.rs or py_gc.rs content is supplied, so DefinitionRef removal cannot be inspected directly.",
+          "The available comments document the rule locally but do not establish whether obsolete implementations or references remain elsewhere."
+        ]
+      }
+    ],
+    "failures": [
+      {
+        "stage": "intent",
+        "category": "invalid_json_or_shape",
+        "reason": "unsafe_summary"
+      },
+      {
+        "stage": "ranking",
+        "category": "invalid_json_or_shape",
+        "reason": "unknown_artifact_ref"
+      }
+    ],
+    "limitations": [
+      "unsafe_summary_omitted",
+      "retrieval_budget_exceeded",
+      "invalid_reference",
+      "retrieval_language_unsupported",
+      "retrieval_scan_budget_exceeded",
+      "retrieval_unverified_fallback"
+    ],
+    "unprocessedCount": 1
+  },
+  "cards": {
+    "mode": "objectives",
+    "count": 3
+  },
+  "boundary": {
+    "valid": true,
+    "errors": []
+  },
+  "errorCode": null
+}

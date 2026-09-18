@@ -1,4 +1,6 @@
-import { buildGitHubPullRequestInput, fetchGitHubPullRequestAnchor } from "@/lib/github";
+import { resolveNavigationProvider } from "@/lib/gemini-navigation";
+import { enrichReviewNavigation } from "@/lib/review-intent";
+import { buildGitHubPullRequestInput, fetchGitHubPullRequestAnchor, collectReviewArtifacts } from "@/lib/github";
 import {
   AnalysisJobQueueError,
   enqueueAnalysisJob,
@@ -835,7 +837,16 @@ async function handlePullRequestAutomation(
     }
 
     const deterministicReport = generateVerificationReportV2FromInput(input);
-    const semanticResult = tenantGrant.enabled
+    const navigationEnabled = process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE === "advisory" && deterministicReport.verificationContract.state === "absent";
+    const navigationProvider = resolveNavigationProvider(process.env);
+    const semanticResult = navigationEnabled ? {report:await enrichReviewNavigation(input,deterministicReport,{
+      model:navigationProvider.model,
+      ...(input.repositoryPrivate === false && navigationProvider.provider ? {
+        provider:navigationProvider.provider,
+        readArtifacts:(paths,headSha)=>collectReviewArtifacts(automation.pullRequestUrl,token,paths,headSha),
+        readCurrentInput:()=>buildGitHubPullRequestInput(automation.pullRequestUrl,token,"",undefined,{expectedHeadSha:input.sourceProvenance?.headSha,expectedBaseSha:input.sourceProvenance?.baseSha})
+      }:{})
+    })} : tenantGrant.enabled
       ? await enrichReportWithHybridPlanning(input, {
         readCurrentInput: () => buildGitHubPullRequestInput(
           automation.pullRequestUrl,

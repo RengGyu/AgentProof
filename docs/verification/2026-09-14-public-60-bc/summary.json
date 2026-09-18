@@ -1,0 +1,381 @@
+{
+  "schemaVersion": "requirement_source_ablation_bc_summary.v1",
+  "reviewedCorpusHash": "c2f236f745b08eb3813941cec111e1a6998fc8ab336ca8a59a81421aaf174f66",
+  "caseCount": 60,
+  "labelCount": 511,
+  "integrity": {
+    "batches": 4,
+    "inputAndRequestHashesMatch": true,
+    "configuredModel": "gpt-5.6-luna",
+    "modelProfileHash": "0bc5152ae43d140d85bf3b4ef5f3037cedb628b94c2b07a0fa7c481b95a7b9e1",
+    "observedModel": "gpt-5.6-luna"
+  },
+  "requests": {
+    "actual": 120,
+    "limit": 120,
+    "withinLimit": true
+  },
+  "arms": {
+    "B": {
+      "validity": {
+        "valid": 59,
+        "invalid": 1,
+        "unavailable": 0,
+        "not_run": 0
+      },
+      "evaluation": {
+        "all": {
+          "labels": 511,
+          "requirementPreserved": {
+            "numerator": 66,
+            "denominator": 92,
+            "rate": 0.717391304347826
+          },
+          "nonRequirementPromoted": {
+            "numerator": 10,
+            "denominator": 385,
+            "rate": 0.025974025974025976
+          },
+          "ambiguousPromoted": {
+            "numerator": 3,
+            "denominator": 34,
+            "rate": 0.08823529411764706
+          },
+          "notSelected": {
+            "numerator": 168,
+            "denominator": 511,
+            "rate": 0.3287671232876712
+          }
+        },
+        "selectedFull": {
+          "labels": 323,
+          "requirementPreserved": {
+            "numerator": 66,
+            "denominator": 89,
+            "rate": 0.7415730337078652
+          },
+          "nonRequirementPromoted": {
+            "numerator": 8,
+            "denominator": 203,
+            "rate": 0.03940886699507389
+          },
+          "ambiguousPromoted": {
+            "numerator": 3,
+            "denominator": 31,
+            "rate": 0.0967741935483871
+          },
+          "notSelected": {
+            "numerator": 0,
+            "denominator": 323,
+            "rate": 0
+          }
+        },
+        "bySource": {
+          "pr_title": {
+            "all": {
+              "labels": 60,
+              "requirementPreserved": {
+                "numerator": 54,
+                "denominator": 59,
+                "rate": 0.9152542372881356
+              },
+              "nonRequirementPromoted": {
+                "numerator": 0,
+                "denominator": 1,
+                "rate": 0
+              },
+              "ambiguousPromoted": {
+                "numerator": 0,
+                "denominator": 0,
+                "rate": null
+              },
+              "notSelected": {
+                "numerator": 0,
+                "denominator": 60,
+                "rate": 0
+              }
+            },
+            "selectedFull": {
+              "labels": 60,
+              "requirementPreserved": {
+                "numerator": 54,
+                "denominator": 59,
+                "rate": 0.9152542372881356
+              },
+              "nonRequirementPromoted": {
+                "numerator": 0,
+                "denominator": 1,
+                "rate": 0
+              },
+              "ambiguousPromoted": {
+                "numerator": 0,
+                "denominator": 0,
+                "rate": null
+              },
+              "notSelected": {
+                "numerator": 0,
+                "denominator": 60,
+                "rate": 0
+              }
+            }
+          },
+          "pr_body": {
+            "all": {
+              "labels": 451,
+              "requirementPreserved": {
+                "numerator": 12,
+                "denominator": 33,
+                "rate": 0.36363636363636365
+              },
+              "nonRequirementPromoted": {
+                "numerator": 10,
+                "denominator": 384,
+                "rate": 0.026041666666666668
+              },
+              "ambiguousPromoted": {
+                "numerator": 3,
+                "denominator": 34,
+                "rate": 0.08823529411764706
+              },
+              "notSelected": {
+                "numerator": 168,
+                "denominator": 451,
+                "rate": 0.37250554323725055
+              }
+            },
+            "selectedFull": {
+              "labels": 263,
+              "requirementPreserved": {
+                "numerator": 12,
+                "denominator": 30,
+                "rate": 0.4
+              },
+              "nonRequirementPromoted": {
+                "numerator": 8,
+                "denominator": 202,
+                "rate": 0.039603960396039604
+              },
+              "ambiguousPromoted": {
+                "numerator": 3,
+                "denominator": 31,
+                "rate": 0.0967741935483871
+              },
+              "notSelected": {
+                "numerator": 0,
+                "denominator": 263,
+                "rate": 0
+              }
+            }
+          }
+        }
+      },
+      "telemetry": {
+        "requests": 60,
+        "latencyMs": {
+          "count": 60,
+          "total": 330263,
+          "mean": 5504.383333333333,
+          "min": 2171,
+          "max": 11691
+        },
+        "tokens": {
+          "input": 74964,
+          "output": 23356,
+          "total": 98320,
+          "samples": 60
+        }
+      }
+    },
+    "C": {
+      "validity": {
+        "valid": 60,
+        "invalid": 0,
+        "unavailable": 0,
+        "not_run": 0
+      },
+      "evaluation": {
+        "all": {
+          "labels": 511,
+          "requirementPreserved": {
+            "numerator": 73,
+            "denominator": 92,
+            "rate": 0.7934782608695652
+          },
+          "nonRequirementPromoted": {
+            "numerator": 13,
+            "denominator": 385,
+            "rate": 0.033766233766233764
+          },
+          "ambiguousPromoted": {
+            "numerator": 3,
+            "denominator": 34,
+            "rate": 0.08823529411764706
+          },
+          "notSelected": {
+            "numerator": 168,
+            "denominator": 511,
+            "rate": 0.3287671232876712
+          }
+        },
+        "selectedFull": {
+          "labels": 323,
+          "requirementPreserved": {
+            "numerator": 73,
+            "denominator": 89,
+            "rate": 0.8202247191011236
+          },
+          "nonRequirementPromoted": {
+            "numerator": 11,
+            "denominator": 203,
+            "rate": 0.054187192118226604
+          },
+          "ambiguousPromoted": {
+            "numerator": 3,
+            "denominator": 31,
+            "rate": 0.0967741935483871
+          },
+          "notSelected": {
+            "numerator": 0,
+            "denominator": 323,
+            "rate": 0
+          }
+        },
+        "bySource": {
+          "pr_title": {
+            "all": {
+              "labels": 60,
+              "requirementPreserved": {
+                "numerator": 55,
+                "denominator": 59,
+                "rate": 0.9322033898305084
+              },
+              "nonRequirementPromoted": {
+                "numerator": 0,
+                "denominator": 1,
+                "rate": 0
+              },
+              "ambiguousPromoted": {
+                "numerator": 0,
+                "denominator": 0,
+                "rate": null
+              },
+              "notSelected": {
+                "numerator": 0,
+                "denominator": 60,
+                "rate": 0
+              }
+            },
+            "selectedFull": {
+              "labels": 60,
+              "requirementPreserved": {
+                "numerator": 55,
+                "denominator": 59,
+                "rate": 0.9322033898305084
+              },
+              "nonRequirementPromoted": {
+                "numerator": 0,
+                "denominator": 1,
+                "rate": 0
+              },
+              "ambiguousPromoted": {
+                "numerator": 0,
+                "denominator": 0,
+                "rate": null
+              },
+              "notSelected": {
+                "numerator": 0,
+                "denominator": 60,
+                "rate": 0
+              }
+            }
+          },
+          "pr_body": {
+            "all": {
+              "labels": 451,
+              "requirementPreserved": {
+                "numerator": 18,
+                "denominator": 33,
+                "rate": 0.5454545454545454
+              },
+              "nonRequirementPromoted": {
+                "numerator": 13,
+                "denominator": 384,
+                "rate": 0.033854166666666664
+              },
+              "ambiguousPromoted": {
+                "numerator": 3,
+                "denominator": 34,
+                "rate": 0.08823529411764706
+              },
+              "notSelected": {
+                "numerator": 168,
+                "denominator": 451,
+                "rate": 0.37250554323725055
+              }
+            },
+            "selectedFull": {
+              "labels": 263,
+              "requirementPreserved": {
+                "numerator": 18,
+                "denominator": 30,
+                "rate": 0.6
+              },
+              "nonRequirementPromoted": {
+                "numerator": 11,
+                "denominator": 202,
+                "rate": 0.054455445544554455
+              },
+              "ambiguousPromoted": {
+                "numerator": 3,
+                "denominator": 31,
+                "rate": 0.0967741935483871
+              },
+              "notSelected": {
+                "numerator": 0,
+                "denominator": 263,
+                "rate": 0
+              }
+            }
+          }
+        }
+      },
+      "telemetry": {
+        "requests": 60,
+        "latencyMs": {
+          "count": 60,
+          "total": 336449,
+          "mean": 5607.483333333334,
+          "min": 2163,
+          "max": 13519
+        },
+        "tokens": {
+          "input": 214642,
+          "output": 24414,
+          "total": 239056,
+          "samples": 60
+        }
+      }
+    }
+  },
+  "BtoC": {
+    "rows": 511,
+    "predictionChanged": 29,
+    "selectionStateChanged": 0,
+    "objectiveCharactersChanged": 19,
+    "transitions": {
+      "requirement->requirement": 73,
+      "requirement->non_requirement": 3,
+      "non_requirement->non_requirement": 206,
+      "omitted->omitted": 168,
+      "invalid->requirement": 1,
+      "invalid->non_requirement": 2,
+      "invalid->ambiguous": 1,
+      "ambiguous->ambiguous": 15,
+      "partial->partial": 20,
+      "non_requirement->requirement": 13,
+      "ambiguous->non_requirement": 6,
+      "requirement->ambiguous": 1,
+      "non_requirement->ambiguous": 2
+    }
+  }
+}

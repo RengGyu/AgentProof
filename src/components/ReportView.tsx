@@ -27,8 +27,10 @@ import { presentOrdinaryDocumentationSummary } from "@/lib/general-pr-documentat
 import { presentOrdinaryStaticSummary } from "@/lib/general-pr-static-types-presentation";
 import { reportToGitHubComment, reportToMarkdown } from "@/lib/markdown";
 import { buildShareUrl } from "@/lib/report-share";
+import { buildPrEvidenceReview, usesPrEvidenceReview } from "@/lib/pr-evidence-review";
 import type { CheckStatus, PriorityLevel, RequirementStatus, VerificationReport } from "@/lib/types";
 import { deriveRequirementPresentationV2, isVerificationReportV2 } from "@/lib/requirement-presentation-v2";
+import { PrEvidenceReview } from "@/components/PrEvidenceReview";
 
 interface ReportViewProps {
   report: VerificationReport;
@@ -60,6 +62,12 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
       ? presentGeneralPrAssessmentSummary(report.generalPrAssessmentSummary)
       : undefined,
     [report]
+  );
+  const ordinaryPrReview = useMemo(
+    () => !isSummaryMode && isVerificationReportV2(report) && usesPrEvidenceReview(report)
+      ? buildPrEvidenceReview(report)
+      : undefined,
+    [isSummaryMode, report]
   );
   const [copiedAction, setCopiedAction] = useState<"report" | "comment" | "reprompt" | "share" | null>(null);
   const [actionMessage, setActionMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
@@ -102,6 +110,12 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
     [isSummaryMode, report.reprompt.prompt]
   );
   const uncertaintyLine = useMemo(() => getUncertaintyLine(report, isSummaryMode), [isSummaryMode, report]);
+  const visibleLimitations = useMemo(
+    () => ordinaryPrReview?.mode === "change_summary"
+      ? report.limitations.filter((item) => !isPurposeOnlyLimitation(item))
+      : report.limitations,
+    [ordinaryPrReview?.mode, report.limitations]
+  );
 
   async function copyText(text: string, action: "report" | "comment" | "reprompt" | "share") {
     try {
@@ -198,7 +212,7 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
           <div className="summary-title">
             <p className="eyebrow">Verification report</p>
             <h1>{report.source.title}</h1>
-            <p>{report.summary.oneLine}</p>
+            <p>{ordinaryPrReview ? (ordinaryPrReview.mode === "change_summary" ? "Review the collected code, test, and execution evidence." : "Trace each stated objective to code, tests, and execution evidence.") : report.summary.oneLine}</p>
           </div>
           <PriorityChip priority={report.summary.priority} />
         </div>
@@ -212,7 +226,7 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
           </div>
         ) : null}
 
-        <div className="decision-strip">
+        {!ordinaryPrReview ? <><div className="decision-strip">
           <div className="decision-copy">
             <span>
               <ShieldAlert size={15} />
@@ -303,7 +317,7 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
           />
           <Metric label="Missing Tests" value={String(report.testing.missingTests.length)} icon={<TestTube2 size={17} />} />
           <Metric label="Proof Gaps" value={String(report.proofGraph.summary.gapCount)} icon={<ShieldAlert size={17} />} />
-        </div>
+        </div></> : null}
 
         <div className="action-dock">
           <div className="action-dock-copy">
@@ -343,7 +357,7 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
 
       <div className="report-body">
         <div className="stack report-main">
-          <div className="card section-card">
+          {ordinaryPrReview ? <div className="card section-card"><PrEvidenceReview review={ordinaryPrReview} /></div> : <div className="card section-card">
             <div className="section-heading">
               <div>
                 <p className="eyebrow">Coverage</p>
@@ -384,7 +398,7 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
                 </div>
               </div>;
             })}
-          </div>
+          </div>}
 
           <div className="card section-card">
             <div className="section-heading">
@@ -410,7 +424,7 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
             </ul>
           </div>
 
-          {!isSummaryMode ? (
+          {!isSummaryMode && !ordinaryPrReview ? (
             <details className="card disclosure-card">
               <summary>
                 <span>
@@ -589,7 +603,7 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
             </div>
           ) : null}
 
-          {!isSummaryMode ? (
+          {!isSummaryMode && !ordinaryPrReview ? (
             <div className="card section-card">
               <div className="card-title-row">
                 <div>
@@ -612,9 +626,9 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
                 <h2>Limitations</h2>
               </div>
             </div>
-            {report.limitations.length > 0 ? (
+            {visibleLimitations.length > 0 ? (
               <ul className="plain-list">
-                {report.limitations.map((limitation) => (
+                {visibleLimitations.map((limitation) => (
                   <li key={limitation}>{limitation}</li>
                 ))}
               </ul>
@@ -819,6 +833,10 @@ function FailureLocationLine({
 
 function statusClass(status: CheckStatus): string {
   return `status-${status}`;
+}
+
+function isPurposeOnlyLimitation(value: string): boolean {
+  return value.startsWith("No original task text was provided and no single valid linked issue was available");
 }
 
 function formatStatus(status: CheckStatus): string {

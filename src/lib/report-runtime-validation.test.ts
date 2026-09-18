@@ -1,3 +1,6 @@
+import { buildPrEvidenceReview, buildDashboardPrEvidenceReview } from "./pr-evidence-review";
+import { prepareTenantDetailReportForStorage } from "./server-report-store";
+import { projectTenantPersistedReport, decodeTenantPersistedReport } from "./tenant-report-validation";
 import { createHash } from "crypto";
 import { readFileSync, readdirSync } from "fs";
 import { resolve } from "path";
@@ -55,6 +58,22 @@ describe("resolveRuntimeReportValidation", () => {
     const resolved = resolveRuntimeReportValidation({ input, report: deterministic });
 
     expect(resolved.valid).toBe(false);
+  });
+
+  it("preserves receipt-verified evidence through candidate abstention and signed tenant storage", () => {
+    vi.stubEnv("AGENTPROOF_REQUIREMENT_LOCAL_PROMOTION_MODE", "receipt_v2");
+    const report = generateVerificationReportV2FromInput(exactHeadReceiptInput());
+    report.reviewCandidates!.requirements.forEach(row=>row.candidates=[]);
+    report.reviewCandidates!.intentGraph!.edges=[];
+    const full=buildPrEvidenceReview(report);
+    const verified=full.objectives.flatMap(o=>[...o.code,...o.tests,...o.execution]).filter(i=>i.relation==="verified");
+    expect(verified.length).toBeGreaterThan(0);
+    const stored=projectTenantPersistedReport(prepareTenantDetailReportForStorage(report,"verified_agentproof","receipt-test-secret"),"receipt-test-secret");
+    const decoded=decodeTenantPersistedReport(stored,{signingSecret:"receipt-test-secret",createdAt:report.createdAt});
+    expect(decoded.status).toBe("valid");
+    if(decoded.status!=="valid")throw Error("invalid");
+    const saved=buildDashboardPrEvidenceReview({report:decoded.report})!;
+    expect(saved.objectives.flatMap(o=>[...o.code,...o.tests,...o.execution]).filter(i=>i.relation==="verified").map(i=>i.evidenceId).sort()).toEqual(verified.map(i=>i.evidenceId).sort());
   });
 
   it("validates a generated private v2 report against server-built transient context", () => {

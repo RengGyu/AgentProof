@@ -18,6 +18,12 @@ export function redactSecrets(input: string): string {
   );
 }
 
+/** For exact file-line navigation: masking a multiline secret must not move later lines. */
+export function redactSecretsPreservingLines(input: string): string {
+  return SECRET_PATTERNS.reduce((text, pattern) => text.replace(pattern, match =>
+    `[redacted]${"\n".repeat(match.split("\n").length - 1)}`), input);
+}
+
 export function containsSecretPattern(input: string): boolean {
   return SECRET_PATTERNS.some((pattern) => {
     pattern.lastIndex = 0;

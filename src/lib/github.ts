@@ -1,3 +1,4 @@
+import { REVIEW_FILE_BYTES } from './review-snippets';
 import { createHash } from "crypto";
 import type { AnalyzeRequest, ChangedFile, CheckRun, ExecutionSuiteObservation, LogSnippet, PullRequestInput, SourceProvenance, WorkflowExecutionIdentity } from "./types";
 import { directTestTargetCandidate } from "./evidence-relation";
@@ -789,10 +790,14 @@ export async function collectOrdinaryScalarArtifacts(prUrl: string, token: strin
   return collectOrdinaryArtifacts(prUrl, token, paths, headSha, "javascript");
 }
 
-async function collectOrdinaryArtifacts(prUrl: string, token: string | undefined, paths: readonly string[], headSha: string, kind: "documentation" | "typescript" | "javascript"): Promise<Array<{ path: string; headSha: string; content: string }>> {
+export async function collectReviewArtifacts(prUrl: string, token: string | undefined, paths: readonly string[], headSha: string): Promise<Array<{ path: string; headSha: string; content: string }>> {
+  return collectOrdinaryArtifacts(prUrl, token, paths, headSha, "review");
+}
+
+async function collectOrdinaryArtifacts(prUrl: string, token: string | undefined, paths: readonly string[], headSha: string, kind: "documentation" | "typescript" | "javascript" | "review"): Promise<Array<{ path: string; headSha: string; content: string }>> {
   const parsed = parseGitHubPullUrl(prUrl);
-  const allowedPath = kind === "documentation" ? /^(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_.-]+\.(?:md|mdx|rst|txt)$/ : kind === "typescript" ? /^(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_.-]+\.(?:ts|tsx|mts|cts)$/ : /^(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_.-]+\.(?:js|mjs|cjs)$/;
-  if (!parsed || !/^[a-f0-9]{40}$/i.test(headSha) || paths.length > GITHUB_MAX_CONTRACT_ARTIFACT_PATHS || paths.some(path => path.length > 200 || !allowedPath.test(path))) return [];
+  const allowedPath = kind === "review" ? /^(?:[A-Za-z0-9_@+-]+\/)*[A-Za-z0-9_.@+-]+$/ : kind === "documentation" ? /^(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_.-]+\.(?:md|mdx|rst|txt)$/ : kind === "typescript" ? /^(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_.-]+\.(?:ts|tsx|mts|cts)$/ : /^(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_.-]+\.(?:js|mjs|cjs)$/;
+  if (!parsed || !/^[a-f0-9]{40}$/i.test(headSha) || paths.length > GITHUB_MAX_CONTRACT_ARTIFACT_PATHS || paths.some(path => path.length > 200 || path.split("/").some(segment => segment === "." || segment === "..") || redactSecrets(path) !== path || !allowedPath.test(path))) return [];
   const headers: Record<string, string> = { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" };
   if (token?.trim()) headers.Authorization = `Bearer ${token.trim()}`;
   const blobs: Array<{ path: string; headSha: string; content: string }> = [];
@@ -800,7 +805,7 @@ async function collectOrdinaryArtifacts(prUrl: string, token: string | undefined
     try {
       const response = await githubFetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/contents/${encodeGitHubContentPath(path)}?ref=${encodeURIComponent(headSha)}`, headers);
       if (!response.ok) continue;
-      const content = decodeBoundedGitHubTextContent(await response.json(), kind === "javascript");
+      const content = decodeBoundedGitHubTextContent(await response.json(), kind === "javascript" || kind === "review", kind === "review" ? REVIEW_FILE_BYTES : GITHUB_MAX_CONTRACT_ARTIFACT_BYTES);
       if (content !== null) blobs.push({ path, headSha, content });
     } catch { /* An unsuccessful full read supplies no absence evidence. */ }
   }
@@ -811,7 +816,7 @@ function encodeGitHubContentPath(path: string): string {
   return path.split("/").map((segment) => encodeURIComponent(segment)).join("/");
 }
 
-function decodeBoundedGitHubTextContent(value: unknown, requireExactUtf8 = false): string | null {
+function decodeBoundedGitHubTextContent(value: unknown, requireExactUtf8 = false, maxBytes = GITHUB_MAX_CONTRACT_ARTIFACT_BYTES): string | null {
   if (!value || typeof value !== "object") return null;
   const payload = value as { encoding?: unknown; content?: unknown; type?: unknown };
   if (payload.type !== undefined && payload.type !== "file") return null;
@@ -820,7 +825,7 @@ function decodeBoundedGitHubTextContent(value: unknown, requireExactUtf8 = false
     const bytes = Buffer.from(payload.content.replace(/\s/g, ""), "base64");
     const content = bytes.toString("utf8");
     if (requireExactUtf8 && !bytes.equals(Buffer.from(content, "utf8"))) return null;
-    return Buffer.byteLength(content, "utf8") <= GITHUB_MAX_CONTRACT_ARTIFACT_BYTES ? content : null;
+    return Buffer.byteLength(content, "utf8") <= maxBytes ? content : null;
   } catch {
     return null;
   }

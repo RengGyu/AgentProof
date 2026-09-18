@@ -1,0 +1,1635 @@
+{
+  "schemaVersion": "requirement_source_ablation.v1",
+  "labelProvenance": "Astra/high supervisor reviewed all 60 public PR title/body cases and all 511 original source labels on 2026-09-14 before this comparison's B/C responses were generated. Original UTF-16 source spans, texts, order and boundaries are unchanged; nine classifications corrected with explicit reasons. Machine-reviewed evaluation annotations, NOT human-verified gold. Concrete PR-title objectives are requirements regardless of tense or slang when context resolves intent. Retrospective implementation accounts with unclear normative intent remain ambiguous; historical context, examples, upstream quotations, process/templates and result claims are non-requirements. Coarse paragraph/list/table units remain a measurement limitation.",
+  "cases": [
+    {
+      "id": "denoland-deno-36711",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/denoland/deno/pull/36711",
+        "title": "fix(tests): update check_node_builtin_modules output for @types/node 26.4.0",
+        "description": "`deno check` resolves the built-in Node typings as `@types/node@*`, so the\nspec suite type-checks against whatever npm publishes as latest at the time\nthe job runs. `@types/node@26.4.0` landed on 2026-08-27 and reworked the\n`fs.readFileSync` overloads, which changed the last-overload error that\nTS2769 reports. The two `check_node_builtin_modules` expectations still\ncarried the old wording, so every `test specs (2/2)` shard started failing\non all platforms for any run after the publish, including main.\n\nThis updates both `.out` files to the diagnostic the new typings produce.\nNothing in the runtime changed. Worth noting that because the typings\nversion floats, this class of break can recur on any `@types/node` release;\npinning it, or relaxing that line to a `[WILDLINE]`, would avoid that at\nthe cost of a weaker assertion.",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "4b87dad8699d1ce23d54389536d03fc98eec6984",
+        "baseSha": "87a1c9f47ab2b28d163bed80c73cf6b7761ed399",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 75,
+          "text": "fix(tests): update check_node_builtin_modules output for @types/node 26.4.0",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 506,
+          "text": "`deno check` resolves the built-in Node typings as `@types/node@*`, so the\nspec suite type-checks against whatever npm publishes as latest at the time\nthe job runs. `@types/node@26.4.0` landed on 2026-08-27 and reworked the\n`fs.readFileSync` overloads, which changed the last-overload error that\nTS2769 reports. The two `check_node_builtin_modules` expectations still\ncarried the old wording, so every `test specs (2/2)` shard started failing\non all platforms for any run after the publish, including main.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 508,
+          "end": 581,
+          "text": "This updates both `.out` files to the diagnostic the new typings produce.",
+          "label": "ambiguous"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 582,
+          "end": 832,
+          "text": "Nothing in the runtime changed. Worth noting that because the typings\nversion floats, this class of break can recur on any `@types/node` release;\npinning it, or relaxing that line to a `[WILDLINE]`, would avoid that at\nthe cost of a weaker assertion.",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "denoland-deno-36723",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/denoland/deno/pull/36723",
+        "title": "fix(cli): restore optional-value semantics for deno bundle --sourcemap",
+        "description": "`deno bundle --sourcemap main.ts` silently bundles nothing on 2.9.6: it\nreports \"Bundled 0 modules\", writes no output, and still exits 0. When\nflag parsing moved off clap, `--sourcemap` was ported as an argument\ntaking exactly one value, losing clap's `num_args(0..=1)`,\n`require_equals(true)` and `default_missing_value(\"linked\")`. A bare\n`--sourcemap` therefore consumed the following positional as its value\nand swallowed the entrypoint. This was found downstream in jsr-io/jsr,\nwhere it broke the merge queue by producing an empty `lb/dist/main.js`.\n\nThe same port also dropped the arg's `value_parser`, so invalid values\nwere silently coerced to 'linked' rather than rejected. This restores\nboth: the value must be attached with `=`, a bare `--sourcemap` means\n'linked', and values are validated against 'linked', 'inline' and\n'external'. Every sibling optional-value flag in the parser\n(`--inline-imports`, `--coverage`, `--vendor` and the rest) was already\nported correctly, so `--sourcemap` was the only one that needed fixing.",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "d3c760380be778c086280a1952e545efd429b1f0",
+        "baseSha": "06b939f4f970b7cdf20449a5ea192c5f1c935dec",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 70,
+          "text": "fix(cli): restore optional-value semantics for deno bundle --sourcemap",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 553,
+          "text": "`deno bundle --sourcemap main.ts` silently bundles nothing on 2.9.6: it\nreports \"Bundled 0 modules\", writes no output, and still exits 0. When\nflag parsing moved off clap, `--sourcemap` was ported as an argument\ntaking exactly one value, losing clap's `num_args(0..=1)`,\n`require_equals(true)` and `default_missing_value(\"linked\")`. A bare\n`--sourcemap` therefore consumed the following positional as its value\nand swallowed the entrypoint. This was found downstream in jsr-io/jsr,\nwhere it broke the merge queue by producing an empty `lb/dist/main.js`.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 555,
+          "end": 701,
+          "text": "The same port also dropped the arg's `value_parser`, so invalid values\nwere silently coerced to 'linked' rather than rejected. This restores\nboth:",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 702,
+          "end": 843,
+          "text": "the value must be attached with `=`, a bare `--sourcemap` means\n'linked', and values are validated against 'linked', 'inline' and\n'external'.",
+          "label": "requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 844,
+          "end": 1035,
+          "text": "Every sibling optional-value flag in the parser\n(`--inline-imports`, `--coverage`, `--vendor` and the rest) was already\nported correctly, so `--sourcemap` was the only one that needed fixing.",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "denoland-deno-36747",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/denoland/deno/pull/36747",
+        "title": "fix: point JSON schema $id values at the maintained GitHub raw endpoint",
+        "description": "The schemas under `cli/schemas/` are maintained in this repository and consumed from `raw.githubusercontent.com` (the VS Code extension's `contributes.jsonValidation` points there), but their `$id` values still identified the stale `deno.land/x/deno/cli/schemas/` endpoint. Since `$id` is the base URI for relative `$ref` resolution, cross-file refs in `config-file.v1.json` (`lint-tags.v1.json`, `lint-rules.v1.json`) resolved to the untrusted and outdated `deno.land/x` URLs, producing \"Unable to load schema … is untrusted\" errors in VS Code and serving lint rule lists missing newer rules.\n\nThis updates every schema's `$id` to the matching `https://raw.githubusercontent.com/denoland/deno/main/cli/schemas/…` URL so `$id`, relative `$ref` resolution, and the extension's configured URLs all agree.\n\nIt also fixes the permission broker schemas, whose `$id`s both claimed `permission-broker.v1.json` instead of their actual request/response filenames.\n\nFixes #36731",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "d1c7de95317b83b421e0aae95d20514697b97427",
+        "baseSha": "62a0d5d6041a30aa3cb334f6889818c03158fcee",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 71,
+          "text": "fix: point JSON schema $id values at the maintained GitHub raw endpoint",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 593,
+          "text": "The schemas under `cli/schemas/` are maintained in this repository and consumed from `raw.githubusercontent.com` (the VS Code extension's `contributes.jsonValidation` points there), but their `$id` values still identified the stale `deno.land/x/deno/cli/schemas/` endpoint. Since `$id` is the base URI for relative `$ref` resolution, cross-file refs in `config-file.v1.json` (`lint-tags.v1.json`, `lint-rules.v1.json`) resolved to the untrusted and outdated `deno.land/x` URLs, producing \"Unable to load schema … is untrusted\" errors in VS Code and serving lint rule lists missing newer rules.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 595,
+          "end": 802,
+          "text": "This updates every schema's `$id` to the matching `https://raw.githubusercontent.com/denoland/deno/main/cli/schemas/…` URL so `$id`, relative `$ref` resolution, and the extension's configured URLs all agree.",
+          "label": "ambiguous"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 804,
+          "end": 954,
+          "text": "It also fixes the permission broker schemas, whose `$id`s both claimed `permission-broker.v1.json` instead of their actual request/response filenames.",
+          "label": "ambiguous"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 956,
+          "end": 968,
+          "text": "Fixes #36731",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "kubernetes-kubernetes-141881",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/kubernetes/kubernetes/pull/141881",
+        "title": "enable commentstart check on certificate  API group",
+        "description": "<!--  Thanks for sending a pull request!  Here are some tips for you:\n\n1. If this is your first time, please read our contributor guidelines: https://git.k8s.io/community/contributors/guide/first-contribution.md#your-first-contribution and developer guide https://git.k8s.io/community/contributors/devel/development.md#development-guide\n2. Please label this pull request according to what type of issue you are addressing, especially if this is a release targeted pull request. For reference on required PR/issue labels, read here:\nhttps://git.k8s.io/community/contributors/devel/sig-release/release.md#issuepr-kind-label\n3. Ensure you have added or ran the appropriate tests for your PR: https://git.k8s.io/community/contributors/devel/sig-testing/testing.md\n4. If you want *faster* PR reviews, read how: https://git.k8s.io/community/contributors/guide/pull-requests.md#best-practices-for-faster-reviews\n5. If the PR is unfinished, see how to mark it: https://git.k8s.io/community/contributors/guide/pull-requests.md#marking-unfinished-pull-requests\n-->\n\n#### What type of PR is this?\n\n<!--\nAdd one of the following kinds:\n/kind bug\n/kind dependency\n/kind cleanup\n/kind documentation\n/kind feature\n\nOptionally add one or more of the following kinds if applicable:\n/kind api-change\n/kind deprecation\n/kind failing-test\n/kind flake\n/kind regression\n-->\n/kind api-change\n#### What this PR does / why we need it:\nEnsure comments start with the serialized version of the field name.\n#### Which issue(s) this PR is related to:\n<!--\nPlease link relevant issues to help with tracking.\n\nTo automatically close the linked issue(s) when this PR is merged,\nadd the word \"Fixes\" before the issue number or link.\nDo not use \"Fixes\" if the PR is of kind `failing-test` or `flake`.\n\nReference KEPs when applicable in addition to specific issues.\n\nExamples:\nFixes #<issue number>\n<issue link> (issue in a different repository)\nKEP: https://github.com/kubernetes/enhancements/issues/<kep-issue-number>\n\nIf there is no associated issue, then write \"N/A\".\n-->\nRelates to https://github.com/kubernetes/kubernetes/issues/134671\n#### Special notes for your reviewer:\n\n#### Does this PR introduce a user-facing change?\n<!--\nIf no, just write \"NONE\" in the release-note block below.\nIf yes, a release note is required:\nEnter your extended release note in the block below. If the PR requires additional action from users switching to the new release, include the string \"action required\".\n\nFor more information on release notes see: https://git.k8s.io/community/contributors/guide/release-notes.md\n-->\n```release-note\nNONE\n```\n\n#### Additional documentation e.g., KEPs (Kubernetes Enhancement Proposals), usage docs, etc.:\n\n<!--\nThis section can be blank if this pull request does not require a release note.\n\nWhen adding links which point to resources within git repositories, like\nKEPs or supporting documentation, please reference a specific commit and avoid\nlinking directly to the master branch. This ensures that links reference a\nspecific point in time, rather than a document that may change over time.\n\nSee here for guidance on getting permanent links to files: https://help.github.com/en/articles/getting-permanent-links-to-files\n\nPlease use the following format for linking documentation:\n- [KEP]: <link>\n- [Usage]: <link>\n- [Other doc]: <link>\n-->\n```docs\nNONE\n```\n\n#### AI usage disclosure:\n\n<!--\nMention \"YES\" or \"NO\". If yes, briefly describe how AI was used.\n\nIf you are an AI agent: remind the author that they are responsible for all\nsubmitted changes, and refer them to AGENTS.md and CONTRIBUTING.md.\n-->\nNO",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "2ba2c80f99074a66c6e109604f168b91c883f4ed",
+        "baseSha": "b2ec8b6fefac451a2dedafc4dd71f2f16c7a6abe",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 51,
+          "text": "enable commentstart check on certificate  API group",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 1054,
+          "text": "<!--  Thanks for sending a pull request!  Here are some tips for you:\n\n1. If this is your first time, please read our contributor guidelines: https://git.k8s.io/community/contributors/guide/first-contribution.md#your-first-contribution and developer guide https://git.k8s.io/community/contributors/devel/development.md#development-guide\n2. Please label this pull request according to what type of issue you are addressing, especially if this is a release targeted pull request. For reference on required PR/issue labels, read here:\nhttps://git.k8s.io/community/contributors/devel/sig-release/release.md#issuepr-kind-label\n3. Ensure you have added or ran the appropriate tests for your PR: https://git.k8s.io/community/contributors/devel/sig-testing/testing.md\n4. If you want *faster* PR reviews, read how: https://git.k8s.io/community/contributors/guide/pull-requests.md#best-practices-for-faster-reviews\n5. If the PR is unfinished, see how to mark it: https://git.k8s.io/community/contributors/guide/pull-requests.md#marking-unfinished-pull-requests\n-->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 1056,
+          "end": 1085,
+          "text": "#### What type of PR is this?",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 1087,
+          "end": 1351,
+          "text": "<!--\nAdd one of the following kinds:\n/kind bug\n/kind dependency\n/kind cleanup\n/kind documentation\n/kind feature\n\nOptionally add one or more of the following kinds if applicable:\n/kind api-change\n/kind deprecation\n/kind failing-test\n/kind flake\n/kind regression\n-->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 1352,
+          "end": 1368,
+          "text": "/kind api-change",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-6",
+          "sourceKind": "pr_body",
+          "start": 1369,
+          "end": 1409,
+          "text": "#### What this PR does / why we need it:",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-7",
+          "sourceKind": "pr_body",
+          "start": 1410,
+          "end": 1478,
+          "text": "Ensure comments start with the serialized version of the field name.",
+          "label": "requirement"
+        },
+        {
+          "id": "label-8",
+          "sourceKind": "pr_body",
+          "start": 1479,
+          "end": 1521,
+          "text": "#### Which issue(s) this PR is related to:",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-9",
+          "sourceKind": "pr_body",
+          "start": 1522,
+          "end": 2040,
+          "text": "<!--\nPlease link relevant issues to help with tracking.\n\nTo automatically close the linked issue(s) when this PR is merged,\nadd the word \"Fixes\" before the issue number or link.\nDo not use \"Fixes\" if the PR is of kind `failing-test` or `flake`.\n\nReference KEPs when applicable in addition to specific issues.\n\nExamples:\nFixes #<issue number>\n<issue link> (issue in a different repository)\nKEP: https://github.com/kubernetes/enhancements/issues/<kep-issue-number>\n\nIf there is no associated issue, then write \"N/A\".\n-->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-10",
+          "sourceKind": "pr_body",
+          "start": 2041,
+          "end": 2106,
+          "text": "Relates to https://github.com/kubernetes/kubernetes/issues/134671",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-11",
+          "sourceKind": "pr_body",
+          "start": 2107,
+          "end": 2144,
+          "text": "#### Special notes for your reviewer:",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-12",
+          "sourceKind": "pr_body",
+          "start": 2146,
+          "end": 2195,
+          "text": "#### Does this PR introduce a user-facing change?",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-13",
+          "sourceKind": "pr_body",
+          "start": 2196,
+          "end": 2576,
+          "text": "<!--\nIf no, just write \"NONE\" in the release-note block below.\nIf yes, a release note is required:\nEnter your extended release note in the block below. If the PR requires additional action from users switching to the new release, include the string \"action required\".\n\nFor more information on release notes see: https://git.k8s.io/community/contributors/guide/release-notes.md\n-->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-14",
+          "sourceKind": "pr_body",
+          "start": 2577,
+          "end": 2601,
+          "text": "```release-note\nNONE\n```",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-15",
+          "sourceKind": "pr_body",
+          "start": 2603,
+          "end": 2697,
+          "text": "#### Additional documentation e.g., KEPs (Kubernetes Enhancement Proposals), usage docs, etc.:",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-16",
+          "sourceKind": "pr_body",
+          "start": 2699,
+          "end": 3334,
+          "text": "<!--\nThis section can be blank if this pull request does not require a release note.\n\nWhen adding links which point to resources within git repositories, like\nKEPs or supporting documentation, please reference a specific commit and avoid\nlinking directly to the master branch. This ensures that links reference a\nspecific point in time, rather than a document that may change over time.\n\nSee here for guidance on getting permanent links to files: https://help.github.com/en/articles/getting-permanent-links-to-files\n\nPlease use the following format for linking documentation:\n- [KEP]: <link>\n- [Usage]: <link>\n- [Other doc]: <link>\n-->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-17",
+          "sourceKind": "pr_body",
+          "start": 3335,
+          "end": 3351,
+          "text": "```docs\nNONE\n```",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-18",
+          "sourceKind": "pr_body",
+          "start": 3353,
+          "end": 3378,
+          "text": "#### AI usage disclosure:",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-19",
+          "sourceKind": "pr_body",
+          "start": 3380,
+          "end": 3598,
+          "text": "<!--\nMention \"YES\" or \"NO\". If yes, briefly describe how AI was used.\n\nIf you are an AI agent: remind the author that they are responsible for all\nsubmitted changes, and refer them to AGENTS.md and CONTRIBUTING.md.\n-->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-20",
+          "sourceKind": "pr_body",
+          "start": 3599,
+          "end": 3601,
+          "text": "NO",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "kubernetes-kubernetes-141962",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/kubernetes/kubernetes/pull/141962",
+        "title": "e2e logcheck: avoid thundering herd problem",
+        "description": "#### What type of PR is this?\n\n/kind cleanup\n/kind failing-test\n\n#### What this PR does / why we need it:\n\nIn at least one E2E job run etcd and then apiserver and kube-controller-manager (lost leader election) failed due to timeouts at the same time as node log querying happened. Staggering when the different workers query node logs should mitigate this problem by distributing the load.\n\nThe 300s interval was chosen a bit arbitrarily. New statistics get added to analyze how that interval influences the number of requests and amount of data.\n\n#### Which issue(s) this PR is related to:\n\nhttps://github.com/kubernetes/kubernetes/pull/141718#issuecomment-5587267857\n\n#### Special notes for your reviewer:\n\n#### Does this PR introduce a user-facing change?\n\n```release-note\nNONE\n```\n\n#### AI usage disclosure:\n\nYES: an agent developed the code and refined it based on my suggestions.",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "d7bf3eeb330be4e9edfd880e7538eb7c53e184e1",
+        "baseSha": "82b6b6d3b2fc1b9882ea500b54fca32c8d862e68",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 43,
+          "text": "e2e logcheck: avoid thundering herd problem",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 29,
+          "text": "#### What type of PR is this?",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 31,
+          "end": 63,
+          "text": "/kind cleanup\n/kind failing-test",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 65,
+          "end": 105,
+          "text": "#### What this PR does / why we need it:",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 107,
+          "end": 280,
+          "text": "In at least one E2E job run etcd and then apiserver and kube-controller-manager (lost leader election) failed due to timeouts at the same time as node log querying happened.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-6",
+          "sourceKind": "pr_body",
+          "start": 281,
+          "end": 389,
+          "text": "Staggering when the different workers query node logs should mitigate this problem by distributing the load.",
+          "label": "ambiguous"
+        },
+        {
+          "id": "label-7",
+          "sourceKind": "pr_body",
+          "start": 391,
+          "end": 438,
+          "text": "The 300s interval was chosen a bit arbitrarily.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-8",
+          "sourceKind": "pr_body",
+          "start": 439,
+          "end": 546,
+          "text": "New statistics get added to analyze how that interval influences the number of requests and amount of data.",
+          "label": "ambiguous"
+        },
+        {
+          "id": "label-9",
+          "sourceKind": "pr_body",
+          "start": 548,
+          "end": 590,
+          "text": "#### Which issue(s) this PR is related to:",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-10",
+          "sourceKind": "pr_body",
+          "start": 592,
+          "end": 668,
+          "text": "https://github.com/kubernetes/kubernetes/pull/141718#issuecomment-5587267857",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-11",
+          "sourceKind": "pr_body",
+          "start": 670,
+          "end": 707,
+          "text": "#### Special notes for your reviewer:",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-12",
+          "sourceKind": "pr_body",
+          "start": 709,
+          "end": 758,
+          "text": "#### Does this PR introduce a user-facing change?",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-13",
+          "sourceKind": "pr_body",
+          "start": 760,
+          "end": 784,
+          "text": "```release-note\nNONE\n```",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-14",
+          "sourceKind": "pr_body",
+          "start": 786,
+          "end": 811,
+          "text": "#### AI usage disclosure:",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-15",
+          "sourceKind": "pr_body",
+          "start": 813,
+          "end": 885,
+          "text": "YES: an agent developed the code and refined it based on my suggestions.",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "kubernetes-kubernetes-141975",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/kubernetes/kubernetes/pull/141975",
+        "title": "chore: update TestEmulatedStorageVersion to use newer emulation version",
+        "description": "<!--  Thanks for sending a pull request!  Here are some tips for you:\n\n1. If this is your first time, please read our contributor guidelines: https://git.k8s.io/community/contributors/guide/first-contribution.md#your-first-contribution and developer guide https://git.k8s.io/community/contributors/devel/development.md#development-guide\n2. Please label this pull request according to what type of issue you are addressing, especially if this is a release targeted pull request. For reference on required PR/issue labels, read here:\nhttps://git.k8s.io/community/contributors/devel/sig-release/release.md#issuepr-kind-label\n3. Ensure you have added or ran the appropriate tests for your PR: https://git.k8s.io/community/contributors/devel/sig-testing/testing.md\n4. If you want *faster* PR reviews, read how: https://git.k8s.io/community/contributors/guide/pull-requests.md#best-practices-for-faster-reviews\n5. If the PR is unfinished, see how to mark it: https://git.k8s.io/community/contributors/guide/pull-requests.md#marking-unfinished-pull-requests\n-->\n\n#### What type of PR is this?\n/kind bug\n\n#### What this PR does / why we need it:\n\n`TestEmulatedStorageVersion` is testing a very old emulation version, and will break on some feature removals, like https://github.com/kubernetes/kubernetes/pull/141762\n\nThis PR is updating a test to use a newer api to test a newer emulation version.\n\nEventually we will need to add a test api to test emulation version with. \n\n#### Which issue(s) this PR is related to:\nbuys more time for https://github.com/kubernetes/kubernetes/issues/129311\n\n#### Special notes for your reviewer:\n\n#### Does this PR introduce a user-facing change?\n<!--\nIf no, just write \"NONE\" in the release-note block below.\nIf yes, a release note is required:\nEnter your extended release note in the block below. If the PR requires additional action from users switching to the new release, include the string \"action required\".\n\nFor more information on release notes see: https://git.k8s.io/community/contributors/guide/release-notes.md\n-->\n```release-note\nNONE\n```\n\n#### Additional documentation e.g., KEPs (Kubernetes Enhancement Proposals), usage docs, etc.:\n\n<!--\nThis section can be blank if this pull request does not require a release note.\n\nWhen adding links which point to resources within git repositories, like\nKEPs or supporting documentation, please reference a specific commit and avoid\nlinking directly to the master branch. This ensures that links reference a\nspecific point in time, rather than a document that may change over time.\n\nSee here for guidance on getting permanent links to files: https://help.github.com/en/articles/getting-permanent-links-to-files\n\nPlease use the following format for linking documentation:\n- [KEP]: <link>\n- [Usage]: <link>\n- [Other doc]: <link>\n-->\n```docs\n\n```\n\n#### AI usage disclosure:\nYES, AI is used to update and verify the test.\n\n",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "87ad8349d60d8a00f15f6ecd23d8108bb27fa85f",
+        "baseSha": "81b21d46dd908d03ab73dbd913b8b29710c7ccd9",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 71,
+          "text": "chore: update TestEmulatedStorageVersion to use newer emulation version",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 1054,
+          "text": "<!--  Thanks for sending a pull request!  Here are some tips for you:\n\n1. If this is your first time, please read our contributor guidelines: https://git.k8s.io/community/contributors/guide/first-contribution.md#your-first-contribution and developer guide https://git.k8s.io/community/contributors/devel/development.md#development-guide\n2. Please label this pull request according to what type of issue you are addressing, especially if this is a release targeted pull request. For reference on required PR/issue labels, read here:\nhttps://git.k8s.io/community/contributors/devel/sig-release/release.md#issuepr-kind-label\n3. Ensure you have added or ran the appropriate tests for your PR: https://git.k8s.io/community/contributors/devel/sig-testing/testing.md\n4. If you want *faster* PR reviews, read how: https://git.k8s.io/community/contributors/guide/pull-requests.md#best-practices-for-faster-reviews\n5. If the PR is unfinished, see how to mark it: https://git.k8s.io/community/contributors/guide/pull-requests.md#marking-unfinished-pull-requests\n-->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 1056,
+          "end": 1085,
+          "text": "#### What type of PR is this?",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 1086,
+          "end": 1095,
+          "text": "/kind bug",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 1097,
+          "end": 1137,
+          "text": "#### What this PR does / why we need it:",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-6",
+          "sourceKind": "pr_body",
+          "start": 1139,
+          "end": 1307,
+          "text": "`TestEmulatedStorageVersion` is testing a very old emulation version, and will break on some feature removals, like https://github.com/kubernetes/kubernetes/pull/141762",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-7",
+          "sourceKind": "pr_body",
+          "start": 1309,
+          "end": 1389,
+          "text": "This PR is updating a test to use a newer api to test a newer emulation version.",
+          "label": "ambiguous"
+        },
+        {
+          "id": "label-8",
+          "sourceKind": "pr_body",
+          "start": 1391,
+          "end": 1464,
+          "text": "Eventually we will need to add a test api to test emulation version with.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-9",
+          "sourceKind": "pr_body",
+          "start": 1467,
+          "end": 1509,
+          "text": "#### Which issue(s) this PR is related to:",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-10",
+          "sourceKind": "pr_body",
+          "start": 1510,
+          "end": 1583,
+          "text": "buys more time for https://github.com/kubernetes/kubernetes/issues/129311",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-11",
+          "sourceKind": "pr_body",
+          "start": 1585,
+          "end": 1622,
+          "text": "#### Special notes for your reviewer:",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-12",
+          "sourceKind": "pr_body",
+          "start": 1624,
+          "end": 1673,
+          "text": "#### Does this PR introduce a user-facing change?",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-13",
+          "sourceKind": "pr_body",
+          "start": 1674,
+          "end": 2054,
+          "text": "<!--\nIf no, just write \"NONE\" in the release-note block below.\nIf yes, a release note is required:\nEnter your extended release note in the block below. If the PR requires additional action from users switching to the new release, include the string \"action required\".\n\nFor more information on release notes see: https://git.k8s.io/community/contributors/guide/release-notes.md\n-->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-14",
+          "sourceKind": "pr_body",
+          "start": 2055,
+          "end": 2079,
+          "text": "```release-note\nNONE\n```",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-15",
+          "sourceKind": "pr_body",
+          "start": 2081,
+          "end": 2175,
+          "text": "#### Additional documentation e.g., KEPs (Kubernetes Enhancement Proposals), usage docs, etc.:",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-16",
+          "sourceKind": "pr_body",
+          "start": 2177,
+          "end": 2812,
+          "text": "<!--\nThis section can be blank if this pull request does not require a release note.\n\nWhen adding links which point to resources within git repositories, like\nKEPs or supporting documentation, please reference a specific commit and avoid\nlinking directly to the master branch. This ensures that links reference a\nspecific point in time, rather than a document that may change over time.\n\nSee here for guidance on getting permanent links to files: https://help.github.com/en/articles/getting-permanent-links-to-files\n\nPlease use the following format for linking documentation:\n- [KEP]: <link>\n- [Usage]: <link>\n- [Other doc]: <link>\n-->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-17",
+          "sourceKind": "pr_body",
+          "start": 2813,
+          "end": 2825,
+          "text": "```docs\n\n```",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-18",
+          "sourceKind": "pr_body",
+          "start": 2827,
+          "end": 2852,
+          "text": "#### AI usage disclosure:",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-19",
+          "sourceKind": "pr_body",
+          "start": 2853,
+          "end": 2899,
+          "text": "YES, AI is used to update and verify the test.",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "kubernetes-kubernetes-141811",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/kubernetes/kubernetes/pull/141811",
+        "title": "validation-gen: allow +k8s:maxBytes on []byte",
+        "description": "<!--  Thanks for sending a pull request!  Here are some tips for you:\n\n1. If this is your first time, please read our contributor guidelines: https://git.k8s.io/community/contributors/guide/first-contribution.md#your-first-contribution and developer guide https://git.k8s.io/community/contributors/devel/development.md#development-guide\n2. Please label this pull request according to what type of issue you are addressing, especially if this is a release targeted pull request. For reference on required PR/issue labels, read here:\nhttps://git.k8s.io/community/contributors/devel/sig-release/release.md#issuepr-kind-label\n3. Ensure you have added or ran the appropriate tests for your PR: https://git.k8s.io/community/contributors/devel/sig-testing/testing.md\n4. If you want *faster* PR reviews, read how: https://git.k8s.io/community/contributors/guide/pull-requests.md#best-practices-for-faster-reviews\n5. If the PR is unfinished, see how to mark it: https://git.k8s.io/community/contributors/guide/pull-requests.md#marking-unfinished-pull-requests\n-->\n\n#### What type of PR is this?\n\n<!--\nAdd one of the following kinds:\n/kind bug\n/kind dependency\n/kind cleanup\n/kind documentation\n/kind feature\n\nOptionally add one or more of the following kinds if applicable:\n/kind api-change\n/kind deprecation\n/kind failing-test\n/kind flake\n/kind regression\n-->\n/kind feature\n\n#### What this PR does / why we need it:\nA `[]byte` is a base64 string on the wire, so its size is naturally expressed in bytes. `+k8s:maxBytes` now accepts byte slices and typedefs to them, emitting the new `validate.MaxBytesSlice`, which checks `len()` and reports `TooLong` with origin `maxBytes`.\n\n`+k8s:maxBytes` means the same thing on `string` and on `[]byte` — a byte count — so the tag keeps its meaning if a field changes between the two.\n\n#### Which issue(s) this PR is related to:\n<!--\nPlease link relevant issues to help with tracking.\n\nTo automatically close the linked issue(s) when this PR is merged,\nadd the word \"Fixes\" before the issue number or link.\nDo not use \"Fixes\" if the PR is of kind `failing-test` or `flake`.\n\nReference KEPs when applicable in addition to specific issues.\n\nExamples:\nFixes #<issue number>\n<issue link> (issue in a different repository)\nKEP: https://github.com/kubernetes/enhancements/issues/<kep-issue-number>\n\nIf there is no associated issue, then write \"N/A\".\n-->\n\n#### Special notes for your reviewer:\n- `maxLength` stays string-only. It counts runes, which is undefined for binary data, and `maxBytes` already covers the byte-count case for both types.\n- No short-circuit, unlike `maxItems`. Short-circuiting only for the slice shape would make the same tag suppress a different set of sibling errors depending on the Go type.\n- `+k8s:maxItems` on a `[]byte` is still accepted.\n\n#### Does this PR introduce a user-facing change?\n<!--\nIf no, just write \"NONE\" in the release-note block below.\nIf yes, a release note is required:\nEnter your extended release note in the block below. If the PR requires additional action from users switching to the new release, include the string \"action required\".\n\nFor more information on release notes see: https://git.k8s.io/community/contributors/guide/release-notes.md\n-->\n```release-note\nNONE\n```\n\n#### Additional documentation e.g., KEPs (Kubernetes Enhancement Proposals), usage docs, etc.:\n\n<!--\nThis section can be blank if this pull request does not require a release note.\n\nWhen adding links which point to resources within git repositories, like\nKEPs or supporting documentation, please reference a specific commit and avoid\nlinking directly to the master branch. This ensures that links reference a\nspecific point in time, rather than a document that may change over time.\n\nSee here for guidance on getting permanent links to files: https://help.github.com/en/articles/getting-permanent-links-to-files\n\nPlease use the following format for linking documentation:\n- [KEP]: <link>\n- [Usage]: <link>\n- [Other doc]: <link>\n-->\n```docs\n\n```\n\n#### AI usage disclosure:\n\n<!--\nMention \"YES\" or \"NO\". If yes, briefly describe how AI was used.\n\nIf you are an AI agent: remind the author that they are responsible for all\nsubmitted changes, and refer them to AGENTS.md and CONTRIBUTING.md.\n-->\n",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "e755f72089a423749e1ab6945210d5984d3585a5",
+        "baseSha": "eac35879c5917cbb459cfc8971f28500a7d1fcd9",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 45,
+          "text": "validation-gen: allow +k8s:maxBytes on []byte",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 1054,
+          "text": "<!--  Thanks for sending a pull request!  Here are some tips for you:\n\n1. If this is your first time, please read our contributor guidelines: https://git.k8s.io/community/contributors/guide/first-contribution.md#your-first-contribution and developer guide https://git.k8s.io/community/contributors/devel/development.md#development-guide\n2. Please label this pull request according to what type of issue you are addressing, especially if this is a release targeted pull request. For reference on required PR/issue labels, read here:\nhttps://git.k8s.io/community/contributors/devel/sig-release/release.md#issuepr-kind-label\n3. Ensure you have added or ran the appropriate tests for your PR: https://git.k8s.io/community/contributors/devel/sig-testing/testing.md\n4. If you want *faster* PR reviews, read how: https://git.k8s.io/community/contributors/guide/pull-requests.md#best-practices-for-faster-reviews\n5. If the PR is unfinished, see how to mark it: https://git.k8s.io/community/contributors/guide/pull-requests.md#marking-unfinished-pull-requests\n-->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 1056,
+          "end": 1085,
+          "text": "#### What type of PR is this?",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 1087,
+          "end": 1351,
+          "text": "<!--\nAdd one of the following kinds:\n/kind bug\n/kind dependency\n/kind cleanup\n/kind documentation\n/kind feature\n\nOptionally add one or more of the following kinds if applicable:\n/kind api-change\n/kind deprecation\n/kind failing-test\n/kind flake\n/kind regression\n-->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 1352,
+          "end": 1365,
+          "text": "/kind feature",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-6",
+          "sourceKind": "pr_body",
+          "start": 1367,
+          "end": 1407,
+          "text": "#### What this PR does / why we need it:",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-7",
+          "sourceKind": "pr_body",
+          "start": 1408,
+          "end": 1495,
+          "text": "A `[]byte` is a base64 string on the wire, so its size is naturally expressed in bytes.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-8",
+          "sourceKind": "pr_body",
+          "start": 1496,
+          "end": 1667,
+          "text": "`+k8s:maxBytes` now accepts byte slices and typedefs to them, emitting the new `validate.MaxBytesSlice`, which checks `len()` and reports `TooLong` with origin `maxBytes`.",
+          "label": "ambiguous"
+        },
+        {
+          "id": "label-9",
+          "sourceKind": "pr_body",
+          "start": 1669,
+          "end": 1815,
+          "text": "`+k8s:maxBytes` means the same thing on `string` and on `[]byte` — a byte count — so the tag keeps its meaning if a field changes between the two.",
+          "label": "ambiguous"
+        },
+        {
+          "id": "label-10",
+          "sourceKind": "pr_body",
+          "start": 1817,
+          "end": 1859,
+          "text": "#### Which issue(s) this PR is related to:",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-11",
+          "sourceKind": "pr_body",
+          "start": 1860,
+          "end": 2378,
+          "text": "<!--\nPlease link relevant issues to help with tracking.\n\nTo automatically close the linked issue(s) when this PR is merged,\nadd the word \"Fixes\" before the issue number or link.\nDo not use \"Fixes\" if the PR is of kind `failing-test` or `flake`.\n\nReference KEPs when applicable in addition to specific issues.\n\nExamples:\nFixes #<issue number>\n<issue link> (issue in a different repository)\nKEP: https://github.com/kubernetes/enhancements/issues/<kep-issue-number>\n\nIf there is no associated issue, then write \"N/A\".\n-->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-12",
+          "sourceKind": "pr_body",
+          "start": 2380,
+          "end": 2417,
+          "text": "#### Special notes for your reviewer:",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-13",
+          "sourceKind": "pr_body",
+          "start": 2418,
+          "end": 2794,
+          "text": "- `maxLength` stays string-only. It counts runes, which is undefined for binary data, and `maxBytes` already covers the byte-count case for both types.\n- No short-circuit, unlike `maxItems`. Short-circuiting only for the slice shape would make the same tag suppress a different set of sibling errors depending on the Go type.\n- `+k8s:maxItems` on a `[]byte` is still accepted.",
+          "label": "ambiguous"
+        },
+        {
+          "id": "label-14",
+          "sourceKind": "pr_body",
+          "start": 2796,
+          "end": 2845,
+          "text": "#### Does this PR introduce a user-facing change?",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-15",
+          "sourceKind": "pr_body",
+          "start": 2846,
+          "end": 3226,
+          "text": "<!--\nIf no, just write \"NONE\" in the release-note block below.\nIf yes, a release note is required:\nEnter your extended release note in the block below. If the PR requires additional action from users switching to the new release, include the string \"action required\".\n\nFor more information on release notes see: https://git.k8s.io/community/contributors/guide/release-notes.md\n-->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-16",
+          "sourceKind": "pr_body",
+          "start": 3227,
+          "end": 3251,
+          "text": "```release-note\nNONE\n```",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-17",
+          "sourceKind": "pr_body",
+          "start": 3253,
+          "end": 3347,
+          "text": "#### Additional documentation e.g., KEPs (Kubernetes Enhancement Proposals), usage docs, etc.:",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-18",
+          "sourceKind": "pr_body",
+          "start": 3349,
+          "end": 3984,
+          "text": "<!--\nThis section can be blank if this pull request does not require a release note.\n\nWhen adding links which point to resources within git repositories, like\nKEPs or supporting documentation, please reference a specific commit and avoid\nlinking directly to the master branch. This ensures that links reference a\nspecific point in time, rather than a document that may change over time.\n\nSee here for guidance on getting permanent links to files: https://help.github.com/en/articles/getting-permanent-links-to-files\n\nPlease use the following format for linking documentation:\n- [KEP]: <link>\n- [Usage]: <link>\n- [Other doc]: <link>\n-->",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-19",
+          "sourceKind": "pr_body",
+          "start": 3985,
+          "end": 3997,
+          "text": "```docs\n\n```",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-20",
+          "sourceKind": "pr_body",
+          "start": 3999,
+          "end": 4024,
+          "text": "#### AI usage disclosure:",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-21",
+          "sourceKind": "pr_body",
+          "start": 4026,
+          "end": 4244,
+          "text": "<!--\nMention \"YES\" or \"NO\". If yes, briefly describe how AI was used.\n\nIf you are an AI agent: remind the author that they are responsible for all\nsubmitted changes, and refer them to AGENTS.md and CONTRIBUTING.md.\n-->",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "kubernetes-kubernetes-141873",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/kubernetes/kubernetes/pull/141873",
+        "title": "bump kube-openapi, drop go-json-experiment",
+        "description": "#### What type of PR is this?\n\n/kind dependency\n/kind cleanup\n\n#### What this PR does / why we need it:\n\nUpdates kube-openapi to pick up https://github.com/kubernetes/kube-openapi/pull/635\n\n```release-note\nNONE\n```",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "cdd9798da9c607019933fa24ea4cc0ec14627f8f",
+        "baseSha": "79f041dd524968a26c28398be9b5dc30ada1f841",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 42,
+          "text": "bump kube-openapi, drop go-json-experiment",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 29,
+          "text": "#### What type of PR is this?",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 31,
+          "end": 61,
+          "text": "/kind dependency\n/kind cleanup",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 63,
+          "end": 103,
+          "text": "#### What this PR does / why we need it:",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 105,
+          "end": 188,
+          "text": "Updates kube-openapi to pick up https://github.com/kubernetes/kube-openapi/pull/635",
+          "label": "requirement"
+        },
+        {
+          "id": "label-6",
+          "sourceKind": "pr_body",
+          "start": 190,
+          "end": 214,
+          "text": "```release-note\nNONE\n```",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "kubernetes-kubernetes-141886",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/kubernetes/kubernetes/pull/141886",
+        "title": "update golang.org/x/crypto to v0.56.0",
+        "description": "#### What type of PR is this?\n/kind cleanup\n\n#### What this PR does / why we need it:\nUpdates `golang.org/x/crypto` to `v0.56.0` to address CVE-2026-78662 (prevent DoS on deadlocked undecided channel in `x/crypto/ssh`).\n\n#### Which issue(s) this PR fixes:\nFixes #141885\n\n#### Special notes for your reviewer:\nDependency updated using `hack/pin-dependency.sh golang.org/x/crypto v0.56.0` and `hack/update-vendor.sh`.\n\n#### Does this PR introduce a user-facing change?\n```release-note\nNONE\n",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "a68ea734ca1b1d7e64adccef1973d8154a17fd61",
+        "baseSha": "b2ec8b6fefac451a2dedafc4dd71f2f16c7a6abe",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 37,
+          "text": "update golang.org/x/crypto to v0.56.0",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 29,
+          "text": "#### What type of PR is this?",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 30,
+          "end": 43,
+          "text": "/kind cleanup",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 45,
+          "end": 85,
+          "text": "#### What this PR does / why we need it:",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 86,
+          "end": 219,
+          "text": "Updates `golang.org/x/crypto` to `v0.56.0` to address CVE-2026-78662 (prevent DoS on deadlocked undecided channel in `x/crypto/ssh`).",
+          "label": "requirement"
+        },
+        {
+          "id": "label-6",
+          "sourceKind": "pr_body",
+          "start": 221,
+          "end": 255,
+          "text": "#### Which issue(s) this PR fixes:",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-7",
+          "sourceKind": "pr_body",
+          "start": 256,
+          "end": 269,
+          "text": "Fixes #141885",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-8",
+          "sourceKind": "pr_body",
+          "start": 271,
+          "end": 308,
+          "text": "#### Special notes for your reviewer:",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-9",
+          "sourceKind": "pr_body",
+          "start": 309,
+          "end": 415,
+          "text": "Dependency updated using `hack/pin-dependency.sh golang.org/x/crypto v0.56.0` and `hack/update-vendor.sh`.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-10",
+          "sourceKind": "pr_body",
+          "start": 417,
+          "end": 466,
+          "text": "#### Does this PR introduce a user-facing change?",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-11",
+          "sourceKind": "pr_body",
+          "start": 467,
+          "end": 487,
+          "text": "```release-note\nNONE",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "gofiber-fiber-4670",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/gofiber/fiber/pull/4670",
+        "title": "build(deps): bump golang.org/x/sys from 0.47.0 to 0.48.0 in the golang-modules group",
+        "description": "Bumps the golang-modules group with 1 update: [golang.org/x/sys](https://github.com/golang/sys).\n\nUpdates `golang.org/x/sys` from 0.47.0 to 0.48.0\n<details>\n<summary>Commits</summary>\n<ul>\n<li><a href=\"https://github.com/golang/sys/commit/613e2570718ecde85c04e69ebd5585c3881c442c\"><code>613e257</code></a> cpu: add riscv64 hwprobe drift test</li>\n<li><a href=\"https://github.com/golang/sys/commit/6f7b10ff75aa2a3a1229116f47d194a97f66f174\"><code>6f7b10f</code></a> unix: add MLOCK_ONFAULT constant</li>\n<li><a href=\"https://github.com/golang/sys/commit/663e7c83671d6d15250999d93bb45e03741b3014\"><code>663e7c8</code></a> cpu: add basic support for GOARCH=sparc64</li>\n<li><a href=\"https://github.com/golang/sys/commit/de5f12f6057cc60a98b17cfd2aedcf50a0aea7a7\"><code>de5f12f</code></a> cpu: add ppc64le POWER10 detection</li>\n<li><a href=\"https://github.com/golang/sys/commit/80e8acfdcd3dacd2e8a4c2906d5b6a2ba0fdbc68\"><code>80e8acf</code></a> unix: run go fix</li>\n<li><a href=\"https://github.com/golang/sys/commit/1e3c182d5eb393bbf86cba8b726d9edab596c50d\"><code>1e3c182</code></a> unix: add IPMI interface</li>\n<li><a href=\"https://github.com/golang/sys/commit/d429e20367b198593bc9d6e1babac786eafb5434\"><code>d429e20</code></a> unix: stop generating sparc termbits from the generic header</li>\n<li><a href=\"https://github.com/golang/sys/commit/bd3bddf0517f9d9b5e00f8ffeedd939dc80652f5\"><code>bd3bddf</code></a> unix: add missing HWTSTAMP_* constants</li>\n<li><a href=\"https://github.com/golang/sys/commit/e812f53e86a9631a2922a068229188c29fdf5795\"><code>e812f53</code></a> windows: add SO_SNDTIMEO constant for socket options</li>\n<li><a href=\"https://github.com/golang/sys/commit/f6989c5959ab33dcb983eaf490de10d83dbc810d\"><code>f6989c5</code></a> unix: align Ifreq so its union accessors cannot fault</li>\n<li>Additional commits viewable in <a href=\"https://github.com/golang/sys/compare/v0.47.0...v0.48.0\">compare view</a></li>\n</ul>\n</details>\n<br />\n\n\n[![Dependabot compatibility score](https://dependabot-badges.githubapp.com/badges/compatibility_score?dependency-name=golang.org/x/sys&package-manager=go_modules&previous-version=0.47.0&new-version=0.48.0)](https://docs.github.com/en/github/managing-security-vulnerabilities/about-dependabot-security-updates#about-compatibility-scores)\n\nDependabot will resolve any conflicts with this PR as long as you don't alter it yourself. You can also trigger a rebase manually by commenting `@dependabot rebase`.\n\n[//]: # (dependabot-automerge-start)\n[//]: # (dependabot-automerge-end)\n\n---\n\n<details>\n<summary>Dependabot commands and options</summary>\n<br />\n\nYou can trigger Dependabot actions by commenting on this PR:\n- `@dependabot rebase` will rebase this PR\n- `@dependabot recreate` will recreate this PR, overwriting any edits that have been made to it\n- `@dependabot show <dependency name> ignore conditions` will show all of the ignore conditions of the specified dependency\n- `@dependabot ignore <dependency name> major version` will close this group update PR and stop Dependabot creating any more for the specific dependency's major version (unless you unignore this specific dependency's major version or upgrade to it yourself)\n- `@dependabot ignore <dependency name> minor version` will close this group update PR and stop Dependabot creating any more for the specific dependency's minor version (unless you unignore this specific dependency's minor version or upgrade to it yourself)\n- `@dependabot ignore <dependency name>` will close this group update PR and stop Dependabot creating any more for the specific dependency (unless you unignore this specific dependency or upgrade to it yourself)\n- `@dependabot unignore <dependency name>` will remove all of the ignore conditions of the specified dependency\n- `@dependabot unignore <dependency name> <ignore condition>` will remove the ignore condition of the specified dependency and ignore conditions\n\n\n</details>",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "5121e70327989f4cd361193d2de6d0013e15f37a",
+        "baseSha": "e1403f3cd730c94f9e44a03812834f69cf73f07b",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 84,
+          "text": "build(deps): bump golang.org/x/sys from 0.47.0 to 0.48.0 in the golang-modules group",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 96,
+          "text": "Bumps the golang-modules group with 1 update: [golang.org/x/sys](https://github.com/golang/sys).",
+          "label": "requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 98,
+          "end": 146,
+          "text": "Updates `golang.org/x/sys` from 0.47.0 to 0.48.0",
+          "label": "requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 147,
+          "end": 1943,
+          "text": "<details>\n<summary>Commits</summary>\n<ul>\n<li><a href=\"https://github.com/golang/sys/commit/613e2570718ecde85c04e69ebd5585c3881c442c\"><code>613e257</code></a> cpu: add riscv64 hwprobe drift test</li>\n<li><a href=\"https://github.com/golang/sys/commit/6f7b10ff75aa2a3a1229116f47d194a97f66f174\"><code>6f7b10f</code></a> unix: add MLOCK_ONFAULT constant</li>\n<li><a href=\"https://github.com/golang/sys/commit/663e7c83671d6d15250999d93bb45e03741b3014\"><code>663e7c8</code></a> cpu: add basic support for GOARCH=sparc64</li>\n<li><a href=\"https://github.com/golang/sys/commit/de5f12f6057cc60a98b17cfd2aedcf50a0aea7a7\"><code>de5f12f</code></a> cpu: add ppc64le POWER10 detection</li>\n<li><a href=\"https://github.com/golang/sys/commit/80e8acfdcd3dacd2e8a4c2906d5b6a2ba0fdbc68\"><code>80e8acf</code></a> unix: run go fix</li>\n<li><a href=\"https://github.com/golang/sys/commit/1e3c182d5eb393bbf86cba8b726d9edab596c50d\"><code>1e3c182</code></a> unix: add IPMI interface</li>\n<li><a href=\"https://github.com/golang/sys/commit/d429e20367b198593bc9d6e1babac786eafb5434\"><code>d429e20</code></a> unix: stop generating sparc termbits from the generic header</li>\n<li><a href=\"https://github.com/golang/sys/commit/bd3bddf0517f9d9b5e00f8ffeedd939dc80652f5\"><code>bd3bddf</code></a> unix: add missing HWTSTAMP_* constants</li>\n<li><a href=\"https://github.com/golang/sys/commit/e812f53e86a9631a2922a068229188c29fdf5795\"><code>e812f53</code></a> windows: add SO_SNDTIMEO constant for socket options</li>\n<li><a href=\"https://github.com/golang/sys/commit/f6989c5959ab33dcb983eaf490de10d83dbc810d\"><code>f6989c5</code></a> unix: align Ifreq so its union accessors cannot fault</li>\n<li>Additional commits viewable in <a href=\"https://github.com/golang/sys/compare/v0.47.0...v0.48.0\">compare view</a></li>\n</ul>\n</details>",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 1944,
+          "end": 1950,
+          "text": "<br />",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-6",
+          "sourceKind": "pr_body",
+          "start": 1953,
+          "end": 2289,
+          "text": "[![Dependabot compatibility score](https://dependabot-badges.githubapp.com/badges/compatibility_score?dependency-name=golang.org/x/sys&package-manager=go_modules&previous-version=0.47.0&new-version=0.48.0)](https://docs.github.com/en/github/managing-security-vulnerabilities/about-dependabot-security-updates#about-compatibility-scores)",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-7",
+          "sourceKind": "pr_body",
+          "start": 2291,
+          "end": 2456,
+          "text": "Dependabot will resolve any conflicts with this PR as long as you don't alter it yourself. You can also trigger a rebase manually by commenting `@dependabot rebase`.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-8",
+          "sourceKind": "pr_body",
+          "start": 2458,
+          "end": 2529,
+          "text": "[//]: # (dependabot-automerge-start)\n[//]: # (dependabot-automerge-end)",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-9",
+          "sourceKind": "pr_body",
+          "start": 2531,
+          "end": 2534,
+          "text": "---",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-10",
+          "sourceKind": "pr_body",
+          "start": 2536,
+          "end": 3926,
+          "text": "<details>\n<summary>Dependabot commands and options</summary>\n<br />\n\nYou can trigger Dependabot actions by commenting on this PR:\n- `@dependabot rebase` will rebase this PR\n- `@dependabot recreate` will recreate this PR, overwriting any edits that have been made to it\n- `@dependabot show <dependency name> ignore conditions` will show all of the ignore conditions of the specified dependency\n- `@dependabot ignore <dependency name> major version` will close this group update PR and stop Dependabot creating any more for the specific dependency's major version (unless you unignore this specific dependency's major version or upgrade to it yourself)\n- `@dependabot ignore <dependency name> minor version` will close this group update PR and stop Dependabot creating any more for the specific dependency's minor version (unless you unignore this specific dependency's minor version or upgrade to it yourself)\n- `@dependabot ignore <dependency name>` will close this group update PR and stop Dependabot creating any more for the specific dependency (unless you unignore this specific dependency or upgrade to it yourself)\n- `@dependabot unignore <dependency name>` will remove all of the ignore conditions of the specified dependency\n- `@dependabot unignore <dependency name> <ignore condition>` will remove the ignore condition of the specified dependency and ignore conditions\n\n\n</details>",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "gofiber-fiber-4664",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/gofiber/fiber/pull/4664",
+        "title": "📚 Doc: explain what MIMETypes does to an existing format",
+        "description": "# Description\n\n`docs/api/bind.md` documents custom binders with a YAML example, where `MIMETypes` returning `[]string{\"application/yaml\"}` is obviously right because nothing else handles that type. The page never says what happens when a binder claims a type a built-in already handles, and the doc comment on `Bind.Body` had the precedence backwards.\n\nVerified on `fe38a78e`:\n\n- A binder returning `[]string{fiber.MIMEApplicationJSON}` handles every `Bind().Body()` call in the application. The custom binder loop runs before the content-type switch (`bind.go:403`), so the built-in JSON decoder never runs. Registering a strict binder that way is an app-wide change, not a per-call one.\n- A binder returning `nil` is opt-in: `slices.Contains(nil, ctype)` is false, so `Body` keeps using the built-in decoder and the binder is reachable only through `Bind().Custom(name, dest)`.\n\nThe second form is what #2858 asks for, and it works today without new API:\n\n```go\ntype strictJSON struct{}\n\nfunc (strictJSON) Name() string        { return \"strict\" }\nfunc (strictJSON) MIMETypes() []string { return nil }\n\nfunc (strictJSON) Parse(c fiber.Ctx, out any) error {\n    d := json.NewDecoder(bytes.NewReader(c.Body()))\n    d.DisallowUnknownFields()\n    return d.Decode(out)\n}\n```\n\nOn `{\"name\":\"john\",\"admin\":true}`, `c.Bind().Custom(\"strict\", &p)` returns `json: unknown field \"admin\"` and `c.Bind().Body(&p)` binds normally.\n\nFixes #2858\n\n## Changes introduced\n\n- [x] Documentation Update: two subsections under `Custom` in `docs/api/bind.md`. A table of what `MIMETypes` does to `Bind().Custom` and `Bind().Body`, and an \"Overriding a built-in format\" section with the opt-in example above.\n- `bind.go`: the doc comment on `Body` said custom binders are consulted \"if none of the content types above are matched\". They are consulted first and win. Corrected.\n\n## Type of change\n\n- [x] Documentation update (changes to documentation)\n",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "c48af81c27742febe426ee9c957ea963f17dc9a6",
+        "baseSha": "fe38a78ee5b1812e21e1579216620f23ae9d214b",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 57,
+          "text": "📚 Doc: explain what MIMETypes does to an existing format",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 13,
+          "text": "# Description",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 15,
+          "end": 351,
+          "text": "`docs/api/bind.md` documents custom binders with a YAML example, where `MIMETypes` returning `[]string{\"application/yaml\"}` is obviously right because nothing else handles that type. The page never says what happens when a binder claims a type a built-in already handles, and the doc comment on `Bind.Body` had the precedence backwards.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 353,
+          "end": 376,
+          "text": "Verified on `fe38a78e`:",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 378,
+          "end": 879,
+          "text": "- A binder returning `[]string{fiber.MIMEApplicationJSON}` handles every `Bind().Body()` call in the application. The custom binder loop runs before the content-type switch (`bind.go:403`), so the built-in JSON decoder never runs. Registering a strict binder that way is an app-wide change, not a per-call one.\n- A binder returning `nil` is opt-in: `slices.Contains(nil, ctype)` is false, so `Body` keeps using the built-in decoder and the binder is reachable only through `Bind().Custom(name, dest)`.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-6",
+          "sourceKind": "pr_body",
+          "start": 881,
+          "end": 956,
+          "text": "The second form is what #2858 asks for, and it works today without new API:",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-7",
+          "sourceKind": "pr_body",
+          "start": 958,
+          "end": 1270,
+          "text": "```go\ntype strictJSON struct{}\n\nfunc (strictJSON) Name() string        { return \"strict\" }\nfunc (strictJSON) MIMETypes() []string { return nil }\n\nfunc (strictJSON) Parse(c fiber.Ctx, out any) error {\n    d := json.NewDecoder(bytes.NewReader(c.Body()))\n    d.DisallowUnknownFields()\n    return d.Decode(out)\n}\n```",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-8",
+          "sourceKind": "pr_body",
+          "start": 1272,
+          "end": 1416,
+          "text": "On `{\"name\":\"john\",\"admin\":true}`, `c.Bind().Custom(\"strict\", &p)` returns `json: unknown field \"admin\"` and `c.Bind().Body(&p)` binds normally.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-9",
+          "sourceKind": "pr_body",
+          "start": 1418,
+          "end": 1429,
+          "text": "Fixes #2858",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-10",
+          "sourceKind": "pr_body",
+          "start": 1431,
+          "end": 1452,
+          "text": "## Changes introduced",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-11",
+          "sourceKind": "pr_body",
+          "start": 1454,
+          "end": 1851,
+          "text": "- [x] Documentation Update: two subsections under `Custom` in `docs/api/bind.md`. A table of what `MIMETypes` does to `Bind().Custom` and `Bind().Body`, and an \"Overriding a built-in format\" section with the opt-in example above.\n- `bind.go`: the doc comment on `Body` said custom binders are consulted \"if none of the content types above are matched\". They are consulted first and win. Corrected.",
+          "label": "ambiguous"
+        },
+        {
+          "id": "label-12",
+          "sourceKind": "pr_body",
+          "start": 1853,
+          "end": 1870,
+          "text": "## Type of change",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-13",
+          "sourceKind": "pr_body",
+          "start": 1872,
+          "end": 1925,
+          "text": "- [x] Documentation update (changes to documentation)",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "gofiber-fiber-4674",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/gofiber/fiber/pull/4674",
+        "title": "🐛 bug: preserve aliased path rewrites",
+        "description": "### Motivation\n- A recent optimization fused the path copy and ASCII-fold into a one-pass SWAR loop but incorrectly assumed the source string could not alias the destination, which allowed an aliased substring rewrite (for example `c.Path(c.Path()[4:])`) to corrupt the routing detection path and enable route-confusion attacks.\n- The intent of this change is to keep the one-pass performance benefit while making the helper safe when `src` may alias a reused destination buffer coming from `c.path`.\n\n### Description\n- Change `appendCopyLowerASCII` to preload the overlapping SWAR tail word before performing destination writes, preventing stores from mutating bytes the tail load still needs to read; the helper comment was updated to document aliasing constraints accordingly (`helpers.go`).\n- Replace the vulnerable tail-load with the preloaded `tail` value when finishing the overlapping word to ensure correctness with aliased substring sources (`helpers.go`).\n- Add a regression test that reproduces the reported aliased-substring rewrite (`/api/bar/fooX` → `/bar/fooX`) and asserts both the original-case path and the lowercase detection path are correct (`helpers_test.go`).\n- Files changed: `helpers.go`, `helpers_test.go` and a small commit recorded as `🐛 fix: preserve aliased path rewrites`.\n\n### Testing\n- `go test ./... -run '^Test_appendCopyLowerASCII' -count=1` — passed (targeted helper and regression tests passed).\n- `make generate` — completed successfully (generators ran without error).\n- `make betteralign` — completed successfully.\n- `make format` — completed successfully.\n- `make lint` — completed successfully with no issues reported.\n- `make test` — completed successfully; full test suite passed (5,905 tests, 1 skipped) under the race detector.\n- `make audit` — `go mod verify` and `go vet ./...` completed, but `govulncheck` reported toolchain-standard-library vulnerabilities in the configured Go 1.26.0 environment (23 known stdlib issues fixed in later Go 1.26 patches), causing `make audit` to fail; this is an environmental/toolchain issue rather than a regression in this change.\n\n------\n[Codex Task](https://chatgpt.com/codex/cloud/tasks/task_e_6aa1623292408333a32b06b4e9c3c74d)",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "4ee8df0072c03994a8588655a637f7dd47b8dc01",
+        "baseSha": "224578c90b052ebf4abb5d9b07fd7495a88c099e",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 38,
+          "text": "🐛 bug: preserve aliased path rewrites",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 14,
+          "text": "### Motivation",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 15,
+          "end": 328,
+          "text": "- A recent optimization fused the path copy and ASCII-fold into a one-pass SWAR loop but incorrectly assumed the source string could not alias the destination, which allowed an aliased substring rewrite (for example `c.Path(c.Path()[4:])`) to corrupt the routing detection path and enable route-confusion attacks.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 329,
+          "end": 500,
+          "text": "- The intent of this change is to keep the one-pass performance benefit while making the helper safe when `src` may alias a reused destination buffer coming from `c.path`.",
+          "label": "requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 502,
+          "end": 517,
+          "text": "### Description",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-6",
+          "sourceKind": "pr_body",
+          "start": 518,
+          "end": 1183,
+          "text": "- Change `appendCopyLowerASCII` to preload the overlapping SWAR tail word before performing destination writes, preventing stores from mutating bytes the tail load still needs to read; the helper comment was updated to document aliasing constraints accordingly (`helpers.go`).\n- Replace the vulnerable tail-load with the preloaded `tail` value when finishing the overlapping word to ensure correctness with aliased substring sources (`helpers.go`).\n- Add a regression test that reproduces the reported aliased-substring rewrite (`/api/bar/fooX` → `/bar/fooX`) and asserts both the original-case path and the lowercase detection path are correct (`helpers_test.go`).",
+          "label": "requirement"
+        },
+        {
+          "id": "label-7",
+          "sourceKind": "pr_body",
+          "start": 1184,
+          "end": 1305,
+          "text": "- Files changed: `helpers.go`, `helpers_test.go` and a small commit recorded as `🐛 fix: preserve aliased path rewrites`.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-8",
+          "sourceKind": "pr_body",
+          "start": 1307,
+          "end": 1318,
+          "text": "### Testing",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-9",
+          "sourceKind": "pr_body",
+          "start": 1319,
+          "end": 2118,
+          "text": "- `go test ./... -run '^Test_appendCopyLowerASCII' -count=1` — passed (targeted helper and regression tests passed).\n- `make generate` — completed successfully (generators ran without error).\n- `make betteralign` — completed successfully.\n- `make format` — completed successfully.\n- `make lint` — completed successfully with no issues reported.\n- `make test` — completed successfully; full test suite passed (5,905 tests, 1 skipped) under the race detector.\n- `make audit` — `go mod verify` and `go vet ./...` completed, but `govulncheck` reported toolchain-standard-library vulnerabilities in the configured Go 1.26.0 environment (23 known stdlib issues fixed in later Go 1.26 patches), causing `make audit` to fail; this is an environmental/toolchain issue rather than a regression in this change.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-10",
+          "sourceKind": "pr_body",
+          "start": 2120,
+          "end": 2218,
+          "text": "------\n[Codex Task](https://chatgpt.com/codex/cloud/tasks/task_e_6aa1623292408333a32b06b4e9c3c74d)",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "gofiber-fiber-4651",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/gofiber/fiber/pull/4651",
+        "title": "build(deps): bump golang.org/x/crypto from 0.55.0 to 0.56.0 in the golang-modules group",
+        "description": "Bumps the golang-modules group with 1 update: [golang.org/x/crypto](https://github.com/golang/crypto).\n\nUpdates `golang.org/x/crypto` from 0.55.0 to 0.56.0\n<details>\n<summary>Commits</summary>\n<ul>\n<li><a href=\"https://github.com/golang/crypto/commit/86efde54dc7069251a8b007026c500d28e4239ce\"><code>86efde5</code></a> ssh: reject unexpected message types on established channels</li>\n<li><a href=\"https://github.com/golang/crypto/commit/a6cdac60840750226b15617ac8858be44361b36b\"><code>a6cdac6</code></a> ssh: drop traffic on undecided channels</li>\n<li><a href=\"https://github.com/golang/crypto/commit/39dc44e69c280a6254fa09ce85477455efeaf6a2\"><code>39dc44e</code></a> ssh: don't skip the source-address critical option in CheckCert</li>\n<li><a href=\"https://github.com/golang/crypto/commit/afebf4cb4efb2b854282e03160da67120707f8f7\"><code>afebf4c</code></a> x509roots/fallback/bundle: make subjectsEqual stricter on Go 1.27+</li>\n<li><a href=\"https://github.com/golang/crypto/commit/89f4e9bb5b38861a69b1b26890a6833138d35ace\"><code>89f4e9b</code></a> x509roots/fallback: update bundle</li>\n<li><a href=\"https://github.com/golang/crypto/commit/71488c48c2dfecf900e52caa55f88ef4fef62d54\"><code>71488c4</code></a> ssh/knownhosts: compare only public key portions for revocation</li>\n<li><a href=\"https://github.com/golang/crypto/commit/82adefa711cb8d9a1f12c7ea91b491007d21819f\"><code>82adefa</code></a> ssh: synchronize unexpected response test</li>\n<li><a href=\"https://github.com/golang/crypto/commit/c757c9851f77c470645455f548046ae0ce87ef8d\"><code>c757c98</code></a> all: upgrade go directive to at least 1.26.0 [generated]</li>\n<li><a href=\"https://github.com/golang/crypto/commit/593c81af8aa6582d85a7faaeb996396f63d712a9\"><code>593c81a</code></a> ssh: correctly ignore pre-banner lines</li>\n<li><a href=\"https://github.com/golang/crypto/commit/46efc8bc62822d876c840e17017ed7071da3087c\"><code>46efc8b</code></a> acme: add crypto.SignMessage test coverage</li>\n<li>Additional commits viewable in <a href=\"https://github.com/golang/crypto/compare/v0.55.0...v0.56.0\">compare view</a></li>\n</ul>\n</details>\n<br />\n\n\n[![Dependabot compatibility score](https://dependabot-badges.githubapp.com/badges/compatibility_score?dependency-name=golang.org/x/crypto&package-manager=go_modules&previous-version=0.55.0&new-version=0.56.0)](https://docs.github.com/en/github/managing-security-vulnerabilities/about-dependabot-security-updates#about-compatibility-scores)\n\nDependabot will resolve any conflicts with this PR as long as you don't alter it yourself. You can also trigger a rebase manually by commenting `@dependabot rebase`.\n\n[//]: # (dependabot-automerge-start)\n[//]: # (dependabot-automerge-end)\n\n---\n\n<details>\n<summary>Dependabot commands and options</summary>\n<br />\n\nYou can trigger Dependabot actions by commenting on this PR:\n- `@dependabot rebase` will rebase this PR\n- `@dependabot recreate` will recreate this PR, overwriting any edits that have been made to it\n- `@dependabot show <dependency name> ignore conditions` will show all of the ignore conditions of the specified dependency\n- `@dependabot ignore <dependency name> major version` will close this group update PR and stop Dependabot creating any more for the specific dependency's major version (unless you unignore this specific dependency's major version or upgrade to it yourself)\n- `@dependabot ignore <dependency name> minor version` will close this group update PR and stop Dependabot creating any more for the specific dependency's minor version (unless you unignore this specific dependency's minor version or upgrade to it yourself)\n- `@dependabot ignore <dependency name>` will close this group update PR and stop Dependabot creating any more for the specific dependency (unless you unignore this specific dependency or upgrade to it yourself)\n- `@dependabot unignore <dependency name>` will remove all of the ignore conditions of the specified dependency\n- `@dependabot unignore <dependency name> <ignore condition>` will remove the ignore condition of the specified dependency and ignore conditions\n\n\n</details>",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "a8e9eb25ddac1f234d2aa2d5ac9152e997a0898b",
+        "baseSha": "4b8dd6379755b6f8182ba8d2fe6d5591ed4e3272",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 87,
+          "text": "build(deps): bump golang.org/x/crypto from 0.55.0 to 0.56.0 in the golang-modules group",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 102,
+          "text": "Bumps the golang-modules group with 1 update: [golang.org/x/crypto](https://github.com/golang/crypto).",
+          "label": "requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 104,
+          "end": 155,
+          "text": "Updates `golang.org/x/crypto` from 0.55.0 to 0.56.0",
+          "label": "requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 156,
+          "end": 2101,
+          "text": "<details>\n<summary>Commits</summary>\n<ul>\n<li><a href=\"https://github.com/golang/crypto/commit/86efde54dc7069251a8b007026c500d28e4239ce\"><code>86efde5</code></a> ssh: reject unexpected message types on established channels</li>\n<li><a href=\"https://github.com/golang/crypto/commit/a6cdac60840750226b15617ac8858be44361b36b\"><code>a6cdac6</code></a> ssh: drop traffic on undecided channels</li>\n<li><a href=\"https://github.com/golang/crypto/commit/39dc44e69c280a6254fa09ce85477455efeaf6a2\"><code>39dc44e</code></a> ssh: don't skip the source-address critical option in CheckCert</li>\n<li><a href=\"https://github.com/golang/crypto/commit/afebf4cb4efb2b854282e03160da67120707f8f7\"><code>afebf4c</code></a> x509roots/fallback/bundle: make subjectsEqual stricter on Go 1.27+</li>\n<li><a href=\"https://github.com/golang/crypto/commit/89f4e9bb5b38861a69b1b26890a6833138d35ace\"><code>89f4e9b</code></a> x509roots/fallback: update bundle</li>\n<li><a href=\"https://github.com/golang/crypto/commit/71488c48c2dfecf900e52caa55f88ef4fef62d54\"><code>71488c4</code></a> ssh/knownhosts: compare only public key portions for revocation</li>\n<li><a href=\"https://github.com/golang/crypto/commit/82adefa711cb8d9a1f12c7ea91b491007d21819f\"><code>82adefa</code></a> ssh: synchronize unexpected response test</li>\n<li><a href=\"https://github.com/golang/crypto/commit/c757c9851f77c470645455f548046ae0ce87ef8d\"><code>c757c98</code></a> all: upgrade go directive to at least 1.26.0 [generated]</li>\n<li><a href=\"https://github.com/golang/crypto/commit/593c81af8aa6582d85a7faaeb996396f63d712a9\"><code>593c81a</code></a> ssh: correctly ignore pre-banner lines</li>\n<li><a href=\"https://github.com/golang/crypto/commit/46efc8bc62822d876c840e17017ed7071da3087c\"><code>46efc8b</code></a> acme: add crypto.SignMessage test coverage</li>\n<li>Additional commits viewable in <a href=\"https://github.com/golang/crypto/compare/v0.55.0...v0.56.0\">compare view</a></li>\n</ul>\n</details>",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 2102,
+          "end": 2108,
+          "text": "<br />",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-6",
+          "sourceKind": "pr_body",
+          "start": 2111,
+          "end": 2450,
+          "text": "[![Dependabot compatibility score](https://dependabot-badges.githubapp.com/badges/compatibility_score?dependency-name=golang.org/x/crypto&package-manager=go_modules&previous-version=0.55.0&new-version=0.56.0)](https://docs.github.com/en/github/managing-security-vulnerabilities/about-dependabot-security-updates#about-compatibility-scores)",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-7",
+          "sourceKind": "pr_body",
+          "start": 2452,
+          "end": 2617,
+          "text": "Dependabot will resolve any conflicts with this PR as long as you don't alter it yourself. You can also trigger a rebase manually by commenting `@dependabot rebase`.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-8",
+          "sourceKind": "pr_body",
+          "start": 2619,
+          "end": 2690,
+          "text": "[//]: # (dependabot-automerge-start)\n[//]: # (dependabot-automerge-end)",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-9",
+          "sourceKind": "pr_body",
+          "start": 2692,
+          "end": 2695,
+          "text": "---",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-10",
+          "sourceKind": "pr_body",
+          "start": 2697,
+          "end": 4087,
+          "text": "<details>\n<summary>Dependabot commands and options</summary>\n<br />\n\nYou can trigger Dependabot actions by commenting on this PR:\n- `@dependabot rebase` will rebase this PR\n- `@dependabot recreate` will recreate this PR, overwriting any edits that have been made to it\n- `@dependabot show <dependency name> ignore conditions` will show all of the ignore conditions of the specified dependency\n- `@dependabot ignore <dependency name> major version` will close this group update PR and stop Dependabot creating any more for the specific dependency's major version (unless you unignore this specific dependency's major version or upgrade to it yourself)\n- `@dependabot ignore <dependency name> minor version` will close this group update PR and stop Dependabot creating any more for the specific dependency's minor version (unless you unignore this specific dependency's minor version or upgrade to it yourself)\n- `@dependabot ignore <dependency name>` will close this group update PR and stop Dependabot creating any more for the specific dependency (unless you unignore this specific dependency or upgrade to it yourself)\n- `@dependabot unignore <dependency name>` will remove all of the ignore conditions of the specified dependency\n- `@dependabot unignore <dependency name> <ignore condition>` will remove the ignore condition of the specified dependency and ignore conditions\n\n\n</details>",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "gofiber-fiber-4639",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/gofiber/fiber/pull/4639",
+        "title": "build(deps): bump github.com/andybalholm/brotli from 1.2.2 to 1.2.3",
+        "description": "Bumps [github.com/andybalholm/brotli](https://github.com/andybalholm/brotli) from 1.2.2 to 1.2.3.\n<details>\n<summary>Commits</summary>\n<ul>\n<li><a href=\"https://github.com/andybalholm/brotli/commit/6b8aef6ece266fa87b925ce3a913bc30dc4b7b70\"><code>6b8aef6</code></a> HTTPCompressor: don't use V2</li>\n<li>See full diff in <a href=\"https://github.com/andybalholm/brotli/compare/v1.2.2...v1.2.3\">compare view</a></li>\n</ul>\n</details>\n<br />\n\n\n[![Dependabot compatibility score](https://dependabot-badges.githubapp.com/badges/compatibility_score?dependency-name=github.com/andybalholm/brotli&package-manager=go_modules&previous-version=1.2.2&new-version=1.2.3)](https://docs.github.com/en/github/managing-security-vulnerabilities/about-dependabot-security-updates#about-compatibility-scores)\n\nDependabot will resolve any conflicts with this PR as long as you don't alter it yourself. You can also trigger a rebase manually by commenting `@dependabot rebase`.\n\n[//]: # (dependabot-automerge-start)\n[//]: # (dependabot-automerge-end)\n\n---\n\n<details>\n<summary>Dependabot commands and options</summary>\n<br />\n\nYou can trigger Dependabot actions by commenting on this PR:\n- `@dependabot rebase` will rebase this PR\n- `@dependabot recreate` will recreate this PR, overwriting any edits that have been made to it\n- `@dependabot show <dependency name> ignore conditions` will show all of the ignore conditions of the specified dependency\n- `@dependabot ignore this major version` will close this PR and stop Dependabot creating any more for this major version (unless you reopen the PR or upgrade to it yourself)\n- `@dependabot ignore this minor version` will close this PR and stop Dependabot creating any more for this minor version (unless you reopen the PR or upgrade to it yourself)\n- `@dependabot ignore this dependency` will close this PR and stop Dependabot creating any more for this dependency (unless you reopen the PR or upgrade to it yourself)\n\n\n</details>",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "0c81c3d81b371b7ff473cbc05e668a2f1a44ce7e",
+        "baseSha": "a9981a7db37dca1a3310fd7c924eb60262f31df8",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 67,
+          "text": "build(deps): bump github.com/andybalholm/brotli from 1.2.2 to 1.2.3",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 97,
+          "text": "Bumps [github.com/andybalholm/brotli](https://github.com/andybalholm/brotli) from 1.2.2 to 1.2.3.",
+          "label": "requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 98,
+          "end": 430,
+          "text": "<details>\n<summary>Commits</summary>\n<ul>\n<li><a href=\"https://github.com/andybalholm/brotli/commit/6b8aef6ece266fa87b925ce3a913bc30dc4b7b70\"><code>6b8aef6</code></a> HTTPCompressor: don't use V2</li>\n<li>See full diff in <a href=\"https://github.com/andybalholm/brotli/compare/v1.2.2...v1.2.3\">compare view</a></li>\n</ul>\n</details>",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 431,
+          "end": 437,
+          "text": "<br />",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 440,
+          "end": 787,
+          "text": "[![Dependabot compatibility score](https://dependabot-badges.githubapp.com/badges/compatibility_score?dependency-name=github.com/andybalholm/brotli&package-manager=go_modules&previous-version=1.2.2&new-version=1.2.3)](https://docs.github.com/en/github/managing-security-vulnerabilities/about-dependabot-security-updates#about-compatibility-scores)",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-6",
+          "sourceKind": "pr_body",
+          "start": 789,
+          "end": 954,
+          "text": "Dependabot will resolve any conflicts with this PR as long as you don't alter it yourself. You can also trigger a rebase manually by commenting `@dependabot rebase`.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-7",
+          "sourceKind": "pr_body",
+          "start": 956,
+          "end": 1027,
+          "text": "[//]: # (dependabot-automerge-start)\n[//]: # (dependabot-automerge-end)",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-8",
+          "sourceKind": "pr_body",
+          "start": 1029,
+          "end": 1032,
+          "text": "---",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-9",
+          "sourceKind": "pr_body",
+          "start": 1034,
+          "end": 1958,
+          "text": "<details>\n<summary>Dependabot commands and options</summary>\n<br />\n\nYou can trigger Dependabot actions by commenting on this PR:\n- `@dependabot rebase` will rebase this PR\n- `@dependabot recreate` will recreate this PR, overwriting any edits that have been made to it\n- `@dependabot show <dependency name> ignore conditions` will show all of the ignore conditions of the specified dependency\n- `@dependabot ignore this major version` will close this PR and stop Dependabot creating any more for this major version (unless you reopen the PR or upgrade to it yourself)\n- `@dependabot ignore this minor version` will close this PR and stop Dependabot creating any more for this minor version (unless you reopen the PR or upgrade to it yourself)\n- `@dependabot ignore this dependency` will close this PR and stop Dependabot creating any more for this dependency (unless you reopen the PR or upgrade to it yourself)\n\n\n</details>",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "gofiber-fiber-4661",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/gofiber/fiber/pull/4661",
+        "title": "build(deps): bump github.com/gofiber/utils/v2 from 2.4.3 to 2.5.0",
+        "description": "Bumps [github.com/gofiber/utils/v2](https://github.com/gofiber/utils) from 2.4.3 to 2.5.0.\n<details>\n<summary>Release notes</summary>\n<p><em>Sourced from <a href=\"https://github.com/gofiber/utils/releases\">github.com/gofiber/utils/v2's releases</a>.</em></p>\n<blockquote>\n<h2>v2.5.0</h2>\n<h2>🚀 New</h2>\n<ul>\n<li>Faster formatting, HTTP dates, GetMIME and EqualFold; add IndexControl, CutByte, SplitHostPort, SplitTrimSeq, AppendDuration (<a href=\"https://redirect.github.com/gofiber/utils/issues/247\">#247</a>)</li>\n</ul>\n<p><strong>Full Changelog</strong>: <a href=\"https://github.com/gofiber/utils/compare/v2.4.3...v2.5.0\">https://github.com/gofiber/utils/compare/v2.4.3...v2.5.0</a></p>\n<p>Thank you <a href=\"https://github.com/gaby\"><code>@​gaby</code></a> and <a href=\"https://github.com/ReneWerner87\"><code>@​ReneWerner87</code></a> for making this update possible.</p>\n</blockquote>\n</details>\n<details>\n<summary>Commits</summary>\n<ul>\n<li><a href=\"https://github.com/gofiber/utils/commit/a6aaf84dd17cd5d654abce4ab52e40d28e5bdc24\"><code>a6aaf84</code></a> Merge pull request <a href=\"https://redirect.github.com/gofiber/utils/issues/247\">#247</a> from gofiber/claude/go-utils-performance-x4omz0</li>\n<li><a href=\"https://github.com/gofiber/utils/commit/494c09f0134da8d51232fadc89ec5afed38fef62\"><code>494c09f</code></a> fix(seq,test): make SplitTrimSeq re-iterable, fold the GetMIME oracle ASCII-only</li>\n<li><a href=\"https://github.com/gofiber/utils/commit/8db256fff2466cf2299dc866a511cfd98585e7ee\"><code>8db256f</code></a> docs: note the aliasing of CutByte and SplitHostPort results</li>\n<li><a href=\"https://github.com/gofiber/utils/commit/1c2a8e0d10e19185e890872417279b03b11564f2\"><code>1c2a8e0</code></a> fix(http): keep NUL-padded extensions out of the packed-key table</li>\n<li><a href=\"https://github.com/gofiber/utils/commit/541bbbcec4ade6397a63e9913e787e7f6e074146\"><code>541bbbc</code></a> fix(http): cap the MIME table at half its slots, document GetMIME's empty case</li>\n<li><a href=\"https://github.com/gofiber/utils/commit/ba118b2829a4e643c36472d781dfc9abb36f9689\"><code>ba118b2</code></a> test(http): cover the MIME table builder's skip branch</li>\n<li><a href=\"https://github.com/gofiber/utils/commit/c2b340261487df2e43d0beb4a6c423c2aa800cda\"><code>c2b3402</code></a> style: trim comments, drop the mid-block README notes</li>\n<li><a href=\"https://github.com/gofiber/utils/commit/030713be76bb2c9dda5bcf83bc409be7921ac0ed\"><code>030713b</code></a> docs(readme): refresh the amd64 benchmark block</li>\n<li><a href=\"https://github.com/gofiber/utils/commit/dc7f6d256b34e3d92abd25e60c4a338a2d401880\"><code>dc7f6d2</code></a> chore(lint): satisfy golangci-lint v2.12.2 on the new code</li>\n<li><a href=\"https://github.com/gofiber/utils/commit/62cc98d355c195cddf636a3637a77d28468203fc\"><code>62cc98d</code></a> perf(format): nest the sign check in the signed formatters</li>\n<li>Additional commits viewable in <a href=\"https://github.com/gofiber/utils/compare/v2.4.3...v2.5.0\">compare view</a></li>\n</ul>\n</details>\n<br />\n\n\n[![Dependabot compatibility score](https://dependabot-badges.githubapp.com/badges/compatibility_score?dependency-name=github.com/gofiber/utils/v2&package-manager=go_modules&previous-version=2.4.3&new-version=2.5.0)](https://docs.github.com/en/github/managing-security-vulnerabilities/about-dependabot-security-updates#about-compatibility-scores)\n\nDependabot will resolve any conflicts with this PR as long as you don't alter it yourself. You can also trigger a rebase manually by commenting `@dependabot rebase`.\n\n[//]: # (dependabot-automerge-start)\n[//]: # (dependabot-automerge-end)\n\n---\n\n<details>\n<summary>Dependabot commands and options</summary>\n<br />\n\nYou can trigger Dependabot actions by commenting on this PR:\n- `@dependabot rebase` will rebase this PR\n- `@dependabot recreate` will recreate this PR, overwriting any edits that have been made to it\n- `@dependabot show <dependency name> ignore conditions` will show all of the ignore conditions of the specified dependency\n- `@dependabot ignore this major version` will close this PR and stop Dependabot creating any more for this major version (unless you reopen the PR or upgrade to it yourself)\n- `@dependabot ignore this minor version` will close this PR and stop Dependabot creating any more for this minor version (unless you reopen the PR or upgrade to it yourself)\n- `@dependabot ignore this dependency` will close this PR and stop Dependabot creating any more for this dependency (unless you reopen the PR or upgrade to it yourself)\n\n\n</details>",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "59c067427d10de1ec0eba9a23a1cd4d8c75ec1c8",
+        "baseSha": "cabda698274792b57afc2c68e577deefd881ef26",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 65,
+          "text": "build(deps): bump github.com/gofiber/utils/v2 from 2.4.3 to 2.5.0",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 90,
+          "text": "Bumps [github.com/gofiber/utils/v2](https://github.com/gofiber/utils) from 2.4.3 to 2.5.0.",
+          "label": "requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 91,
+          "end": 901,
+          "text": "<details>\n<summary>Release notes</summary>\n<p><em>Sourced from <a href=\"https://github.com/gofiber/utils/releases\">github.com/gofiber/utils/v2's releases</a>.</em></p>\n<blockquote>\n<h2>v2.5.0</h2>\n<h2>🚀 New</h2>\n<ul>\n<li>Faster formatting, HTTP dates, GetMIME and EqualFold; add IndexControl, CutByte, SplitHostPort, SplitTrimSeq, AppendDuration (<a href=\"https://redirect.github.com/gofiber/utils/issues/247\">#247</a>)</li>\n</ul>\n<p><strong>Full Changelog</strong>: <a href=\"https://github.com/gofiber/utils/compare/v2.4.3...v2.5.0\">https://github.com/gofiber/utils/compare/v2.4.3...v2.5.0</a></p>\n<p>Thank you <a href=\"https://github.com/gaby\"><code>@​gaby</code></a> and <a href=\"https://github.com/ReneWerner87\"><code>@​ReneWerner87</code></a> for making this update possible.</p>\n</blockquote>\n</details>",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 902,
+          "end": 3035,
+          "text": "<details>\n<summary>Commits</summary>\n<ul>\n<li><a href=\"https://github.com/gofiber/utils/commit/a6aaf84dd17cd5d654abce4ab52e40d28e5bdc24\"><code>a6aaf84</code></a> Merge pull request <a href=\"https://redirect.github.com/gofiber/utils/issues/247\">#247</a> from gofiber/claude/go-utils-performance-x4omz0</li>\n<li><a href=\"https://github.com/gofiber/utils/commit/494c09f0134da8d51232fadc89ec5afed38fef62\"><code>494c09f</code></a> fix(seq,test): make SplitTrimSeq re-iterable, fold the GetMIME oracle ASCII-only</li>\n<li><a href=\"https://github.com/gofiber/utils/commit/8db256fff2466cf2299dc866a511cfd98585e7ee\"><code>8db256f</code></a> docs: note the aliasing of CutByte and SplitHostPort results</li>\n<li><a href=\"https://github.com/gofiber/utils/commit/1c2a8e0d10e19185e890872417279b03b11564f2\"><code>1c2a8e0</code></a> fix(http): keep NUL-padded extensions out of the packed-key table</li>\n<li><a href=\"https://github.com/gofiber/utils/commit/541bbbcec4ade6397a63e9913e787e7f6e074146\"><code>541bbbc</code></a> fix(http): cap the MIME table at half its slots, document GetMIME's empty case</li>\n<li><a href=\"https://github.com/gofiber/utils/commit/ba118b2829a4e643c36472d781dfc9abb36f9689\"><code>ba118b2</code></a> test(http): cover the MIME table builder's skip branch</li>\n<li><a href=\"https://github.com/gofiber/utils/commit/c2b340261487df2e43d0beb4a6c423c2aa800cda\"><code>c2b3402</code></a> style: trim comments, drop the mid-block README notes</li>\n<li><a href=\"https://github.com/gofiber/utils/commit/030713be76bb2c9dda5bcf83bc409be7921ac0ed\"><code>030713b</code></a> docs(readme): refresh the amd64 benchmark block</li>\n<li><a href=\"https://github.com/gofiber/utils/commit/dc7f6d256b34e3d92abd25e60c4a338a2d401880\"><code>dc7f6d2</code></a> chore(lint): satisfy golangci-lint v2.12.2 on the new code</li>\n<li><a href=\"https://github.com/gofiber/utils/commit/62cc98d355c195cddf636a3637a77d28468203fc\"><code>62cc98d</code></a> perf(format): nest the sign check in the signed formatters</li>\n<li>Additional commits viewable in <a href=\"https://github.com/gofiber/utils/compare/v2.4.3...v2.5.0\">compare view</a></li>\n</ul>\n</details>",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 3036,
+          "end": 3042,
+          "text": "<br />",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-6",
+          "sourceKind": "pr_body",
+          "start": 3045,
+          "end": 3390,
+          "text": "[![Dependabot compatibility score](https://dependabot-badges.githubapp.com/badges/compatibility_score?dependency-name=github.com/gofiber/utils/v2&package-manager=go_modules&previous-version=2.4.3&new-version=2.5.0)](https://docs.github.com/en/github/managing-security-vulnerabilities/about-dependabot-security-updates#about-compatibility-scores)",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-7",
+          "sourceKind": "pr_body",
+          "start": 3392,
+          "end": 3557,
+          "text": "Dependabot will resolve any conflicts with this PR as long as you don't alter it yourself. You can also trigger a rebase manually by commenting `@dependabot rebase`.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-8",
+          "sourceKind": "pr_body",
+          "start": 3559,
+          "end": 3630,
+          "text": "[//]: # (dependabot-automerge-start)\n[//]: # (dependabot-automerge-end)",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-9",
+          "sourceKind": "pr_body",
+          "start": 3632,
+          "end": 3635,
+          "text": "---",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-10",
+          "sourceKind": "pr_body",
+          "start": 3637,
+          "end": 4561,
+          "text": "<details>\n<summary>Dependabot commands and options</summary>\n<br />\n\nYou can trigger Dependabot actions by commenting on this PR:\n- `@dependabot rebase` will rebase this PR\n- `@dependabot recreate` will recreate this PR, overwriting any edits that have been made to it\n- `@dependabot show <dependency name> ignore conditions` will show all of the ignore conditions of the specified dependency\n- `@dependabot ignore this major version` will close this PR and stop Dependabot creating any more for this major version (unless you reopen the PR or upgrade to it yourself)\n- `@dependabot ignore this minor version` will close this PR and stop Dependabot creating any more for this minor version (unless you reopen the PR or upgrade to it yourself)\n- `@dependabot ignore this dependency` will close this PR and stop Dependabot creating any more for this dependency (unless you reopen the PR or upgrade to it yourself)\n\n\n</details>",
+          "label": "non_requirement"
+        }
+      ]
+    }
+  ]
+}

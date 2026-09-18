@@ -1895,18 +1895,12 @@ describe("analysis worker preflight", () => {
       expect(observerCalls).toHaveLength(2);
       expect(observerCalls.map(([, init]) => {
         const body = JSON.parse(String(init?.body));
-        return JSON.parse(body.input[1].content[0].text).contractVersion;
-      })).toEqual(["general_pr_semantic_claim.v2", "general_pr_semantic_evidence.v1"]);
+        return JSON.parse(body.input[1].content[0].text).stage;
+      })).toEqual(["intent", "ranking"]);
       expect(serialized).not.toContain("ledgerDigest");
       expect(serialized).not.toContain("generalPrObservation");
       const observationResult = await observationSpy.mock.results.at(-1)?.value;
-      expect(observationResult?.bundle).toMatchObject({
-        semanticState: "valid",
-        semanticFailureStage: null,
-        diagnostics: { semanticAdmission: "admitted" },
-        semanticStageDiagnostics: { claimState: "valid", evidenceState: "valid", providerCallCount: 2 }
-      });
-      expect(observationResult?.bundle?.objectives).toEqual([expect.objectContaining({ state: "hypothesis" })]);
+      expect(observationResult?.report.reviewCandidates?.navigation).toMatchObject({model:"gpt-test",state:"partial",goals:[expect.objectContaining({summary:"Review internal cleanup",authority:"pr_author_claim"})]});
       expect(observationResult?.bundle?.relationLevelCounts.verified).toBe(0);
     } finally {
       observationSpy.mockRestore();
@@ -1934,7 +1928,7 @@ describe("analysis worker preflight", () => {
       const serialized = JSON.stringify({ result, job: getAnalysisJobsForTests()[0], audits: getAuditEventsForTests() });
 
       expect(result.status).toBe("completed");
-      expect(observationResult?.bundle).toMatchObject({ semanticFreshnessFailure: { phase: "before_claim", state: "unavailable", reason: "fetch_failed" } });
+      expect(observationResult?.report.reviewCandidates?.navigation?.limitations).toContain("stale_snapshot");
       expect(fetchMock.mock.calls.filter(([url]) => String(url) === "https://api.openai.com/v1/responses")).toHaveLength(0);
       expect(serialized).not.toContain("fetch_failed");
     } finally {
@@ -3040,6 +3034,9 @@ function exampleFromJsonSchema(schema: Record<string, unknown>, root: Record<str
 function validGeneralPrObserverCandidate(init?: RequestInit) {
   const request = JSON.parse(String(init?.body)) as { input: Array<{ content: Array<{ text: string }> }> };
   const observerInput = JSON.parse(request.input[1]!.content[0]!.text) as { contractVersion: string; spans?: Array<{ id: string }> };
+  const navigation = observerInput as unknown as import("@/lib/review-intent").ReviewNavigationRequest;
+  if(navigation.stage === "intent")return {goals:[{summary:"Review internal cleanup",emphasis:"primary",sourceRefs:[navigation.sources[0].spans[0].id],facets:[],openQuestions:[]}],unprocessed:[]};
+  if(navigation.stage === "ranking")return {rankings:navigation.goals.map(g=>({goalId:g.id,firstInspection:null,candidates:[],uncertainty:["No relevant read artifact selected"]})),readPaths:[]};
   if (observerInput.contractVersion === "general_pr_semantic_evidence.v1") {
     return { testApplicabilityProposals: [], scopeMappingProposals: [], evidenceRelationProposals: [] };
   }
@@ -3206,3 +3203,13 @@ function validSemanticCandidateForInput(input: {
     uncertainties: []
   };
 }
+
+it('runs Google navigation in the worker without an OpenAI key',async()=>{
+ stubReadyWorkerEnv({grant:{saveReportsEnabled:false,commentEnabled:false}});
+ vi.stubEnv('AGENTPROOF_GENERAL_PR_OBSERVATION_MODE','advisory');vi.stubEnv('AI_GATEWAY_API_KEY','test-google-key');vi.stubEnv('AGENTPROOF_LLM_MODEL','gemini-worker');vi.stubEnv('OPENAI_API_KEY','');vi.stubEnv('OPENAI_MODEL','');
+ const googleRequests:Array<{url:string;model:string}>=[];
+ const observation=vi.spyOn(generalPrObservationService,'runGeneralPrObservationNowV2');const githubFetch=mockWorkerFetch({repositoryPrivate:false,pullRequestBody:'Internal cleanup only.'});vi.stubGlobal('fetch',async(url:string|URL|Request,init?:RequestInit)=>{if(String(url)==='https://ai-gateway.vercel.sh/v1/responses'){const body=JSON.parse(String(init?.body));googleRequests.push({url:String(url),model:body.model});const q=JSON.parse(body.input[1].content[0].text);const result=q.stage==='intent'?{goals:[{summary:'Inspect internal cleanup',emphasis:'primary',sourceRefs:[q.sources[0].spans[0].id],facets:[],openQuestions:[]}],unprocessed:[]}:{rankings:[],readPaths:[]};return Response.json({output_text:JSON.stringify(result)});}return githubFetch(url,init);});
+ await enqueueAnalysisJob(jobInput({saveReport:false,comment:false}));
+ try{const result=await runNextAnalysisJob({requestUrl:'https://agentproof.test/api/ops/analysis-jobs/run',now:new Date('2026-06-30T00:01:00Z')});expect(result.status).toBe('completed');expect(googleRequests).toHaveLength(2);expect(googleRequests.every(request=>request.model==='google/gemini-worker')).toBe(true);const value=await observation.mock.results.at(-1)?.value;expect(value?.report.reviewCandidates?.navigation?.model).toBe('google/gemini-worker');}
+ finally{observation.mockRestore();}
+});

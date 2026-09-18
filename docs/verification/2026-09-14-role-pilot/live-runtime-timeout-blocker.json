@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "requirement_role_live_runtime_timeout.v1",
+  "status": "failed_after_process_start_before_result_write",
+  "authorization": {
+    "directUserApprovalInThisThread": true,
+    "externalExecutionApproved": true
+  },
+  "frozenPlan": "live-plan.json",
+  "command": {
+    "configuredModel": "gpt-5.6-luna",
+    "globalCallBudget": 30,
+    "retries": 0,
+    "exitCode": 2,
+    "wallSeconds": 5.85
+  },
+  "failure": {
+    "category": "local_test_harness_timeout",
+    "reason": "The Vitest artifact-runner test retained its default 5000 ms timeout and was terminated before runRequirementRoleExperiment returned or wrote its result.",
+    "providerFailureObserved": false,
+    "authenticationFailureObserved": false,
+    "modelFailureObserved": false,
+    "networkFailureObserved": false
+  },
+  "requestConsumption": {
+    "exactExternalRequestCount": null,
+    "minimumPossibleExternalRequests": 0,
+    "maximumPossibleExternalRequests": 30,
+    "reasonExactCountUnavailable": "The sanitized result is written only after the full run returns; the process was terminated first and no per-call durable journal exists.",
+    "commandRetried": false,
+    "budgetReset": false
+  },
+  "artifacts": {
+    "completeLiveResult": null,
+    "incompleteOutput": "live-result-approved.incomplete-zero-byte",
+    "incompleteOutputBytes": 0
+  },
+  "measurements": {
+    "observedModels": null,
+    "tokens": null,
+    "latency": null,
+    "validatorFailures": null,
+    "pairedComparison": "not_measured",
+    "machineLabelAgreement": "not_measured",
+    "actualCostUsd": "unknown"
+  },
+  "interpretation": "No V0-V4 performance or superiority conclusion is supported. A retry would be a second experiment and could exceed the approved global call budget because the first command's exact consumption is unknown (0–30)."
+}

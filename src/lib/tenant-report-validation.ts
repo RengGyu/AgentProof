@@ -1,3 +1,4 @@
+import { reviewCandidateErrors, type ReviewCandidatesV1 } from "./review-candidates";
 import { createHash, createHmac, timingSafeEqual } from "crypto";
 import { copyOrdinaryDocumentationSummary, isOrdinaryDocumentationSummary, type OrdinaryDocumentationSummary } from "./general-pr-documentation-presentation";
 import { copyOrdinaryStaticSummary, isOrdinaryStaticSummary, type OrdinaryStaticSummary } from "./general-pr-static-types-presentation";
@@ -79,6 +80,8 @@ const GENERAL_PR_ASSESSMENT_COUNT_KEYS = [
   "not_assessable"
 ] as const;
 
+type EvidenceItemCodeLocation = NonNullable<VerificationReport["evidenceIndex"][number]["codeLocation"]>;
+
 export interface TenantPersistedReport {
   version: 1;
   analysisContext?: TenantReportAnalysisContext;
@@ -87,6 +90,7 @@ export interface TenantPersistedReport {
   verificationContract?: TenantVerificationContract;
   /** Target-free ordinary-PR evidence summary; private bindings never persist. */
   generalPrAssessmentSummary?: GeneralPrAssessmentSummaryV1;
+  reviewCandidates?: ReviewCandidatesV1;
   ordinaryDocumentationSummary?: OrdinaryDocumentationSummary;
   ordinaryStaticSummary?: OrdinaryStaticSummary;
   ordinaryRequirementOutcomes?: OrdinaryRequirementOutcomes;
@@ -95,7 +99,7 @@ export interface TenantPersistedReport {
   requirements: Array<{ requirementId: string; objectiveLabel?: string; status: RequirementStatus; evidenceStatus?: RequirementStatus; sourceAuthority?: RequirementAuthority; evidenceRefs: string[]; gaps: string[]; proofAxes?: RequirementProofAxis[]; classificationBasis?: "deterministic" | "enhanced_plan"; plannerAxisSubjects?: RequirementProofAxis["subject"][] }>;
   testing: { ciStatus: CheckStatus; lintStatus: CheckStatus; typecheckStatus: CheckStatus };
   reviewPriority: Array<{ path: string; priority: PriorityLevel; evidenceRefs: string[] }>;
-  evidenceIndex: Array<{ id: string; kind?: EvidenceKind; locator?: string }>;
+  evidenceIndex: Array<{ id: string; kind?: EvidenceKind; locator?: string; codeLocation?: EvidenceItemCodeLocation }>;
   reprompt: { prompt: string };
   semantic?: LlmSemanticOutput;
   semanticAnalysis?: { status: "included" | "unavailable"; attempts: 1 | 2 };
@@ -213,6 +217,7 @@ export function validateTenantStoredReport(
     if (evidence.label !== `Evidence ${evidence.id}`) errors.push(`evidence ${evidence.id} contains non-contract label text.`);
     if (evidence.summary !== FIXED.evidenceSummary) errors.push(`evidence ${evidence.id} contains non-contract summary text.`);
     if (evidence.locator !== undefined) validateLocator(evidence.locator, `evidence ${evidence.id} locator`, errors);
+    validatePersistedCodeLocation(evidence.codeLocation, errors);
   }
 
   return { valid: errors.length === 0, errors: [...new Set(errors)] };
@@ -233,6 +238,7 @@ export function projectTenantPersistedReport(report: VerificationReport, signing
       reportSchemaVersion: "verification-report.v2" as const,
       verificationContract
     } : {}),
+    ...(isVerificationReportV2(report) && report.reviewCandidates ? { reviewCandidates: structuredClone(report.reviewCandidates) } : {}),
     ...(report.planner ? { planner: copyTenantPlannerProvenance(report.planner) } : {}),
     ...(isVerificationReportV2(report) && report.generalPrAssessmentSummary ? {
       generalPrAssessmentSummary: copyTenantGeneralPrAssessmentSummary(report.generalPrAssessmentSummary)
@@ -262,7 +268,7 @@ export function projectTenantPersistedReport(report: VerificationReport, signing
       typecheckStatus: report.testing.typecheckStatus
     },
     reviewPriority: report.reviewPriority.map(({ path, priority, evidenceRefs }) => ({ path, priority, evidenceRefs: [...(evidenceRefs ?? [])] })),
-    evidenceIndex: report.evidenceIndex.map(({ id, kind, locator }) => locator ? { id, kind, locator } : { id, kind }),
+    evidenceIndex: report.evidenceIndex.map(({ id, kind, locator, codeLocation }) => ({ id, kind, ...(locator ? { locator } : {}), ...(codeLocation ? { codeLocation: copyEvidenceCodeLocation(codeLocation) } : {}) })),
     reprompt: { prompt: report.reprompt.prompt },
     ...(report.semantic ? { semantic: report.semantic } : {}),
     ...(report.semanticAnalysis ? { semanticAnalysis: report.semanticAnalysis } : {})
@@ -371,9 +377,13 @@ export function validateTenantPersistedReport(value: unknown, signingSecret: str
   const errors: string[] = [];
   if (!value || typeof value !== "object" || Array.isArray(value)) return { valid: false, errors: ["Tenant persisted report must be an object."] };
   const report = value as Partial<TenantPersistedReport> & Record<string, unknown>;
-  const allowed = new Set(["version", "analysisContext", "reportSchemaVersion", "verificationContract", "generalPrAssessmentSummary", "ordinaryDocumentationSummary", "ordinaryStaticSummary", "ordinaryRequirementOutcomes", "planner", "priority", "requirements", "testing", "reviewPriority", "evidenceIndex", "reprompt", "semantic", "semanticAnalysis", "integrity"]);
+  const allowed = new Set(["version", "analysisContext", "reportSchemaVersion", "verificationContract", "reviewCandidates", "generalPrAssessmentSummary", "ordinaryDocumentationSummary", "ordinaryStaticSummary", "ordinaryRequirementOutcomes", "planner", "priority", "requirements", "testing", "reviewPriority", "evidenceIndex", "reprompt", "semantic", "semanticAnalysis", "integrity"]);
   for (const key of Object.keys(report)) if (!allowed.has(key)) errors.push(`tenant persisted report contains disallowed field: ${key}.`);
   if (report.version !== 1) errors.push("tenant persisted report version must be 1.");
+  if (report.reviewCandidates !== undefined) {
+    if (report.reportSchemaVersion !== "verification-report.v2" || report.verificationContract?.state !== "absent") errors.push("Review candidates require an ordinary v2 report.");
+    errors.push(...reviewCandidateErrors(report.reviewCandidates, new Set(Array.isArray(report.requirements) ? report.requirements.filter(x => x && typeof x === "object").map(x => x.requirementId) : []), Array.isArray(report.evidenceIndex) ? report.evidenceIndex.filter(x => x && typeof x === "object") : []));
+  }
   if (report.ordinaryDocumentationSummary !== undefined && (report.reportSchemaVersion !== "verification-report.v2" || !isOrdinaryDocumentationSummary(report.ordinaryDocumentationSummary))) errors.push("Invalid scoped documentation summary.");
   if (report.ordinaryStaticSummary !== undefined && (report.reportSchemaVersion !== "verification-report.v2" || !isOrdinaryStaticSummary(report.ordinaryStaticSummary))) errors.push("Invalid scoped static summary.");
   if (report.analysisContext !== undefined && !isAnalysisContext(report.analysisContext)) errors.push("tenant persisted report analysis context is invalid.");
@@ -390,12 +400,13 @@ export function validateTenantPersistedReport(value: unknown, signingSecret: str
   const evidenceIds = new Set<string>();
   for (const evidence of report.evidenceIndex ?? []) {
     if (!evidence || typeof evidence !== "object" || Array.isArray(evidence)) { errors.push("tenant persisted evidence is invalid."); continue; }
-    const item = evidence as { id?: unknown; kind?: unknown; locator?: unknown } & Record<string, unknown>;
-    if (Object.keys(item).some((key) => !["id", "kind", "locator"].includes(key))) errors.push("tenant persisted evidence has disallowed fields.");
+    const item = evidence as { id?: unknown; kind?: unknown; locator?: unknown; codeLocation?: unknown } & Record<string, unknown>;
+    if (Object.keys(item).some((key) => !["id", "kind", "locator", "codeLocation"].includes(key))) errors.push("tenant persisted evidence has disallowed fields.");
     if (typeof item.id !== "string" || !SAFE_EVIDENCE_REFERENCE_PATTERN.test(item.id) || evidenceIds.has(item.id)) errors.push("tenant persisted evidence id is invalid.");
     else evidenceIds.add(item.id);
     if (item.kind !== undefined && !isEvidenceKind(item.kind)) errors.push("tenant persisted evidence kind is invalid.");
     if (item.locator !== undefined && (typeof item.locator !== "string" || !isSafeTenantLocator(item.locator))) errors.push("tenant persisted evidence locator is invalid.");
+    validatePersistedCodeLocation(item.codeLocation, errors);
   }
   for (const requirement of report.requirements ?? []) {
     if (!requirement || typeof requirement !== "object" || Array.isArray(requirement)) { errors.push("tenant persisted requirement is invalid."); continue; }
@@ -448,7 +459,7 @@ export function validateTenantPersistedReport(value: unknown, signingSecret: str
   }
   validateSemanticRuntimeState(report.semanticAnalysis, report.semantic, errors);
   const integrity = report.integrity as Record<string, unknown> | undefined;
-  const unsigned = { version: report.version, ...(report.analysisContext !== undefined ? { analysisContext: report.analysisContext } : {}), ...(report.reportSchemaVersion !== undefined ? { reportSchemaVersion: report.reportSchemaVersion } : {}), ...(report.verificationContract !== undefined ? { verificationContract: report.verificationContract } : {}), ...(report.generalPrAssessmentSummary !== undefined ? { generalPrAssessmentSummary: report.generalPrAssessmentSummary } : {}), ...(report.planner !== undefined ? { planner: report.planner } : {}), priority: report.priority, requirements: report.requirements, testing: report.testing, reviewPriority: report.reviewPriority, evidenceIndex: report.evidenceIndex, reprompt: report.reprompt, ...(report.semantic !== undefined ? { semantic: report.semantic } : {}), ...(report.semanticAnalysis !== undefined ? { semanticAnalysis: report.semanticAnalysis } : {}) };
+  const unsigned = { version: report.version, ...(report.reviewCandidates !== undefined ? { reviewCandidates: report.reviewCandidates } : {}), ...(report.analysisContext !== undefined ? { analysisContext: report.analysisContext } : {}), ...(report.reportSchemaVersion !== undefined ? { reportSchemaVersion: report.reportSchemaVersion } : {}), ...(report.verificationContract !== undefined ? { verificationContract: report.verificationContract } : {}), ...(report.generalPrAssessmentSummary !== undefined ? { generalPrAssessmentSummary: report.generalPrAssessmentSummary } : {}), ...(report.planner !== undefined ? { planner: report.planner } : {}), priority: report.priority, requirements: report.requirements, testing: report.testing, reviewPriority: report.reviewPriority, evidenceIndex: report.evidenceIndex, reprompt: report.reprompt, ...(report.semantic !== undefined ? { semantic: report.semantic } : {}), ...(report.semanticAnalysis !== undefined ? { semanticAnalysis: report.semanticAnalysis } : {}) };
   if (report.ordinaryRequirementOutcomes !== undefined) {
     if (report.reportSchemaVersion !== "verification-report.v2" || report.verificationContract?.state !== "absent") errors.push("Source-derived outcomes cannot replace a typed contract.");
     errors.push(...ordinaryRequirementOutcomeErrors(report.ordinaryRequirementOutcomes, report.requirements ?? [], new Set((report.evidenceIndex ?? []).map(item => item.id))));
@@ -689,7 +700,8 @@ function hydrateTenantPersistedReport(
       label: `Evidence ${item.id}`,
       summary: FIXED.evidenceSummary,
       confidence: 0,
-      ...(item.locator ? { locator: item.locator } : {})
+      ...(item.locator ? { locator: item.locator } : {}),
+      ...(item.codeLocation ? { codeLocation: copyEvidenceCodeLocation(item.codeLocation) } : {})
     })),
     limitations: [FIXED.limitation],
     ...(report.planner ? { planner: copyTenantPlannerProvenance(report.planner) } : {}),
@@ -699,6 +711,7 @@ function hydrateTenantPersistedReport(
   if (report.reportSchemaVersion === "verification-report.v2" && report.verificationContract) {
     Object.assign(hydrated, {
       reportSchemaVersion: "verification-report.v2",
+      ...(report.reviewCandidates ? { reviewCandidates: structuredClone(report.reviewCandidates) } : {}),
       verificationContract: hydrateTenantVerificationContract(report.verificationContract),
       ...(report.ordinaryDocumentationSummary ? { ordinaryDocumentationSummary: copyOrdinaryDocumentationSummary(report.ordinaryDocumentationSummary) } : {}),
       ...(report.ordinaryStaticSummary ? { ordinaryStaticSummary: copyOrdinaryStaticSummary(report.ordinaryStaticSummary) } : {}),
@@ -710,6 +723,33 @@ function hydrateTenantPersistedReport(
   }
   hydrated.authenticity = createVerifiedAuthenticity(hydrated, input.signingSecret);
   return hydrated;
+}
+
+function copyEvidenceCodeLocation(location: EvidenceItemCodeLocation): EvidenceItemCodeLocation {
+  return {
+    path: location.path,
+    side: location.side,
+    ...(location.revisionSha ? { revisionSha: location.revisionSha } : {}),
+    ...(location.previousPath ? { previousPath: location.previousPath } : {}),
+    ...(location.line ? { line: location.line } : {})
+  };
+}
+
+function validatePersistedCodeLocation(value: unknown, errors: string[]): void {
+  if (value === undefined) return;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    errors.push("tenant persisted evidence code location is invalid.");
+    return;
+  }
+  const location = value as Record<string, unknown>;
+  if (Object.keys(location).some((key) => !["path", "side", "revisionSha", "previousPath", "line"].includes(key)) ||
+    typeof location.path !== "string" || !isSafeTenantLocator(location.path) ||
+    (location.side !== "head" && location.side !== "base") ||
+    (location.revisionSha !== undefined && (typeof location.revisionSha !== "string" || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(location.revisionSha))) ||
+    (location.previousPath !== undefined && (typeof location.previousPath !== "string" || !isSafeTenantLocator(location.previousPath))) ||
+    (location.line !== undefined && (!Number.isSafeInteger(location.line) || (location.line as number) < 1))) {
+    errors.push("tenant persisted evidence code location is invalid.");
+  }
 }
 
 function hydrateTenantVerificationContract(contract: TenantVerificationContract): VerificationContractReportV2 {
@@ -861,7 +901,7 @@ function validateTenantPlannerAxisSubjects(value: unknown, proofAxes: unknown, e
 
 export function isSafeTenantLocator(value: string): boolean {
   if (!SAFE_LOCATOR_PATTERN.test(value) || value.startsWith("/") || value.includes("://") || value.includes("\\")) return false;
-  return !value.split("/").some((segment) => segment === "..");
+  return !value.split("/").some((segment) => segment === "." || segment === "..");
 }
 
 export function tenantObjectiveLabel(value: string): string | undefined {

@@ -1,0 +1,22 @@
+{
+  "status": "HISTORICAL_SHORTFALL_RESOLVED_BY_APPROVED_AMENDMENT",
+  "currentStatusFile": "validation-receipt.json",
+  "checkedAt": "2026-09-13T16:11:51.868Z",
+  "expectedCases": 60,
+  "availableMaximum": 54,
+  "shortfall": {
+    "repository": "golang/go",
+    "required": 6,
+    "eligible": 0,
+    "missing": 6
+  },
+  "confirmationQuery": "repo:golang/go is:pr is:merged merged:2026-01-01..2026-09-09",
+  "confirmationResponse": {
+    "issues": []
+  },
+  "selectedCases": 0,
+  "labelsCreated": 0,
+  "offlineRun": "not_run: no valid 60-case corpus",
+  "modelApiCalls": 0,
+  "nextAction": "Historical receipt retained. Supervisor subsequently approved protocol-amendment.json; current completion is recorded in validation-receipt.json."
+}

@@ -33,7 +33,7 @@ const OVERRIDE_KEYS = [
 const REPORT_KEYS = [
   "analysisId", "createdAt", "analysisContext", "source", "summary", "requirements", "claims", "scope",
   "testing", "reviewPriority", "proofGraph", "reprompt", "evidenceIndex", "limitations", "semantic",
-  "semanticAnalysis", "planner", "authenticity", "reportSchemaVersion", "verificationContract"
+  "semanticAnalysis", "planner", "authenticity", "reportSchemaVersion", "verificationContract", "reviewCandidates"
 ] as const;
 const MISSING_V2_VALIDATION_CONTEXT_ERROR = "v2 private receipt validation requires transient validation context.";
 

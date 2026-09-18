@@ -87,6 +87,7 @@ describe("/api/dashboard/reports", () => {
       source: null,
       objectives: []
     };
+    delete invalidContractReport.reviewCandidates; // Invalid contracts do not carry ordinary review candidates.
     const invalidContract = await createVerifiedSavedReport(invalidContractReport, {
       tenantId: "tenant_a", installationId: 321, repositoryId: 100, pullRequestNumber: 19, headSha: "b".repeat(40)
     });

@@ -1,0 +1,366 @@
+{
+  "sourceCorpusSha256": "9e2c7eb7cd679f44d4ede3b316fc98890d2d6cd18ad667ae0464b26c8865b78f",
+  "labelProvenance": "Astra/high supervisor reviewed all 60 public PR title/body cases and all 511 original source labels on 2026-09-14 before this comparison's B/C responses were generated. Original UTF-16 source spans, texts, order and boundaries are unchanged; nine classifications corrected with explicit reasons. Machine-reviewed evaluation annotations, NOT human-verified gold. Concrete PR-title objectives are requirements regardless of tense or slang when context resolves intent. Retrospective implementation accounts with unclear normative intent remain ambiguous; historical context, examples, upstream quotations, process/templates and result claims are non-requirements. Coarse paragraph/list/table units remain a measurement limitation.",
+  "humanVerified": false,
+  "reviewer": {
+    "model": "gpt-6-astra",
+    "reasoningEffort": "high",
+    "date": "2026-09-14"
+  },
+  "reviews": [
+    {
+      "caseId": "pallets-flask-5917",
+      "note": "Title identifies provide_automatic_options scope; OPTIONS outcome and test cleanup are retrospective, hence ambiguous. Old behavior and issue reference are background.",
+      "changes": []
+    },
+    {
+      "caseId": "pallets-flask-5899",
+      "note": "Deprecation objective is explicit in title; issue closure link is provenance, not a separate requirement.",
+      "changes": []
+    },
+    {
+      "caseId": "pallets-flask-5962",
+      "note": "Title requests test removal; invalid Host explanation and historical test rationale do not add requirements.",
+      "changes": []
+    },
+    {
+      "caseId": "pallets-flask-6096",
+      "note": "IPv6 objective and two concrete call-site replacements are requirements; references and template text are not.",
+      "changes": []
+    },
+    {
+      "caseId": "pallets-flask-5945",
+      "note": "Title and actionable audit-finding remediation list define scope; introductory finding heading and link do not.",
+      "changes": []
+    },
+    {
+      "caseId": "pallets-flask-6133",
+      "note": "Title supplies app.query objective. Forecast, upstream release history and completed test adjustments are not new requirements; author intent narrative remains ambiguous.",
+      "changes": []
+    },
+    {
+      "caseId": "django-django-21900",
+      "note": "Concrete flakiness-fix title expresses PR objective despite past-tense repository convention. Tentative causal implementation account remains ambiguous; template and AI checklist remain excluded.",
+      "changes": [
+        {
+          "labelId": "label-1",
+          "label": "requirement",
+          "reason": "A specific admin-collapse-filter flakiness fix is the PR objective; grammatical past tense alone does not make the title ambiguous."
+        }
+      ]
+    },
+    {
+      "caseId": "django-django-21808",
+      "note": "Readding optional requirements to Python 3.15 daily builds is explicit title scope; historical links do not add scope.",
+      "changes": [
+        {
+          "labelId": "label-1",
+          "label": "requirement",
+          "reason": "The title specifies the dependency/build change and target version despite using past tense."
+        }
+      ]
+    },
+    {
+      "caseId": "django-django-21803",
+      "note": "Alias-handling title and proposed lookup order state scope. Completed implementation/test narrative remains ambiguous; old failure and templates remain background.",
+      "changes": [
+        {
+          "labelId": "label-1",
+          "label": "requirement",
+          "reason": "Title explicitly identifies values/order_by alias handling as the requested fix, independent of tense."
+        }
+      ]
+    },
+    {
+      "caseId": "django-django-21897",
+      "note": "Title declares GEOS 3.15 support as change target, clarified by documentation paragraph. It is not evidence that compatibility was actually verified; retrospective documentation account stays ambiguous.",
+      "changes": [
+        {
+          "labelId": "label-1",
+          "label": "requirement",
+          "reason": "In this PR's documentation context, title identifies addition of GEOS 3.15 support; classification records intent, not proof of the support claim."
+        }
+      ]
+    },
+    {
+      "caseId": "django-django-21787",
+      "note": "Rejecting null characters in URLs is concrete title scope. Existing bug/reproducer and references are background; completed code/test account remains ambiguous.",
+      "changes": [
+        {
+          "labelId": "label-1",
+          "label": "requirement",
+          "reason": "The title identifies null-character URL rejection as the fix objective despite retrospective phrasing."
+        }
+      ]
+    },
+    {
+      "caseId": "django-django-21802",
+      "note": "Skipping single-element GeometryCollection tests on Oracle 23.9 is a concrete test-scope change, not merely a test-result claim.",
+      "changes": [
+        {
+          "labelId": "label-1",
+          "label": "requirement",
+          "reason": "Title specifies which tests and platform need changed treatment; past tense does not remove that objective."
+        }
+      ]
+    },
+    {
+      "caseId": "fastapi-fastapi-16205",
+      "note": "French translation update title and body explicitly define work; LLM disclosure and possible future translation work do not.",
+      "changes": []
+    },
+    {
+      "caseId": "fastapi-fastapi-16224",
+      "note": "Translation branch-update title and body define scope; AI disclosure is process metadata.",
+      "changes": []
+    },
+    {
+      "caseId": "fastapi-fastapi-16208",
+      "note": "Ukrainian translation update is explicit; generation disclosure and future suggestions remain outside current requirements.",
+      "changes": []
+    },
+    {
+      "caseId": "fastapi-fastapi-16289",
+      "note": "Starlette version bump title/body are requirements; quoted upstream releases, changelog and commits are dependency context, not local requirements.",
+      "changes": []
+    },
+    {
+      "caseId": "fastapi-fastapi-16203",
+      "note": "Spanish translation update title/body are requirements; AI provenance is not product scope.",
+      "changes": []
+    },
+    {
+      "caseId": "fastapi-fastapi-16196",
+      "note": "Mobile conference-rail improvement title/body express objective even without detailed acceptance checks; headings and references are excluded.",
+      "changes": []
+    },
+    {
+      "caseId": "sveltejs-svelte-18752",
+      "note": "Package bump title defines scope. Dependency bugfix/security motivation explains why and does not independently request another change.",
+      "changes": []
+    },
+    {
+      "caseId": "sveltejs-svelte-18714",
+      "note": "Comment-anchor title defines objective. Claimed template change remains ambiguous; architecture history, code illustration and performance/test accounts are not requests.",
+      "changes": []
+    },
+    {
+      "caseId": "sveltejs-svelte-18721",
+      "note": "SSR empty-boolean title is objective. Retrospective rendering behavior is ambiguous; historical behavior is background.",
+      "changes": []
+    },
+    {
+      "caseId": "sveltejs-svelte-18718",
+      "note": "Ownership-check binding exclusion title defines objective. Implementation/test summary is ambiguous; cause, commands and test results remain non-requirements.",
+      "changes": []
+    },
+    {
+      "caseId": "sveltejs-svelte-18749",
+      "note": "Title and concrete cancellation/apply/preservation/regression-test actions define scope; test-plan command list alone is verification procedure.",
+      "changes": []
+    },
+    {
+      "caseId": "sveltejs-svelte-18739",
+      "note": "Title defines post-await SSR setContext failure. Mixed current mechanism account is ambiguous; design rationale, experiments, test results, future excluded case and templates are not requirements.",
+      "changes": [
+        {
+          "labelId": "label-12",
+          "label": "ambiguous",
+          "reason": "Paragraph mixes thunk background with current run/setContext implementation behavior. It is not clearly an independent request, but not pure historical background either."
+        }
+      ]
+    },
+    {
+      "caseId": "expressjs-express-7403",
+      "note": "Checkout version bump title/body define local scope. Embedded upstream release/changelog and bot controls are quoted/process material, including truncation already present in source.",
+      "changes": []
+    },
+    {
+      "caseId": "expressjs-express-7233",
+      "note": "Dependency-upgrade title and explicit need to perform basename handling in Express define work; upstream API explanation is background.",
+      "changes": []
+    },
+    {
+      "caseId": "expressjs-express-7390",
+      "note": "Body-parser bump and concrete package/changelog actions define scope. Vulnerability statements are author rationale, not independently verified security findings; test counts are reports.",
+      "changes": []
+    },
+    {
+      "caseId": "expressjs-express-7377",
+      "note": "QUERY revalidation title defines objective. Current guard change and qualified should-behave-like-GET assertion remain ambiguous; old behavior and diff example are context.",
+      "changes": []
+    },
+    {
+      "caseId": "expressjs-express-7353",
+      "note": "Morgan version bump title/body define requirements; quoted dependency history and bot instructions do not.",
+      "changes": []
+    },
+    {
+      "caseId": "expressjs-express-7450",
+      "note": "Hbs version bump title/body define requirements; upstream history, maintainer metadata and bot controls do not.",
+      "changes": []
+    },
+    {
+      "caseId": "astral-sh-ruff-28443",
+      "note": "Title and explicit hidden/public accessor actions define scope. API instability disclaimer communicates compatibility policy, not a proposed change; test results remain reports.",
+      "changes": [
+        {
+          "labelId": "label-4",
+          "label": "non_requirement",
+          "reason": "Warning that hidden APIs may change or disappear supplies a disclaimer, with no requested implementation behavior."
+        }
+      ]
+    },
+    {
+      "caseId": "astral-sh-ruff-28412",
+      "note": "Allocation-capacity title identifies change objective. Old allocation explanation is background; we-now-build implementation account remains ambiguous.",
+      "changes": []
+    },
+    {
+      "caseId": "astral-sh-ruff-28460",
+      "note": "Title, union-preservation norm and wrapped-signature check specify behavior. Explanatory examples and claimed regression coverage do not prove or add work.",
+      "changes": []
+    },
+    {
+      "caseId": "astral-sh-ruff-28451",
+      "note": "Force-exclude ancestor title and ancestor-check instruction define behavior; previous failure and completed CLI-test account are background/reports.",
+      "changes": []
+    },
+    {
+      "caseId": "astral-sh-ruff-28433",
+      "note": "Clap update title and dependency table define version-change scope. Quoted release features and bot scheduling/automerge metadata are excluded; existing table-sized label retained.",
+      "changes": []
+    },
+    {
+      "caseId": "astral-sh-ruff-28426",
+      "note": "Variance-precision title defines objective. Old union problem is background; current new-path description remains ambiguous.",
+      "changes": []
+    },
+    {
+      "caseId": "rust-lang-rust-162475",
+      "note": "Unsoundness-fix title is objective; tentative related-test explanation stays ambiguous. Automation template is not product scope.",
+      "changes": []
+    },
+    {
+      "caseId": "rust-lang-rust-162509",
+      "note": "Avoiding gated suggestions is explicit title objective; issue reference adds no independent requirement.",
+      "changes": []
+    },
+    {
+      "caseId": "rust-lang-rust-162532",
+      "note": "Rollup title and list report integration of other PRs. Embedded change names are administrative references, not a new behavioral requirement for this rollup.",
+      "changes": []
+    },
+    {
+      "caseId": "rust-lang-rust-162521",
+      "note": "OnDuplicateError title specifies removal of unnecessary option; automation template is non-requirement.",
+      "changes": []
+    },
+    {
+      "caseId": "rust-lang-rust-162526",
+      "note": "In context of obsolete override prevention replaced by final fn, yeet VisitorExt unambiguously requests removal. Rationale and qualified compiler-use judgment do not establish further requirements.",
+      "changes": [
+        {
+          "labelId": "label-1",
+          "label": "requirement",
+          "reason": "Colloquial title still has a specific removal target, corroborated by body explanation that VisitorExt's purpose is obsolete."
+        }
+      ]
+    },
+    {
+      "caseId": "rust-lang-rust-162500",
+      "note": "Moving a test to its correct directory is explicit scope; addressed-comment link and reviewer routing are process metadata.",
+      "changes": []
+    },
+    {
+      "caseId": "denoland-deno-36685",
+      "note": "Removing deleted-crate documentation is title objective. Historical deletion is background; completed file-edit list remains ambiguous; verification/disclosure is not scope.",
+      "changes": []
+    },
+    {
+      "caseId": "denoland-deno-36784",
+      "note": "macOS maxRSS normalization title defines objective. Claimed macOS/iOS fix is ambiguous; old units, issue and AI provenance are background/process.",
+      "changes": []
+    },
+    {
+      "caseId": "denoland-deno-36753",
+      "note": "Valid system-permission title defines objective. Past parser regression and reproducer are background; new alias/parser description remains ambiguous; completed tests are reports.",
+      "changes": []
+    },
+    {
+      "caseId": "denoland-deno-36711",
+      "note": "Expected-output update title defines scope. Earlier typing failure is background; completed updates are ambiguous; runtime non-change and future dependency suggestions are not new requests.",
+      "changes": []
+    },
+    {
+      "caseId": "denoland-deno-36723",
+      "note": "Optional-argument title and explicit attached-value/bare-option semantics specify requirements. Past argument loss and existing sibling behavior are background.",
+      "changes": []
+    },
+    {
+      "caseId": "denoland-deno-36747",
+      "note": "JSON schema endpoint title defines scope. Stale URL explains motivation; completed identifier updates and naming fix remain ambiguous; reference is provenance.",
+      "changes": []
+    },
+    {
+      "caseId": "kubernetes-kubernetes-141881",
+      "note": "Comment-prefix title and explicit serialized-field naming instruction define scope. Contribution template, agent instructions and disclosures remain untrusted process/source text.",
+      "changes": []
+    },
+    {
+      "caseId": "kubernetes-kubernetes-141962",
+      "note": "Avoiding thundering herd title defines scope. Old timeouts and parameter rationale are background; proposed mitigation and added statistics remain ambiguous.",
+      "changes": []
+    },
+    {
+      "caseId": "kubernetes-kubernetes-141975",
+      "note": "Test-emulation update title defines scope. Existing version mismatch is background; completed update is ambiguous; eventual new test API is future work.",
+      "changes": []
+    },
+    {
+      "caseId": "kubernetes-kubernetes-141811",
+      "note": "Byte maxBytes title defines objective. Wire/base64 rationale is background; mixed implementation and compatibility-behavior accounts remain ambiguous; template/release note blocks are excluded.",
+      "changes": []
+    },
+    {
+      "caseId": "kubernetes-kubernetes-141873",
+      "note": "Dependency bump/drop title and explicit kube-openapi update identify scope; templated metadata and fenced release note are not independent requirements.",
+      "changes": []
+    },
+    {
+      "caseId": "kubernetes-kubernetes-141886",
+      "note": "Crypto version title and explicit security-update intent define scope. Completed update commands and template content do not; author security claims are not verified here.",
+      "changes": []
+    },
+    {
+      "caseId": "gofiber-fiber-4670",
+      "note": "Sys dependency bump title, group update and version line define scope; upstream commit list, bot controls and compatibility badge are context/process.",
+      "changes": []
+    },
+    {
+      "caseId": "gofiber-fiber-4664",
+      "note": "Documentation title defines objective. Existing binder behavior and example are background, not runtime change requests; completed documentation/comment edits remain ambiguous.",
+      "changes": []
+    },
+    {
+      "caseId": "gofiber-fiber-4674",
+      "note": "Path-aliasing title, explicit intent and concrete helper/regression-test actions define scope. Old corruption, file list, claimed test results and task link are background/provenance.",
+      "changes": []
+    },
+    {
+      "caseId": "gofiber-fiber-4651",
+      "note": "Crypto dependency version/group update defines scope; upstream commits and bot command catalog are not local requirements.",
+      "changes": []
+    },
+    {
+      "caseId": "gofiber-fiber-4639",
+      "note": "Brotli version bump title/body define scope. Upstream commit, compatibility badge and bot operations are context/process.",
+      "changes": []
+    },
+    {
+      "caseId": "gofiber-fiber-4661",
+      "note": "Utils version bump title/body define scope. Quoted upstream feature list/commits and bot operations remain non-requirements.",
+      "changes": []
+    }
+  ]
+}

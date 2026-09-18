@@ -2,6 +2,7 @@ import { getExecutionEvidenceItems, statusFromEvidenceSummary } from "./executio
 import { presentGeneralPrAssessmentSummary } from "./general-pr-assessment-presentation";
 import { presentOrdinaryDocumentationSummary } from "./general-pr-documentation-presentation";
 import { presentOrdinaryStaticSummary } from "./general-pr-static-types-presentation";
+import { buildPrEvidenceReview, usesPrEvidenceReview, type PrEvidenceReview, type PrEvidenceReviewItem } from "./pr-evidence-review";
 import { redactSecrets } from "./redact";
 import type { VerificationReport } from "./types";
 import { deriveRequirementPresentationV2, isVerificationReportV2 } from "./requirement-presentation-v2";
@@ -10,6 +11,9 @@ export const AGENTPROOF_COMMENT_MARKER = "<!-- agentproof:evidence-check:v1 -->"
 const MAX_GITHUB_COMMENT_LENGTH = 12_000;
 
 export function reportToMarkdown(report: VerificationReport): string {
+  if (usesPrEvidenceReview(report)) {
+    return reportToReviewMarkdown(report, buildPrEvidenceReview(report), { includeMarker: false, full: true });
+  }
   const evidenceById = new Map(report.evidenceIndex.map((item) => [item.id, item]));
   const executionEvidence = getExecutionEvidenceItems(report.evidenceIndex);
   const strictContract = strictContractPresentation(report);
@@ -145,10 +149,17 @@ export function reportToGitHubComment(
   report: VerificationReport,
   options: { includeReprompt?: boolean; includeMarker?: boolean } = {}
 ): string {
+  const v2Report = isVerificationReportV2(report) ? report : undefined;
+  const ordinaryPrReview = usesPrEvidenceReview(report)
+    ? buildPrEvidenceReview(report)
+    : undefined;
+  if (ordinaryPrReview) {
+    return reportToReviewMarkdown(report, ordinaryPrReview, options);
+  }
+
   const evidenceById = new Map(report.evidenceIndex.map((item) => [item.id, item]));
   const executionEvidence = getExecutionEvidenceItems(report.evidenceIndex, 5);
   const strictContract = strictContractPresentation(report);
-  const v2Report = isVerificationReportV2(report) ? report : undefined;
   const ordinaryPrAssessment = v2Report?.generalPrAssessmentSummary
     ? presentGeneralPrAssessmentSummary(v2Report.generalPrAssessmentSummary)
     : undefined;
@@ -269,6 +280,78 @@ export function reportToGitHubComment(
   ].filter((line): line is string => typeof line === "string");
 
   return truncateComment(neutralizeGitHubMentions(lines.join("\n")));
+}
+
+function reportToReviewMarkdown(
+  report: VerificationReport,
+  review: PrEvidenceReview,
+  options: { includeMarker?: boolean; full?: boolean }
+): string {
+  const executionEvidence = getExecutionEvidenceItems(report.evidenceIndex, 5);
+  const itemLines = (items: PrEvidenceReviewItem[]) => items.map((item) => {
+    const url = item.url && redactSecrets(item.url) === item.url
+      ? item.url.replace(/\(/g, "%28").replace(/\)/g, "%29")
+      : undefined;
+    return `- **${item.kind.toUpperCase()}** ${safeInlineCode(item.label)} — ${item.relation === "candidate" ? "Candidate link" : item.relation === "verified" ? "Verified relation" : item.relation === "observed" ? "Observed evidence" : "Collected change"}${item.candidateBasis ? ` — ${item.candidateBasis}` : ""}${url ? ` [Open evidence](${url})` : ""}${item.executionMeaning ? ` — ${safeInlineText(item.executionMeaning)}` : ""}`;
+  });
+  const changeLines = itemLines(review.changes);
+  const priorityLines = report.reviewPriority.slice(0, 5).map(
+    (item) => `- **${item.priority.toUpperCase()}** ${safeInlineCode(item.path)}: ${safeInlineText(item.reason)}`
+  );
+  const limitationLines = report.limitations
+    .filter((item) => !isPurposeOnlyLimitation(item))
+    .slice(0, 4)
+    .map((item) => `- ${safeInlineText(item)}`);
+  const lines = [
+    options.includeMarker === false ? undefined : AGENTPROOF_COMMENT_MARKER,
+    options.full ? "# AgentProof Evidence Report" : "## AgentProof Evidence Check",
+    "",
+    `**PR:** ${safeInlineText(report.source.title)}`,
+    report.source.url ? `**URL:** ${safeInlineText(report.source.url)}` : undefined,
+    `**Test/Build:** ${report.testing.ciStatus}`,
+    "",
+    "### PR-to-Evidence Review",
+    "",
+    ...(review.source ? [`Source: ${review.source.label}`, ""] : []),
+    ...(review.sourceLinks ?? []).map(link=>`[Open ${link.label}](${link.url})`),
+    ...(review.retrievalNote ? [safeInlineText(review.retrievalNote), ""] : []),
+    ...review.objectives.flatMap((objective) => [
+      `#### ${safeInlineText(objective.text)}`,
+      "",
+      ...(objective.sourceRefs ? [`Source offsets: ${objective.sourceRefs.map(r=>`${r.sourceId ? r.sourceId+" " : ""}${r.start}–${r.end}`).join(", ")} (redacted source)`] : []),
+      ...(objective.facets ?? []).map(f=>`- ${f.kind} · source ${f.sourceRef.start}–${f.sourceRef.end}`),
+      ...(objective.goalContext ?? []),
+      ...(objective.firstInspection ? ["**Inspect first**", `${objective.firstInspection.label}: ${objective.firstInspection.whyInspect}`, objective.firstInspection.reviewQuestion ?? "", objective.firstInspection.uncertainty ?? ""] : []),
+      ...(objective.moreContext ? ["**Inspect first**", ...itemLines(objective.code.slice(0,1)), "**More context (possible links)**", ...itemLines(objective.moreContext), "**Tests**", ...itemLines(objective.tests), "**Execution**", ...itemLines(objective.execution)] : itemLines([...objective.code, ...objective.tests, ...objective.execution])),
+      `Next to inspect: ${safeInlineText(objective.nextInspection)}`,
+      ""
+    ]),
+    ...(review.mode === "change_summary" || changeLines.length ? [
+      review.mode === "change_summary" ? "### Collected Changes" : "### Other collected changes",
+      "",
+      ...(changeLines.length > 0 ? changeLines : ["- No changed-file, test, or execution evidence was collected."])
+    ] : []),
+    ...(review.mode === "change_summary" ? [`Next to inspect: ${safeInlineText(review.nextInspection)}`] : []),
+    "",
+    "### Verification Priority",
+    "",
+    ...(priorityLines.length > 0 ? priorityLines : ["- No priority files detected."]),
+    "",
+    "### Execution Evidence",
+    "",
+    ...(executionEvidence.length > 0
+      ? executionEvidence.map((item) => formatExecutionEvidenceLine(item, { locationLimit: 2, compactLocations: true }))
+      : ["- No test/build check or log evidence was available."]),
+    ...(limitationLines.length > 0
+      ? ["", "### Evidence Limits", "", ...limitationLines]
+      : [])
+  ].filter((line): line is string => typeof line === "string");
+
+  return options.full ? neutralizeGitHubMentions(lines.join("\n")) : truncateComment(neutralizeGitHubMentions(lines.join("\n")));
+}
+
+function isPurposeOnlyLimitation(value: string): boolean {
+  return value.startsWith("No original task text was provided and no single valid linked issue was available");
 }
 
 function strictContractPresentation(report: VerificationReport): { outcomePolicy: string; guidance: string[] } | undefined {

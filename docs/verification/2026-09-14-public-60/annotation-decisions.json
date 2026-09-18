@@ -1,0 +1,407 @@
+{
+  "description": "Original-source manual machine-proposed decision spans before product runner. Remaining source units reviewed as context/process; see review pack. No evaluated model output consulted.",
+  "decisions": [
+    [
+      0,
+      "`OPTIONS` is added correctly whenever `provide_automatic_options` is set.",
+      "ambiguous",
+      "Describes resulting behavior, rather than an explicit request; human must decide whether author-claim counts as source requirement."
+    ],
+    [
+      0,
+      "Also cleans up the tests about options. Fixes some other tests that were inadvertently adding duplicate routes.",
+      "ambiguous",
+      "Retrospective change summary; unclear whether independently requested scope."
+    ],
+    [
+      3,
+      "Fix two usages of `.partition(\":\")` on potential IPv6 addresses.\nReplace them with alternatives.",
+      "requirement",
+      "Explicit requested repair in original description."
+    ],
+    [
+      4,
+      "- apply empty permissions with `permissions: {}`, although we have read only defaults set at the organization level\n- use concurrency group for each workflow\n- disable credentials for checkout\n- remove some template variables in favor of env vars",
+      "requirement",
+      "Concrete action list under workflow scan findings; preliminary intended changes."
+    ],
+    [
+      5,
+      "I'm adding it now so I don't have to watch it anymore.",
+      "ambiguous",
+      "Author intent refers to preceding RFC but does not independently specify behavior."
+    ],
+    [
+      6,
+      "This PR fixes flaky tests mentioned in https://github.com/django/django/pull/21596#issuecomment-5545315143 which were  failing apparently due to page navigation/reload before sessionStorage is set.",
+      "ambiguous",
+      "Mixed repair summary and uncertain causal claim; linked discussion not loaded."
+    ],
+    [
+      8,
+      "Made Query.add_fields(), Query.add_ordering() and\nSQLCompiler.find_ordering_name() look up FilteredRelation aliases\nbefore splitting field names to relationship traversals. Added\n.test_alias_values() and .test_alias_order_by() to\nFilteredRelationTests.",
+      "ambiguous",
+      "Past-tense implementation summary, not necessarily an independent requirement."
+    ],
+    [
+      8,
+      "The proposed solution is to look up FilteredRelation aliases stored in the Query object's _filtered_relations attribute before trying to split the field name by the lookup separator \"__\". For order_by(), this affects the compiling phase in addition to the resolving phase.",
+      "requirement",
+      "Explicit proposed behavior and scope."
+    ],
+    [
+      9,
+      "I updated the documentation to add geos-3.15 as a supported.",
+      "ambiguous",
+      "Past-tense documentation change alongside test report."
+    ],
+    [
+      10,
+      "This adds `\\x00` to `unsafe_chars`, making `URLValidator` consistent with `forms.CharField`/`forms.URLField`, which already reject null characters via `ProhibitNullCharactersValidator` (#28201).",
+      "ambiguous",
+      "Implementation/result statement could imply intended behavior; not imperative."
+    ],
+    [
+      10,
+      "With this patch both raise, covered by new entries in `INVALID_URLS` (null character in path, host, and userinfo positions).",
+      "ambiguous",
+      "Reported expected outcome mixed with test coverage assertion."
+    ],
+    [
+      12,
+      "🌐 Update translations for fr (update-outdated)",
+      "requirement",
+      "Explicit translation update objective, despite bot-authored body."
+    ],
+    [
+      13,
+      "👷 Update translation PR branches with PR Push",
+      "requirement",
+      "Explicit update objective."
+    ],
+    [
+      14,
+      "🌐 Update translations for uk (update-outdated)",
+      "requirement",
+      "Explicit translation update objective."
+    ],
+    [
+      15,
+      "Bumps [starlette](https://github.com/Kludex/starlette) from 1.3.1 to 1.6.0.",
+      "requirement",
+      "Concrete dependency version change is the PR objective; bundled upstream notes are not requirements."
+    ],
+    [
+      16,
+      "🌐 Update translations for es (update-outdated)",
+      "requirement",
+      "Explicit translation update objective."
+    ],
+    [
+      17,
+      "📱 Improve mobile responsiveness of conference rail",
+      "requirement",
+      "Explicit UI improvement objective, underspecified acceptance details."
+    ],
+    [
+      19,
+      "Drops a hoisted template when a rich `<select>`/`<optgroup>`/`<option>` has a single block child.",
+      "ambiguous",
+      "Present-tense implementation summary may serve as intended scope."
+    ],
+    [
+      20,
+      "`<input disabled=\"\" {...props}>` and any other boolean attribute written as `\"\"` now renders on the server the way it does on the client and in plain markup.",
+      "ambiguous",
+      "Resulting behavior claim; source-only evidence cannot verify it."
+    ],
+    [
+      20,
+      "`attr` keeps `\"\"` for boolean attributes and still drops `null`, `undefined`, `false` and `0`.",
+      "ambiguous",
+      "Concrete behavior statement written as implementation result."
+    ],
+    [
+      21,
+      "This change carries the binding's ignores onto its generated setter assignment before transforming it. It also adds a runtime regression test that verifies the binding updates parent state without emitting an ownership warning.",
+      "ambiguous",
+      "Implementation and test summary; unclear independent normative force."
+    ],
+    [
+      22,
+      "- Cancel deferred pointer, touch, and wheel listener attachment when cleanup runs first\n- Apply cancellation to both `svelte/events` subscriptions and template global-event teardown\n- Preserve synchronous removal for listeners whose deferred attachment already completed\n- Add runtime regressions covering both cleanup paths",
+      "requirement",
+      "Explicit change/retention requirements in What section."
+    ],
+    [
+      23,
+      "`push()` and the root context in `#open_render` now set `i: false`, and `set_context_after_init` moves from client to shared errors so both runtimes throw the same code, the same way `lifecycle_outside_component` already does. The error text and its `svelte.dev/e/` page are unchanged.",
+      "ambiguous",
+      "Retrospective implementation and scope-retention description."
+    ],
+    [
+      23,
+      "The promise is awaited. The only thing missing was the guard. The expected error also changes from `lifecycle_outside_component` to `set_context_after_init`, matching the client.",
+      "ambiguous",
+      "Mixes explanatory context with changed expected behavior."
+    ],
+    [
+      24,
+      "Bumps [actions/checkout](https://github.com/actions/checkout) from 7.0.0 to 7.0.1.",
+      "requirement",
+      "Concrete dependency upgrade objective."
+    ],
+    [
+      25,
+      "Separately, the API no longer attempts to `basename` inputs so I need to do that in the Express API instead.",
+      "requirement",
+      "Explicit author-stated required compensating change."
+    ],
+    [
+      26,
+      "Bumps `body-parser` from `^2.2.1` to `^2.3.0` to remediate **CVE-2026-12590** (GHSA-v422-hmwv-36x6).",
+      "requirement",
+      "Concrete dependency version objective; CVE efficacy remains unverified."
+    ],
+    [
+      26,
+      "- `package.json`: `body-parser` `^2.2.1` → `^2.3.0`\n- `History.md`: changelog entry under Unreleased → 🚀 Improvements",
+      "requirement",
+      "Explicit change list."
+    ],
+    [
+      27,
+      "This extends the method guard to include `QUERY`.",
+      "ambiguous",
+      "Implementation claim inside copied description; source-only intent uncertain."
+    ],
+    [
+      27,
+      "As far as I can tell, QUERY is a safe, idempotent, cacheable method whose responses explicitly support conditional revalidation, as per https://datatracker.ietf.org/doc/rfc10008/, so it should behave like `GET`/`HEAD` here.",
+      "ambiguous",
+      "Qualified normative statement depends on unexamined specification."
+    ],
+    [
+      28,
+      "Bumps [morgan](https://github.com/expressjs/morgan) from 1.10.1 to 1.11.0.",
+      "requirement",
+      "Concrete dependency upgrade objective."
+    ],
+    [
+      29,
+      "Bumps [hbs](https://github.com/pillarjs/hbs) from 4.2.1 to 4.3.0.",
+      "requirement",
+      "Concrete dependency upgrade objective."
+    ],
+    [
+      30,
+      "Add `#[doc(hidden)]` to `lex` and make `Lexer::current_flags` and `Lexer::current_range` public with the same attribute.",
+      "requirement",
+      "Explicit API visibility and documentation requirements."
+    ],
+    [
+      30,
+      "Obligatory warning. This APIs are not part of Ruff's public API. They may change without notice or even be removed without a replacement.",
+      "ambiguous",
+      "Compatibility caveat may constrain interpretation, but is not an explicit implementation request."
+    ],
+    [
+      31,
+      "We now build the `ThinVec` directly with capacity reserved to the map's length and sort it in place, removing the intermediate allocation and excess capacity.",
+      "ambiguous",
+      "Reported implementation result."
+    ],
+    [
+      32,
+      "A union of `partial(boolean)` and `partial(integer)` must retain both partials.",
+      "requirement",
+      "Explicit must-retain semantic invariant."
+    ],
+    [
+      32,
+      "Check the wrapped function type as well as the reduced call signature when relating precise partials.",
+      "requirement",
+      "Explicit algorithmic requirement."
+    ],
+    [
+      33,
+      "Check its ancestors before walking it, consistent with how explicitly passed files are handled.",
+      "requirement",
+      "Explicit requested ancestor check."
+    ],
+    [
+      34,
+      "| Package | Type | Update | Change |\n|---|---|---|---|\n| [clap](https://redirect.github.com/clap-rs/clap) | workspace.dependencies | patch | `4.6.5` → `4.6.6` |",
+      "requirement",
+      "Dependency update table defines exact desired version."
+    ],
+    [
+      35,
+      "This PR adds a separate path that infers variance from the elements of the tuple directly.",
+      "ambiguous",
+      "Retrospective implementation summary."
+    ],
+    [
+      36,
+      "This seem to fix the related test, which would compile on next trait solver and should not.\nIt's related to the linked issue where it'd lead to a segmentation fault.",
+      "ambiguous",
+      "Tentative fix claim and normative compile rejection mixed; linked issue absent."
+    ],
+    [
+      40,
+      "It's already being used in std here and there with no problems, so I figure it's fine to use in the compiler.",
+      "ambiguous",
+      "Informal inferred intent, unspecified exact replacement."
+    ],
+    [
+      42,
+      "- `doc/architecture.md` carried a bullet describing it as the client for the out-of-process TypeScript type-checker. Removed rather than repointed, because that commit deleted the integration instead of moving it.\n- `doc/codebase-map.md` listed it under **Other building blocks**. Dropped from the list and the line re-wrapped.",
+      "ambiguous",
+      "Retrospective description of documentation edits."
+    ],
+    [
+      43,
+      "Fixes `process.resourceUsage().maxRSS` on macOS and iOS.",
+      "ambiguous",
+      "Fix claim specifies scope but not exact desired unit."
+    ],
+    [
+      44,
+      "This PR removes the duplicate list and validates both `--allow-sys` and `--deny-sys` values with the runtime parser. Validation does not replace the original flag value, so aliases such as `username` retain their existing CLI representation.",
+      "ambiguous",
+      "Detailed resulting behavior and preservation claim, not independent requirement wording."
+    ],
+    [
+      45,
+      "This updates both `.out` files to the diagnostic the new typings produce.",
+      "ambiguous",
+      "Retrospective test-fixture update summary; future pinning suggestion excluded."
+    ],
+    [
+      46,
+      "the value must be attached with `=`, a bare `--sourcemap` means\n'linked', and values are validated against 'linked', 'inline' and\n'external'.",
+      "requirement",
+      "Explicit must and enumerated accepted behavior."
+    ],
+    [
+      47,
+      "This updates every schema's `$id` to the matching `https://raw.githubusercontent.com/denoland/deno/main/cli/schemas/…` URL so `$id`, relative `$ref` resolution, and the extension's configured URLs all agree.",
+      "ambiguous",
+      "Retrospective intended result."
+    ],
+    [
+      47,
+      "It also fixes the permission broker schemas, whose `$id`s both claimed `permission-broker.v1.json` instead of their actual request/response filenames.",
+      "ambiguous",
+      "Fix summary implies separate intended filename correction."
+    ],
+    [
+      48,
+      "Ensure comments start with the serialized version of the field name.",
+      "requirement",
+      "Explicit comment-format invariant."
+    ],
+    [
+      49,
+      "Staggering when the different workers query node logs should mitigate this problem by distributing the load.",
+      "ambiguous",
+      "Tentative remedy and causal expectation."
+    ],
+    [
+      49,
+      "New statistics get added to analyze how that interval influences the number of requests and amount of data.",
+      "ambiguous",
+      "Reported instrumentation change."
+    ],
+    [
+      50,
+      "This PR is updating a test to use a newer api to test a newer emulation version.",
+      "ambiguous",
+      "Change summary with unspecified newer version."
+    ],
+    [
+      51,
+      "`+k8s:maxBytes` now accepts byte slices and typedefs to them, emitting the new `validate.MaxBytesSlice`, which checks `len()` and reports `TooLong` with origin `maxBytes`.",
+      "ambiguous",
+      "Behavior described as implemented; human should decide objective status."
+    ],
+    [
+      51,
+      "`+k8s:maxBytes` means the same thing on `string` and on `[]byte` — a byte count — so the tag keeps its meaning if a field changes between the two.",
+      "ambiguous",
+      "Semantic invariant presented descriptively."
+    ],
+    [
+      51,
+      "- `maxLength` stays string-only. It counts runes, which is undefined for binary data, and `maxBytes` already covers the byte-count case for both types.\n- No short-circuit, unlike `maxItems`. Short-circuiting only for the slice shape would make the same tag suppress a different set of sibling errors depending on the Go type.\n- `+k8s:maxItems` on a `[]byte` is still accepted.",
+      "ambiguous",
+      "Retention constraints mixed with rationale in reviewer notes."
+    ],
+    [
+      52,
+      "Updates kube-openapi to pick up https://github.com/kubernetes/kube-openapi/pull/635",
+      "requirement",
+      "Explicit dependency update objective, linked change details not fetched."
+    ],
+    [
+      53,
+      "Updates `golang.org/x/crypto` to `v0.56.0` to address CVE-2026-78662 (prevent DoS on deadlocked undecided channel in `x/crypto/ssh`).",
+      "requirement",
+      "Concrete dependency version objective; security effectiveness not verified."
+    ],
+    [
+      54,
+      "Bumps the golang-modules group with 1 update: [golang.org/x/sys](https://github.com/golang/sys).",
+      "requirement",
+      "Explicit dependency update objective."
+    ],
+    [
+      54,
+      "Updates `golang.org/x/sys` from 0.47.0 to 0.48.0",
+      "requirement",
+      "Exact version update."
+    ],
+    [
+      55,
+      "- [x] Documentation Update: two subsections under `Custom` in `docs/api/bind.md`. A table of what `MIMETypes` does to `Bind().Custom` and `Bind().Body`, and an \"Overriding a built-in format\" section with the opt-in example above.\n- `bind.go`: the doc comment on `Body` said custom binders are consulted \"if none of the content types above are matched\". They are consulted first and win. Corrected.",
+      "ambiguous",
+      "Completed-change checklist contains substantive edits, not merely template; human acceptance needed."
+    ],
+    [
+      56,
+      "- The intent of this change is to keep the one-pass performance benefit while making the helper safe when `src` may alias a reused destination buffer coming from `c.path`.",
+      "requirement",
+      "Explicit intended safety and performance invariants."
+    ],
+    [
+      56,
+      "- Change `appendCopyLowerASCII` to preload the overlapping SWAR tail word before performing destination writes, preventing stores from mutating bytes the tail load still needs to read; the helper comment was updated to document aliasing constraints accordingly (`helpers.go`).\n- Replace the vulnerable tail-load with the preloaded `tail` value when finishing the overlapping word to ensure correctness with aliased substring sources (`helpers.go`).\n- Add a regression test that reproduces the reported aliased-substring rewrite (`/api/bar/fooX` → `/bar/fooX`) and asserts both the original-case path and the lowercase detection path are correct (`helpers_test.go`).",
+      "requirement",
+      "Explicit action list and regression assertion."
+    ],
+    [
+      57,
+      "Bumps the golang-modules group with 1 update: [golang.org/x/crypto](https://github.com/golang/crypto).",
+      "requirement",
+      "Explicit dependency update objective."
+    ],
+    [
+      57,
+      "Updates `golang.org/x/crypto` from 0.55.0 to 0.56.0",
+      "requirement",
+      "Exact version update."
+    ],
+    [
+      58,
+      "Bumps [github.com/andybalholm/brotli](https://github.com/andybalholm/brotli) from 1.2.2 to 1.2.3.",
+      "requirement",
+      "Exact dependency update objective."
+    ],
+    [
+      59,
+      "Bumps [github.com/gofiber/utils/v2](https://github.com/gofiber/utils) from 2.4.3 to 2.5.0.",
+      "requirement",
+      "Exact dependency update objective."
+    ]
+  ]
+}

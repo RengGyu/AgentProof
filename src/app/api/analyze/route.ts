@@ -1,3 +1,4 @@
+import { resolveNavigationProvider } from "@/lib/gemini-navigation";
 import { NextResponse } from "next/server";
 import { demoScenarios } from "@/lib/sample-data";
 import { normalizeAnalyzeRequest } from "@/lib/analyze-request";
@@ -15,7 +16,7 @@ import { submitGeneralPrSemanticObservationWithOpenAI } from "@/lib/openai-seman
 import { resolveRuntimeReportValidation } from "@/lib/report-runtime-validation";
 import * as generalPrObservationService from "@/lib/general-pr-observation-service";
 import type { RunGeneralPrObservationNowOptionsV2 } from "@/lib/general-pr-observation-service";
-import { collectOrdinaryDocumentationArtifacts, collectOrdinaryStaticArtifacts, collectOrdinaryScalarArtifacts, collectOrdinaryTypeScriptProject } from "@/lib/github";
+import { collectReviewArtifacts, collectOrdinaryDocumentationArtifacts, collectOrdinaryStaticArtifacts, collectOrdinaryScalarArtifacts, collectOrdinaryTypeScriptProject } from "@/lib/github";
 import { buildGeneralPrSemanticOperatorDiagnosticsV1 } from "@/lib/general-pr-observation-telemetry";
 import { runGeneralPrInformationDiagnosticV1 } from "@/lib/general-pr-information-diagnostic";
 import { resolveGeneralPrAssessmentRuntimePolicyV1 } from "@/lib/general-pr-runtime-policy";
@@ -116,9 +117,20 @@ export async function POST(request: Request) {
     const semanticEligible = policy.semanticObservation === "eligible_public_pr" &&
       generalPrObservationService.isGeneralPrSemanticObserverEligibleV2(input) &&
       Boolean(publicPrUrl && observerApiKey && observerModel);
+    const navigationProvider = resolveNavigationProvider(process.env);
+    const navigationEligible = policy.semanticObservation === "eligible_public_pr" &&
+      generalPrObservationService.isGeneralPrSemanticObserverEligibleV2(input);
     const observationOptions: RunGeneralPrObservationNowOptionsV2 = {
       policy,
       input,
+      navigation: {
+        model: navigationProvider.model,
+        ...(navigationEligible && publicPrUrl && navigationProvider.provider ? {
+          provider: navigationProvider.provider,
+          readArtifacts: (paths, headSha) => collectReviewArtifacts(publicPrUrl, body.githubToken, paths, headSha),
+          readCurrentInput: () => buildGitHubPullRequestInput(publicPrUrl, body.githubToken, "", undefined, {expectedHeadSha:input.sourceProvenance?.headSha,expectedBaseSha:input.sourceProvenance?.baseSha})
+        } : {})
+      },
       ...(publicPrUrl && input.repositoryPrivate === false ? { collectDocumentationArtifacts: (paths: string[], headSha: string) => collectOrdinaryDocumentationArtifacts(publicPrUrl, body.githubToken, paths, headSha) } : {}),
       ...(publicPrUrl && input.repositoryPrivate === false ? { collectStaticArtifacts: (paths: string[], headSha: string) => collectOrdinaryStaticArtifacts(publicPrUrl, body.githubToken, paths, headSha) } : {}),
       ...(publicPrUrl && input.repositoryPrivate === false ? { collectScalarArtifacts: (paths: string[], headSha: string) => collectOrdinaryScalarArtifacts(publicPrUrl, body.githubToken, paths, headSha) } : {}),

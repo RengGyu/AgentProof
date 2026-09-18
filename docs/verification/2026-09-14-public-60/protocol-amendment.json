@@ -1,0 +1,8 @@
+{
+  "amendedAt": "2026-09-13T16:12:41.597Z",
+  "authorization": "Supervisor explicitly approved bounded replacement after original frame was empty.",
+  "replace": "golang/go",
+  "with": "gofiber/fiber",
+  "reason": "Selection feasibility only: original repository yielded zero eligible merged PRs; no labels/model results used.",
+  "unchanged": "Date window, top30 created-desc frame, SHA256 ranking, 6 quota, exclusions, source/label/privacy policy."
+}

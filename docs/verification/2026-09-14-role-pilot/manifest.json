@@ -1,0 +1,54 @@
+{
+  "schemaVersion": "requirement_role_pilot_manifest.v1",
+  "frozenBeforeExperimentResults": true,
+  "selectionUsedLabels": false,
+  "selectionRule": "In original corpus order, select the first case from each of the first four distinct GitHub owner/repository values.",
+  "sourceCorpus": {
+    "path": "docs/verification/2026-09-14-public-60/corpus.json",
+    "sha256": "9e2c7eb7cd679f44d4ede3b316fc98890d2d6cd18ad667ae0464b26c8865b78f",
+    "caseCount": 60
+  },
+  "frozenExistingEvidence": {
+    "directories": [
+      "docs/verification/2026-09-14-public-60",
+      "docs/verification/2026-09-14-public-60-bc"
+    ],
+    "fileCount": 37,
+    "aggregateAlgorithm": "SHA-256 of sorted lines '<file SHA-256>  <repository-relative path>\\n' for every regular file directly in the two directories",
+    "aggregateSha256": "f43c372a547a047577e0073629605bd5ae07bf3396021f8936c8a75746188188"
+  },
+  "sample": [
+    {
+      "fixedOrder": 1,
+      "caseId": "pallets-flask-5917",
+      "repository": "pallets/flask",
+      "inputSha256": "bcb239d733e1824439e7fbda15b4ddf213787c1e5c215a97c54c3d3459ab43bb"
+    },
+    {
+      "fixedOrder": 2,
+      "caseId": "django-django-21900",
+      "repository": "django/django",
+      "inputSha256": "6198415a87241dc58a24e1ffa4608fa70b1b56a76be254e4f43688167fabf77f"
+    },
+    {
+      "fixedOrder": 3,
+      "caseId": "fastapi-fastapi-16205",
+      "repository": "fastapi/fastapi",
+      "inputSha256": "f8ee3c0f3f6494fc73a8434d6c5c2f74b29dd9765ebfde7710e5c64e385ab104"
+    },
+    {
+      "fixedOrder": 4,
+      "caseId": "sveltejs-svelte-18752",
+      "repository": "sveltejs/svelte",
+      "inputSha256": "b4b9b492624f24033ef5ac1f02936914d5a1b75407e38427268af440fbfe3d1e"
+    }
+  ],
+  "sampleLabelPolicy": "The pilot input contains no labels. Existing AI labels may be joined only after this manifest is frozen and may be reported only as AI-label agreement, never human accuracy.",
+  "plannedRun": {
+    "versions": ["V0", "V1", "V2", "V3", "V4"],
+    "configuredModel": "gpt-5.6-luna",
+    "globalCallBudget": 30,
+    "retries": 0,
+    "resampling": false
+  }
+}

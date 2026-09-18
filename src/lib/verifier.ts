@@ -1,3 +1,5 @@
+import { captureReviewRelations } from "./pr-evidence-review";
+import { buildReviewCandidates } from "./review-candidates";
 import { createHash } from "crypto";
 import {
   buildEvidenceIndexResult,
@@ -278,9 +280,10 @@ export function generateVerificationReportV2FromInput(
   const source = input.verificationContractSourceV2;
   const binding = input.verificationContractBindingV2;
   if (source && binding) {
-    return generateVerificationReportV2({ input, contractSource: source, binding }, options);
+    const report = generateVerificationReportV2({ input, contractSource: source, binding }, options);
+    return report.verificationContract.state === "absent" ? { ...report, reviewCandidates: { ...buildReviewCandidates(input, report.requirements, report.evidenceIndex), retainedRelations: captureReviewRelations(report) } } : report;
   }
-  return generateVerificationReportV2({
+  const report = generateVerificationReportV2({
     input,
     contractSource: { kind: "provided_requirement", contract: undefined },
     binding: {
@@ -291,6 +294,7 @@ export function generateVerificationReportV2FromInput(
       baseSha: input.sourceProvenance?.baseSha ?? ""
     }
   }, options);
+  return { ...report, reviewCandidates: { ...buildReviewCandidates(input, report.requirements, report.evidenceIndex), retainedRelations: captureReviewRelations(report) } };
 }
 
 function applyStrictContractOutcomeV2(
@@ -656,7 +660,8 @@ export function generateVerificationReportFromRequirements(
     input.changedFiles,
     input.checks,
     input.logs,
-    input.taskSource
+    input.taskSource,
+    input.sourceProvenance
   );
   const evidenceIndex = evidenceBuild.items;
   const evidenceLookup = buildVerifierEvidenceLookup(evidenceIndex);

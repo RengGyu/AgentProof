@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "labelProvenance": "supervisor AI-reviewed provisional; not human gold or holdout",
+  "sourceFixture": {
+    "path": "eval/fixtures/swebench-verified.diverse.jsonl",
+    "sha256": "452c12d0e0a0ed4566b49c62ee406bae610a54167f29a2cf2831a39de6b30bcb"
+  },
+  "metric": "primary-first-inspection hit@1",
+  "selectionLimit": "File-level proxy only. A secondary file omission is not proof of irrelevance or error; this does not measure link arrival, function/line accuracy, requirement fulfillment, or human task time.",
+  "expectedSourceKind": "linked_issue",
+  "references": [
+    {"id":"matplotlib__matplotlib-14623","goal":"Invert the y axis for log as well as linear scales when limits are reversed.","allowedPaths":["lib/matplotlib/axes/_base.py","lib/matplotlib/tests/test_axes.py"],"rationale":"set_ylim swaps reversed bounds; test_inverted_limits explicitly asserts log-axis reversed limits. Ticker helper and 3D changes are secondary, not the first direct 2D behavior evidence."},
+    {"id":"mwaskom__seaborn-3187","goal":"Represent large legend values without losing formatter offset/scientific magnitude.","allowedPaths":["seaborn/_core/scales.py","seaborn/utils.py","tests/_core/test_plot.py","tests/test_relational.py"],"rationale":"Both formatter paths disable unrepresented offset/scientific formatting; both tests assert large legend values."},
+    {"id":"pallets__flask-5014","goal":"Raise ValueError for an empty Blueprint name.","allowedPaths":["src/flask/blueprints.py","tests/test_blueprints.py"],"rationale":"Constructor adds empty-name ValueError; test supplies an empty name and expects ValueError."},
+    {"id":"psf__requests-5414","goal":"Report InvalidURL rather than UnicodeError for a dot-leading host.","allowedPaths":["requests/models.py","tests/test_requests.py"],"rationale":"prepare_url extends invalid-host check to dot prefix; test supplies http://.example.com with InvalidURL."},
+    {"id":"pydata__xarray-4687","goal":"Allow xr.where to preserve x attributes via keep_attrs.","allowedPaths":["xarray/core/computation.py","xarray/tests/test_computation.py"],"rationale":"where adds and forwards keep_attrs; test_where_attrs asserts attributes. test_units excerpt is formatting-only, not direct attributes evidence."},
+    {"id":"pylint-dev__pylint-6386","goal":"Allow short -v without an argument, as with --verbose.","allowedPaths":["pylint/config/utils.py","tests/config/test_config.py"],"rationale":"utils registers -v and handles single-hyphen preprocessing; test_short_verbose calls -v without a value. Other excerpts only show generic metavar plumbing, not this behavioral route."},
+    {"id":"pytest-dev__pytest-5631","goal":"Avoid array truth-value errors while inspecting mock patch sentinels.","allowedPaths":["src/_pytest/compat.py","testing/python/integration.py"],"rationale":"num_mock_patch_args replaces equality membership with identity; integration test excerpt names a numpy-like sentinel regression, although full test is truncated."},
+    {"id":"scikit-learn__scikit-learn-13142","goal":"Keep GaussianMixture fit_predict and predict consistent for n_init greater than one.","allowedPaths":["sklearn/mixture/base.py","sklearn/mixture/tests/test_gaussian_mixture.py"],"rationale":"Shared fit_predict moves final E-step; GaussianMixture test sets n_init=5 and compares results. Bayesian-specific test is a secondary extension."},
+    {"id":"sphinx-doc__sphinx-7462","goal":"Render empty tuple annotations without popping an empty list.","allowedPaths":["sphinx/domains/python.py","sphinx/pycode/ast.py","tests/test_domain_py.py","tests/test_pycode_ast.py"],"rationale":"Both unparsers handle empty tuples; tests cover Tuple[()] or empty tuple rendering."},
+    {"id":"sympy__sympy-19783","goal":"Simplify multiplying Dagger expressions by IdentityOperator.","allowedPaths":["sympy/physics/quantum/dagger.py","sympy/physics/quantum/operator.py","sympy/physics/quantum/tests/test_dagger.py","sympy/physics/quantum/tests/test_operator.py"],"rationale":"Dagger multiplication and Operator dispatch handle identity; tests assert Dagger/identity products."}
+  ]
+}

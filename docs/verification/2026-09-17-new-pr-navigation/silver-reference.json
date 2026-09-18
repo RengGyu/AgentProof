@@ -1,0 +1,78 @@
+{
+  "schema": "agentproof.navigation-silver.v1",
+  "created_before_product_calls": true,
+  "label_tier": "internal_silver",
+  "method": "Terra supervisor fixed one review goal and acceptable first-inspection path set from the public PR title and changed-file inventory before Luna output was requested. This is not human gold and is never supplied to the product model.",
+  "cases": [
+    {
+      "id": "flask-5918",
+      "url": "https://github.com/pallets/flask/pull/5918",
+      "goal": "Automatic OPTIONS handling should become normal routing/view dispatch without noisy internal endpoints.",
+      "acceptable_first_paths": ["src/flask/sansio/app.py", "src/flask/app.py"],
+      "required_concepts": ["automatic OPTIONS", "routing"]
+    },
+    {
+      "id": "httpx-3785",
+      "url": "https://github.com/encode/httpx/pull/3785",
+      "goal": "Update the cryptography dependency to the stated version.",
+      "acceptable_first_paths": ["requirements.txt"],
+      "required_concepts": ["cryptography", "dependency update"]
+    },
+    {
+      "id": "starlette-3552",
+      "url": "https://github.com/Kludex/starlette/pull/3552",
+      "goal": "WebSocketEndpoint JSON decoding should handle missing payloads and non-UTF-8 bytes safely.",
+      "acceptable_first_paths": ["starlette/endpoints.py"],
+      "required_concepts": ["WebSocketEndpoint", "JSON decode"]
+    },
+    {
+      "id": "fastapi-16370",
+      "url": "https://github.com/fastapi/fastapi/pull/16370",
+      "goal": "Warn about duplicate OpenAPI path-converter collisions and cover the behavior.",
+      "acceptable_first_paths": ["fastapi/openapi/utils.py", "tests/test_openapi_path_converter_collision.py"],
+      "required_concepts": ["OpenAPI", "path converter"]
+    },
+    {
+      "id": "pydantic-13819",
+      "url": "https://github.com/pydantic/pydantic/pull/13819",
+      "goal": "Fix pydantic-core garbage-collection tracking across the affected validators and serializers.",
+      "acceptable_first_paths": ["pydantic-core/src/py_gc.rs", "pydantic-core/tests/test_garbage_collection.py"],
+      "required_concepts": ["GC", "pydantic-core"]
+    },
+    {
+      "id": "requests-7619",
+      "url": "https://github.com/psf/requests/pull/7619",
+      "goal": "Update the ruff pre-commit hook version.",
+      "acceptable_first_paths": [".pre-commit-config.yaml"],
+      "required_concepts": ["ruff", "pre-commit"]
+    },
+    {
+      "id": "svelte-18835",
+      "url": "https://github.com/sveltejs/svelte/pull/18835",
+      "goal": "Prevent Chromium from retaining responsive images.",
+      "acceptable_first_paths": ["packages/svelte/src/internal/client/dom/template.js", "packages/svelte/tests/runtime-runes/samples/responsive-image-anchor-fragment/main.svelte"],
+      "required_concepts": ["responsive images", "Chromium"]
+    },
+    {
+      "id": "express-7474",
+      "url": "https://github.com/expressjs/express/pull/7474",
+      "goal": "Update proxy-addr to the requested dependency range.",
+      "acceptable_first_paths": ["package.json"],
+      "required_concepts": ["proxy-addr", "dependency update"]
+    },
+    {
+      "id": "vite-23499",
+      "url": "https://github.com/vitejs/vite/pull/23499",
+      "goal": "Release prior server environments after initialization.",
+      "acceptable_first_paths": ["packages/vite/src/node/server/index.ts", "packages/vite/src/node/__tests__/dev.spec.ts"],
+      "required_concepts": ["environment", "initialization"]
+    },
+    {
+      "id": "typer-1957",
+      "url": "https://github.com/fastapi/typer/pull/1957",
+      "goal": "Setting a metavar must not change a default option name.",
+      "acceptable_first_paths": ["typer/main.py", "tests/test_core.py"],
+      "required_concepts": ["metavar", "default option name"]
+    }
+  ]
+}

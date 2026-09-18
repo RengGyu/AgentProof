@@ -1,3 +1,4 @@
+import { captureReviewRelations } from "./pr-evidence-review";
 import { createHash, randomBytes, timingSafeEqual } from "crypto";
 import { copyOrdinaryDocumentationSummary } from "./general-pr-documentation-presentation";
 import { copyOrdinaryStaticSummary } from "./general-pr-static-types-presentation";
@@ -920,7 +921,8 @@ export function prepareTenantDetailReportForStorage(
     reprompt: { targetAgent: report.reprompt.targetAgent, prompt: tenantRemediationText(allGapKinds) },
     evidenceIndex: report.evidenceIndex.map((item) => {
       const locator = safeLocator(item.locator);
-      return { id: item.id, kind: item.kind, label: `Evidence ${item.id}`, summary: "Bounded evidence metadata.", ...(locator ? { locator } : {}), confidence: item.confidence };
+      const codeLocation = safeCodeLocation(item.codeLocation);
+      return { id: item.id, kind: item.kind, label: `Evidence ${item.id}`, summary: "Bounded evidence metadata.", ...(locator ? { locator } : {}), ...(codeLocation ? { codeLocation } : {}), confidence: item.confidence };
     }),
     limitations: report.limitations.map(() => "Some evidence was unavailable or intentionally omitted for privacy.").slice(0, 20),
     ...(report.planner ? { planner: copyPlannerProvenance(report.planner) } : {}),
@@ -930,6 +932,7 @@ export function prepareTenantDetailReportForStorage(
   if (isVerificationReportV2(report)) {
     Object.assign(safe, {
       reportSchemaVersion: "verification-report.v2",
+      ...(report.reviewCandidates ? { reviewCandidates: { ...structuredClone(report.reviewCandidates), retainedRelations: captureReviewRelations(report) } } : {}),
       verificationContract: structuredClone(report.verificationContract),
       ...(report.ordinaryDocumentationSummary ? { ordinaryDocumentationSummary: copyOrdinaryDocumentationSummary(report.ordinaryDocumentationSummary) } : {}),
       ...(report.ordinaryStaticSummary ? { ordinaryStaticSummary: copyOrdinaryStaticSummary(report.ordinaryStaticSummary) } : {}),
@@ -992,6 +995,20 @@ function safeLocator(value: string | undefined): string | null {
   if (!value) return null;
   const normalized = redactSecrets(value).trim();
   return normalized && isSafeTenantLocator(normalized) ? normalized : null;
+}
+
+function safeCodeLocation(value: VerificationReport["evidenceIndex"][number]["codeLocation"]): VerificationReport["evidenceIndex"][number]["codeLocation"] | undefined {
+  if (!value) return undefined;
+  const path = safeLocator(value.path);
+  const previousPath = safeLocator(value.previousPath);
+  if (!path || (value.previousPath && !previousPath) || (value.revisionSha && !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(value.revisionSha)) || (value.line !== undefined && (!Number.isSafeInteger(value.line) || value.line < 1))) return undefined;
+  return {
+    path,
+    side: value.side,
+    ...(value.revisionSha ? { revisionSha: value.revisionSha } : {}),
+    ...(previousPath ? { previousPath } : {}),
+    ...(value.line ? { line: value.line } : {})
+  };
 }
 
 function uniqueStrings(values: readonly string[]): string[] {

@@ -1,0 +1,53 @@
+{
+  "schemaVersion": "requirement_role_live_blocker.v1",
+  "status": "blocked_before_process_start",
+  "livePlan": "live-plan.json",
+  "keyPreflight": {
+    "selectedFile": "/Users/jeonggyuju/Project_folder/AgentProof/.env.local",
+    "fileExists": true,
+    "openAiKeyAssignmentCount": 1,
+    "openAiKeyNonempty": true,
+    "parser": "installed @next/env dotenv parser",
+    "keyValuePrintedOrPersisted": false,
+    "otherVariablesLoaded": false
+  },
+  "externalExecution": {
+    "requested": true,
+    "processStarted": false,
+    "approvalResult": "rejected",
+    "blocker": "The external-execution reviewer treated the trusted project instruction that the two-task setup grants no model-evaluation API calls as controlling and rejected the requested OpenAI evaluation before process start. No workaround or second attempt was made."
+  },
+  "observations": {
+    "actualCalls": 0,
+    "retries": 0,
+    "responses": 0,
+    "observedModels": [],
+    "inputTokens": null,
+    "outputTokens": null,
+    "totalTokens": null,
+    "latencyMs": null,
+    "liveResultArtifact": null,
+    "actualChargeUsd": 0,
+    "plannedCostUsd": "unknown"
+  },
+  "comparison": {
+    "V0_V1_V2_V3_V4": "not_measured",
+    "machineLabelAgreement": "not_measured",
+    "requirementPreservation": "not_measured",
+    "nonRequirementMisclassification": "not_measured",
+    "ambiguousPredictionDistribution": "not_measured",
+    "validatorFailures": "not_measured",
+    "reason": "No external process or provider call started."
+  },
+  "completedSafeWork": {
+    "liveAdapter": "Implemented opt-in reuse of the existing OpenAI Responses transport with sanitized model, HTTP status, token and latency telemetry.",
+    "cli": "Default remains offline; live mode requires explicit acknowledgement and --key-file; output remains no-clobber.",
+    "budget": "Existing 24 initial packets remain first; at most six calls are available for V4 expansion; no retries.",
+    "frozenEvaluationMapping": "live-plan.json"
+  },
+  "limits": [
+    "No real paired performance evidence exists.",
+    "No version superiority or product-adoption conclusion is supported.",
+    "No new 36 cases or two-human independent review were created."
+  ]
+}

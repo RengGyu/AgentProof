@@ -1,0 +1,272 @@
+{
+  "schema": "agentproof.pydantic-refinement-preservation-live.v1",
+  "runId": "e39ef88b-9393-455b-b819-f2eb8e36c7e7",
+  "prUrl": "https://github.com/pydantic/pydantic/pull/13819",
+  "head": "299309892717854a738bb385a33e7f655cb62bf1",
+  "base": "7b15a786a755ec4089a34c9bb5f957f8b8ce3690",
+  "model": "gpt-5.6-luna",
+  "startedAt": "2026-09-17T21:53:27.183Z",
+  "finishedAt": "2026-09-17T21:54:06.384Z",
+  "status": "completed",
+  "input": {
+    "titleSha256": "a148e2933b1126dc4cd14e70dbcf487ff27e823a09610f72a37e6b64422a18c7",
+    "descriptionSha256": "47c378257ccfaa6a9c9f6631a91dab05e7ee479606613de84cb03b98d036fa47",
+    "taskSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "taskSource": null,
+    "changedPaths": [
+      "pydantic-core/src/definitions.rs",
+      "pydantic-core/src/py_gc.rs",
+      "pydantic-core/src/serializers/type_serializers/function.rs",
+      "pydantic-core/src/serializers/type_serializers/generator.rs",
+      "pydantic-core/src/validators/function.rs",
+      "pydantic-core/src/validators/generator.rs",
+      "pydantic-core/tests/test_garbage_collection.py"
+    ],
+    "headSha": "299309892717854a738bb385a33e7f655cb62bf1",
+    "baseSha": "7b15a786a755ec4089a34c9bb5f957f8b8ce3690"
+  },
+  "calls": {
+    "attempted": 3,
+    "observed": [
+      {
+        "runId": "e39ef88b-9393-455b-b819-f2eb8e36c7e7",
+        "callId": "e39ef88b-9393-455b-b819-f2eb8e36c7e7:1",
+        "event": "finished",
+        "stage": "intent",
+        "status": "provider_succeeded",
+        "usage": {
+          "callId": "e39ef88b-9393-455b-b819-f2eb8e36c7e7:1",
+          "stage": "intent",
+          "model": "gpt-5.6-luna",
+          "inputTokens": 926,
+          "outputTokens": 564,
+          "latencyMs": 7574
+        },
+        "at": "2026-09-17T21:53:44.292Z"
+      },
+      {
+        "runId": "e39ef88b-9393-455b-b819-f2eb8e36c7e7",
+        "callId": "e39ef88b-9393-455b-b819-f2eb8e36c7e7:2",
+        "event": "finished",
+        "stage": "ranking",
+        "status": "provider_succeeded",
+        "usage": {
+          "callId": "e39ef88b-9393-455b-b819-f2eb8e36c7e7:2",
+          "stage": "ranking",
+          "model": "gpt-5.6-luna",
+          "inputTokens": 2273,
+          "outputTokens": 752,
+          "latencyMs": 7368
+        },
+        "at": "2026-09-17T21:53:51.664Z"
+      },
+      {
+        "runId": "e39ef88b-9393-455b-b819-f2eb8e36c7e7",
+        "callId": "e39ef88b-9393-455b-b819-f2eb8e36c7e7:3",
+        "event": "finished",
+        "stage": "refinement",
+        "status": "provider_succeeded",
+        "usage": {
+          "callId": "e39ef88b-9393-455b-b819-f2eb8e36c7e7:3",
+          "stage": "refinement",
+          "model": "gpt-5.6-luna",
+          "inputTokens": 2329,
+          "outputTokens": 849,
+          "latencyMs": 7781
+        },
+        "at": "2026-09-17T21:54:01.952Z"
+      }
+    ]
+  },
+  "reads": [
+    {
+      "requestedPaths": [
+        "pydantic-core/src/validators/function.rs",
+        "pydantic-core/src/validators/generator.rs",
+        "pydantic-core/src/serializers/type_serializers/generator.rs",
+        "pydantic-core/src/serializers/type_serializers/function.rs",
+        "pydantic-core/src/definitions.rs",
+        "pydantic-core/src/py_gc.rs",
+        "pydantic-core/tests/test_garbage_collection.py"
+      ],
+      "revision": "299309892717854a738bb385a33e7f655cb62bf1",
+      "returned": [
+        {
+          "path": "pydantic-core/src/validators/function.rs",
+          "bytes": 19019
+        },
+        {
+          "path": "pydantic-core/src/validators/generator.rs",
+          "bytes": 13422
+        },
+        {
+          "path": "pydantic-core/src/serializers/type_serializers/generator.rs",
+          "bytes": 7316
+        },
+        {
+          "path": "pydantic-core/src/serializers/type_serializers/function.rs",
+          "bytes": 26105
+        },
+        {
+          "path": "pydantic-core/src/definitions.rs",
+          "bytes": 8812
+        },
+        {
+          "path": "pydantic-core/src/py_gc.rs",
+          "bytes": 3182
+        },
+        {
+          "path": "pydantic-core/tests/test_garbage_collection.py",
+          "bytes": 8606
+        }
+      ]
+    }
+  ],
+  "navigation": {
+    "state": "partial",
+    "rankingStatus": "ready",
+    "coverageStatus": "partial",
+    "goalCount": 1,
+    "artifactCount": 5,
+    "goals": [
+      {
+        "id": "goal_1",
+        "summary": "Correct GC tracking and traversal behavior across validator and serializer callables, including avoiding duplicate traversal of Arc-owned subtrees, enabling GC hooks on affected info/callable/iterator types, and cleaning up obsolete DefinitionRef handling and ownership documentation.",
+        "emphasis": "primary",
+        "authority": "pr_author_claim",
+        "facets": [
+          {
+            "kind": "motivation",
+            "summary": "Avoid visiting objects twice for one reference when an Arc clone points to a subtree already owned and traversed by its unique owner."
+          },
+          {
+            "kind": "condition",
+            "summary": "Do not traverse InternalValidator.validator from the GC hooks of ValidatorCallable, AssignmentValidatorCallable, or ValidatorIterator."
+          },
+          {
+            "kind": "condition",
+            "summary": "Apply the corresponding traversal change to SerializationCallable.serializer and SerializationIterator.item_serializer."
+          },
+          {
+            "kind": "implementation_claim",
+            "summary": "The described fields are Arc clones of subtrees already owned and traversed by SchemaValidator; the serializer fields have the analogous ownership relationship."
+          },
+          {
+            "kind": "condition",
+            "summary": "Place __traverse__ and __clear__ for ValidationInfo, SerializationInfo, SerializationCallable, and SerializationIterator inside the referenced code so these types receive GC tracking."
+          },
+          {
+            "kind": "implementation_claim",
+            "summary": "The GC methods were defined outside the referenced code, and the affected types were therefore not GC-tracked, according to the PR description."
+          },
+          {
+            "kind": "condition",
+            "summary": "Remove the unused PyGcTraverse implementation for DefinitionRef and document that an Arc should only be traversed by its unique owner."
+          }
+        ],
+        "firstInspection": {
+          "id": "read_e10d7563851cd5ac50f22121",
+          "path": "pydantic-core/src/py_gc.rs",
+          "revision": "299309892717854a738bb385a33e7f655cb62bf1",
+          "side": "head",
+          "startLine": 50,
+          "endLine": 58,
+          "hash": "c9193d1f9b524e9dcb1593a82acafc0517399da41ee099a7b9a31674e320952d",
+          "kind": "code",
+          "origin": "diff"
+        },
+        "candidates": [
+          {
+            "id": "read_e10d7563851cd5ac50f22121",
+            "path": "pydantic-core/src/py_gc.rs",
+            "revision": "299309892717854a738bb385a33e7f655cb62bf1",
+            "side": "head",
+            "startLine": 50,
+            "endLine": 58,
+            "hash": "c9193d1f9b524e9dcb1593a82acafc0517399da41ee099a7b9a31674e320952d",
+            "kind": "code",
+            "origin": "diff",
+            "relevance": "relevant",
+            "whyInspect": "Shows the shared Arc traversal implementation and its ownership rule, which underlies the duplicate-traversal behavior.",
+            "reviewQuestion": "Does Arc traversal delegate only from the unique owner, and is that rule consistent with the affected callable and iterator types?",
+            "uncertainty": "Only the implementation boundary is shown; surrounding ownership and call sites are unavailable."
+          },
+          {
+            "id": "read_eb6da6078166267c6197f740",
+            "path": "pydantic-core/src/serializers/type_serializers/function.rs",
+            "revision": "299309892717854a738bb385a33e7f655cb62bf1",
+            "side": "head",
+            "startLine": 433,
+            "endLine": 442,
+            "hash": "7854115943f2f2fcebaf29e66d77ce15e7b6f817b66c5914bc6bf3faa8718f47",
+            "kind": "code",
+            "origin": "diff",
+            "relevance": "relevant",
+            "whyInspect": "Shows the serializer callable's actual GC macro invocation and excludes the Arc-owned serializer field from traversal.",
+            "reviewQuestion": "Does the callable traverse every independently owned field while omitting only the Arc clone already traversed by SchemaSerializer?",
+            "uncertainty": "The macro definition and full struct implementation are not provided."
+          },
+          {
+            "id": "read_f202b2c229b08d243947c265",
+            "path": "pydantic-core/src/serializers/type_serializers/generator.rs",
+            "revision": "299309892717854a738bb385a33e7f655cb62bf1",
+            "side": "head",
+            "startLine": 137,
+            "endLine": 148,
+            "hash": "60e3cbb2ba309216e66426fc299e6763a7a86aed38a0772c2e8e3a4501ffb6db",
+            "kind": "code",
+            "origin": "snapshot",
+            "relevance": "relevant",
+            "whyInspect": "Shows the serializer iterator's actual traversal field list and exclusion of its Arc-owned item serializer.",
+            "reviewQuestion": "Does the iterator's traversal include its iterator and owned state without duplicating the serializer subtree?",
+            "uncertainty": "The macro expansion and constructor ownership relationships are not shown."
+          },
+          {
+            "id": "read_8594bd216def8bdbb2fdcf4e",
+            "path": "pydantic-core/src/definitions.rs",
+            "revision": "299309892717854a738bb385a33e7f655cb62bf1",
+            "side": "head",
+            "startLine": 109,
+            "endLine": 114,
+            "hash": "734082189dbdeffd3b3c8cb7f1138d12019dcaf07b6ed1e0c8a68d9ef5f13b3b",
+            "kind": "code",
+            "origin": "diff",
+            "relevance": "possible",
+            "whyInspect": "Shows traversal of stored definitions, potentially relevant to whether definition-owned subtrees are visited once.",
+            "reviewQuestion": "Does definitions traversal remain compatible with removing obsolete DefinitionRef traversal and with unique-owner Arc semantics?",
+            "uncertainty": "The excerpt does not include DefinitionRef or the complete traversal implementation."
+          }
+        ],
+        "uncertainty": [
+          "Validator callable and iterator implementations were not supplied.",
+          "ValidationInfo, SerializationInfo, and the GC macro definition were not supplied.",
+          "The modified garbage-collection regression tests were not supplied; context is truncated to four excerpts."
+        ]
+      }
+    ],
+    "failures": [
+      {
+        "stage": "intent",
+        "category": "invalid_json_or_shape",
+        "reason": "unsafe_summary"
+      }
+    ],
+    "limitations": [
+      "unsafe_summary_omitted",
+      "retrieval_budget_exceeded",
+      "retrieval_language_unsupported",
+      "retrieval_scan_budget_exceeded",
+      "retrieval_unverified_fallback"
+    ],
+    "unprocessedCount": 1
+  },
+  "cards": {
+    "mode": "objectives",
+    "count": 1
+  },
+  "boundary": {
+    "valid": true,
+    "errors": []
+  },
+  "errorCode": null
+}

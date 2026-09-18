@@ -1,5 +1,5 @@
 import type { LlmSemanticOutput } from "./llm-semantic-output";
-import type { GeneralPrAssessmentSummaryV1, HybridPlannerProvenance, RequirementAuthority, RequirementProofAxis, RequirementStatus } from "./types";
+import type { EvidenceItem, EvidenceKind, GeneralPrAssessmentSummaryV1, HybridPlannerProvenance, RequirementAuthority, RequirementProofAxis, RequirementStatus } from "./types";
 import type { VerificationContractStateV2 } from "./verification-contract-v2";
 
 export interface DashboardRepositoryGrant {
@@ -52,7 +52,7 @@ export interface DashboardReportDetail extends Omit<DashboardSavedReport, "id" |
     requirements?: Array<{ requirementId: string; requirementText?: string; status: string; evidenceStatus?: RequirementStatus; sourceAuthority?: RequirementAuthority; evidenceRefs: string[]; gaps: string[]; proofAxes?: RequirementProofAxis[] }>;
     testing?: { ciStatus: string; lintStatus: string; typecheckStatus: string };
     reviewPriority?: Array<{ path: string; priority: string }>;
-    evidenceIndex?: Array<{ id: string; locator?: string }>;
+    evidenceIndex?: Array<{ id: string; kind?: EvidenceKind; locator?: string; codeLocation?: EvidenceItem["codeLocation"] }>;
     reprompt?: { prompt: string };
     semantic?: LlmSemanticOutput;
     semanticAnalysis?: { status: "included" | "unavailable"; attempts: 1 | 2 };
@@ -60,6 +60,8 @@ export interface DashboardReportDetail extends Omit<DashboardSavedReport, "id" |
     reportSchemaVersion?: "verification-report.v2";
     verificationContract?: { state: VerificationContractStateV2 };
     generalPrAssessmentSummary?: GeneralPrAssessmentSummaryV1;
+    authenticity?: import("./types").ReportAuthenticity;
+    reviewCandidates?: import("./review-candidates").ReviewCandidatesV1;
     ordinaryDocumentationSummary?: import("./general-pr-documentation-presentation").OrdinaryDocumentationSummary;
     ordinaryStaticSummary?: import("./general-pr-static-types-presentation").OrdinaryStaticSummary;
   };

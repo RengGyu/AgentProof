@@ -1,0 +1,1355 @@
+{
+  "schemaVersion": "requirement_source_ablation.v1",
+  "labelProvenance": "Astra/high supervisor reviewed all 60 public PR title/body cases and all 511 original source labels on 2026-09-14 before this comparison's B/C responses were generated. Original UTF-16 source spans, texts, order and boundaries are unchanged; nine classifications corrected with explicit reasons. Machine-reviewed evaluation annotations, NOT human-verified gold. Concrete PR-title objectives are requirements regardless of tense or slang when context resolves intent. Retrospective implementation accounts with unclear normative intent remain ambiguous; historical context, examples, upstream quotations, process/templates and result claims are non-requirements. Coarse paragraph/list/table units remain a measurement limitation.",
+  "cases": [
+    {
+      "id": "fastapi-fastapi-16289",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/fastapi/fastapi/pull/16289",
+        "title": "⬆ Bump starlette from 1.3.1 to 1.6.0",
+        "description": "Bumps [starlette](https://github.com/Kludex/starlette) from 1.3.1 to 1.6.0.\n<details>\n<summary>Release notes</summary>\n<p><em>Sourced from <a href=\"https://github.com/Kludex/starlette/releases\">starlette's releases</a>.</em></p>\n<blockquote>\n<h2>Version 1.6.0</h2>\n<h2>What's Changed</h2>\n<ul>\n<li>Add <code>max_body_size</code> to <code>Starlette</code> and route classes by <a href=\"https://github.com/Kludex\"><code>@​Kludex</code></a> in <a href=\"https://redirect.github.com/Kludex/starlette/pull/3431\">Kludex/starlette#3431</a></li>\n<li>Expose <code>http.response.debug</code> info via response extensions by <a href=\"https://github.com/y2kbugger\"><code>@​y2kbugger</code></a> in <a href=\"https://redirect.github.com/Kludex/starlette/pull/3130\">Kludex/starlette#3130</a></li>\n</ul>\n<h2>New Contributors</h2>\n<ul>\n<li><a href=\"https://github.com/y2kbugger\"><code>@​y2kbugger</code></a> made their first contribution in <a href=\"https://redirect.github.com/Kludex/starlette/pull/3130\">Kludex/starlette#3130</a></li>\n</ul>\n<p><strong>Full Changelog</strong>: <a href=\"https://github.com/Kludex/starlette/compare/1.5.1...1.6.0\">https://github.com/Kludex/starlette/compare/1.5.1...1.6.0</a></p>\n<h2>Version 1.5.1</h2>\n<h2>What's Changed</h2>\n<ul>\n<li>Reject inverted single-byte Range like <code>bytes=5-4</code> by <a href=\"https://github.com/nikolauspschuetz\"><code>@​nikolauspschuetz</code></a> in <a href=\"https://redirect.github.com/encode/starlette/pull/3389\">encode/starlette#3389</a></li>\n<li>Limit <code>FileResponse</code> to 100 ranges by <a href=\"https://github.com/Kludex\"><code>@​Kludex</code></a> in <a href=\"https://redirect.github.com/encode/starlette/pull/3430\">encode/starlette#3430</a></li>\n</ul>\n<p><strong>Full Changelog</strong>: <a href=\"https://github.com/encode/starlette/compare/1.5.0...1.5.1\">https://github.com/encode/starlette/compare/1.5.0...1.5.1</a></p>\n<h2>Version 1.5.0</h2>\n<p>This release is all about giving <code>GZipMiddleware</code> some love. 🗜️</p>\n<h2>What's Changed</h2>\n<ul>\n<li>Add <code>exclude_content_types</code> parameter to <code>GZipMiddleware</code> by <a href=\"https://github.com/Kludex\"><code>@​Kludex</code></a> in <a href=\"https://redirect.github.com/encode/starlette/pull/3418\">encode/starlette#3418</a></li>\n<li>Flush GZip output for each streamed chunk by <a href=\"https://github.com/Kludex\"><code>@​Kludex</code></a> in <a href=\"https://redirect.github.com/encode/starlette/pull/3419\">encode/starlette#3419</a></li>\n<li>Skip compression of partial responses in <code>GZipMiddleware</code> by <a href=\"https://github.com/Kludex\"><code>@​Kludex</code></a> in <a href=\"https://redirect.github.com/encode/starlette/pull/3420\">encode/starlette#3420</a></li>\n<li>Expand default excluded content types in <code>GZipMiddleware</code> by <a href=\"https://github.com/Kludex\"><code>@​Kludex</code></a> in <a href=\"https://redirect.github.com/encode/starlette/pull/3421\">encode/starlette#3421</a></li>\n</ul>\n<p><strong>Full Changelog</strong>: <a href=\"https://github.com/encode/starlette/compare/1.4.1...1.5.0\">https://github.com/encode/starlette/compare/1.4.1...1.5.0</a></p>\n<h2>Version 1.4.1</h2>\n<h2>What's Changed</h2>\n<ul>\n<li>Default <code>thread_minimum_size</code> in <code>GZipResponder</code> by <a href=\"https://github.com/Kludex\"><code>@​Kludex</code></a> in <a href=\"https://redirect.github.com/Kludex/starlette/pull/3415\">Kludex/starlette#3415</a></li>\n</ul>\n<p><strong>Full Changelog</strong>: <a href=\"https://github.com/Kludex/starlette/compare/1.4.0...1.4.1\">https://github.com/Kludex/starlette/compare/1.4.0...1.4.1</a></p>\n<h2>Version 1.4.0</h2>\n<h2>What's Changed</h2>\n<ul>\n<li>Lazily allocate GZipMiddleware compression resources by <a href=\"https://github.com/Kludex\"><code>@​Kludex</code></a> in <a href=\"https://redirect.github.com/Kludex/starlette/pull/3407\">Kludex/starlette#3407</a></li>\n<li>Use <code>zlib.compressobj</code> instead of <code>GzipFile</code> in <code>GZipMiddleware</code> by <a href=\"https://github.com/Kludex\"><code>@​Kludex</code></a> in <a href=\"https://redirect.github.com/Kludex/starlette/pull/3411\">Kludex/starlette#3411</a></li>\n<li>Offload large GZip compression by <a href=\"https://github.com/Kludex\"><code>@​Kludex</code></a> in <a href=\"https://redirect.github.com/Kludex/starlette/pull/3410\">Kludex/starlette#3410</a></li>\n</ul>\n<h2>New Contributors</h2>\n<ul>\n<li><a href=\"https://github.com/benberryallwood\"><code>@​benberryallwood</code></a> made their first contribution in <a href=\"https://redirect.github.com/Kludex/starlette/pull/3334\">Kludex/starlette#3334</a></li>\n<li><a href=\"https://github.com/lkk7\"><code>@​lkk7</code></a> made their first contribution in <a href=\"https://redirect.github.com/Kludex/starlette/pull/3359\">Kludex/starlette#3359</a></li>\n</ul>\n<p><strong>Full Changelog</strong>: <a href=\"https://github.com/Kludex/starlette/compare/1.3.1...1.4.0\">https://github.com/Kludex/starlette/compare/1.3.1...1.4.0</a></p>\n</blockquote>\n</details>\n<details>\n<summary>Changelog</summary>\n<p><em>Sourced from <a href=\"https://github.com/Kludex/starlette/blob/main/docs/release-notes.md\">starlette's changelog</a>.</em></p>\n<blockquote>\n<h2>1.6.0 (August 8, 2026)</h2>\n<h4>Added</h4>\n<ul>\n<li>Add <code>max_body_size</code> to <code>Starlette</code> and route classes <a href=\"https://redirect.github.com/encode/starlette/pull/3431\">#3431</a>.</li>\n<li>Expose <code>http.response.debug</code> information via response extensions <a href=\"https://redirect.github.com/encode/starlette/pull/3130\">#3130</a>.</li>\n</ul>\n<h2>1.5.1 (August 8, 2026)</h2>\n<h4>Fixed</h4>\n<ul>\n<li>Reject inverted single-byte ranges in <code>FileResponse</code> <a href=\"https://redirect.github.com/encode/starlette/pull/3389\">#3389</a>.</li>\n<li>Limit <code>FileResponse</code> to 100 ranges <a href=\"https://redirect.github.com/encode/starlette/pull/3430\">#3430</a>.</li>\n</ul>\n<h2>1.5.0 (August 8, 2026)</h2>\n<h4>Added</h4>\n<ul>\n<li>Add <code>exclude_content_types</code> parameter to <code>GZipMiddleware</code> <a href=\"https://redirect.github.com/encode/starlette/pull/3418\">#3418</a>.</li>\n</ul>\n<h4>Changed</h4>\n<ul>\n<li>Expand default excluded content types in <code>GZipMiddleware</code> <a href=\"https://redirect.github.com/encode/starlette/pull/3421\">#3421</a>.</li>\n</ul>\n<h4>Fixed</h4>\n<ul>\n<li>Flush GZip output for each streamed chunk <a href=\"https://redirect.github.com/encode/starlette/pull/3419\">#3419</a>.</li>\n<li>Skip compression of partial responses in <code>GZipMiddleware</code> <a href=\"https://redirect.github.com/encode/starlette/pull/3420\">#3420</a>.</li>\n</ul>\n<h2>1.4.1 (August 5, 2026)</h2>\n<h4>Fixed</h4>\n<ul>\n<li>Default <code>thread_minimum_size</code> to 128 KiB in <code>GZipResponder</code>, keeping it usable without the new keyword argument <a href=\"https://redirect.github.com/encode/starlette/pull/3415\">#3415</a>.</li>\n</ul>\n<h2>1.4.0 (August 5, 2026)</h2>\n<h4>Added</h4>\n<ul>\n<li>Offload large GZip compression to a worker thread, keeping the event loop responsive. <code>GZipMiddleware</code> accepts a new <code>thread_minimum_size</code> parameter (default 128 KiB) controlling the minimum body chunk size compressed in a thread <a href=\"https://redirect.github.com/encode/starlette/pull/3410\">#3410</a>.</li>\n</ul>\n<h4>Changed</h4>\n<ul>\n<li>Use <code>zlib.compressobj</code> instead of <code>GzipFile</code> in <code>GZipMiddleware</code>, reducing memory usage during compression <a href=\"https://redirect.github.com/encode/starlette/pull/3411\">#3411</a>.</li>\n<li>Lazily allocate <code>GZipMiddleware</code> compression resources, avoiding compressor allocation for responses that are never compressed <a href=\"https://redirect.github.com/encode/starlette/pull/3407\">#3407</a>.</li>\n</ul>\n</blockquote>\n</details>\n<details>\n<summary>Commits</summary>\n<ul>\n<li><a href=\"https://github.com/Kludex/starlette/commit/4f250d6b814587e20c5365f0a5f0c4d42bcb929f\"><code>4f250d6</code></a> Version 1.6.0 (<a href=\"https://redirect.github.com/Kludex/starlette/issues/3434\">#3434</a>)</li>\n<li><a href=\"https://github.com/Kludex/starlette/commit/9eea41ad3c26ad21b9bdfe4578c1cdad6c9b9ac2\"><code>9eea41a</code></a> Expose <code>http.response.debug</code> info via response extensions (<a href=\"https://redirect.github.com/Kludex/starlette/issues/3130\">#3130</a>)</li>\n<li><a href=\"https://github.com/Kludex/starlette/commit/38f8999a229610b36f39d11f67d80515a15c6330\"><code>38f8999</code></a> Add <code>max_body_size</code> to <code>Starlette</code> and route classes (<a href=\"https://redirect.github.com/Kludex/starlette/issues/3431\">#3431</a>)</li>\n<li><a href=\"https://github.com/Kludex/starlette/commit/c41236c03868fb3779a64101f4ea88cd47877e23\"><code>c41236c</code></a> Version 1.5.1 (<a href=\"https://redirect.github.com/Kludex/starlette/issues/3432\">#3432</a>)</li>\n<li><a href=\"https://github.com/Kludex/starlette/commit/9c500db197859dba4a8db13fa8e7d2c55de8152c\"><code>9c500db</code></a> Limit <code>FileResponse</code> to 100 ranges (<a href=\"https://redirect.github.com/Kludex/starlette/issues/3430\">#3430</a>)</li>\n<li><a href=\"https://github.com/Kludex/starlette/commit/78ae82cad482fe66a73fb1217f0a6609b3f998f6\"><code>78ae82c</code></a> Reject inverted single-byte Range like bytes=5-4 (<a href=\"https://redirect.github.com/Kludex/starlette/issues/3389\">#3389</a>)</li>\n<li><a href=\"https://github.com/Kludex/starlette/commit/c1d6edaf43920104d4389e983c3e0314f6af14cf\"><code>c1d6eda</code></a> chore(deps): bump pymdown-extensions from 11.0 to 11.0.1 (<a href=\"https://redirect.github.com/Kludex/starlette/issues/3429\">#3429</a>)</li>\n<li><a href=\"https://github.com/Kludex/starlette/commit/ee66ca48418780d6415d231851b31464febc32de\"><code>ee66ca4</code></a> chore(deps): bump the python-packages group across 1 directory with 8 updates...</li>\n<li><a href=\"https://github.com/Kludex/starlette/commit/00d10167523f819d39d5ca36732348d58645a447\"><code>00d1016</code></a> fix(tests): skip test_staticfiles_filename_too_long on Windows where os.pathc...</li>\n<li><a href=\"https://github.com/Kludex/starlette/commit/d96887ea7b49db3d1d15994be6438c7fe99936f4\"><code>d96887e</code></a> Add Pydantic Logfire banner to the docs (<a href=\"https://redirect.github.com/Kludex/starlette/issues/3428\">#3428</a>)</li>\n<li>Additional commits viewable in <a href=\"https://github.com/Kludex/starlette/compare/1.3.1...1.6.0\">compare view</a></li>\n</ul>\n</details>\n<br />\n",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "d7d63f8d6e8beef5c8027c2b05cbc6b750e984fd",
+        "baseSha": "fc5f36b17d0d3eb8971ff349f1f809e8a4f67a05",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 36,
+          "text": "⬆ Bump starlette from 1.3.1 to 1.6.0",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 75,
+          "text": "Bumps [starlette](https://github.com/Kludex/starlette) from 1.3.1 to 1.6.0.",
+          "label": "requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 76,
+          "end": 4975,
+          "text": "<details>\n<summary>Release notes</summary>\n<p><em>Sourced from <a href=\"https://github.com/Kludex/starlette/releases\">starlette's releases</a>.</em></p>\n<blockquote>\n<h2>Version 1.6.0</h2>\n<h2>What's Changed</h2>\n<ul>\n<li>Add <code>max_body_size</code> to <code>Starlette</code> and route classes by <a href=\"https://github.com/Kludex\"><code>@​Kludex</code></a> in <a href=\"https://redirect.github.com/Kludex/starlette/pull/3431\">Kludex/starlette#3431</a></li>\n<li>Expose <code>http.response.debug</code> info via response extensions by <a href=\"https://github.com/y2kbugger\"><code>@​y2kbugger</code></a> in <a href=\"https://redirect.github.com/Kludex/starlette/pull/3130\">Kludex/starlette#3130</a></li>\n</ul>\n<h2>New Contributors</h2>\n<ul>\n<li><a href=\"https://github.com/y2kbugger\"><code>@​y2kbugger</code></a> made their first contribution in <a href=\"https://redirect.github.com/Kludex/starlette/pull/3130\">Kludex/starlette#3130</a></li>\n</ul>\n<p><strong>Full Changelog</strong>: <a href=\"https://github.com/Kludex/starlette/compare/1.5.1...1.6.0\">https://github.com/Kludex/starlette/compare/1.5.1...1.6.0</a></p>\n<h2>Version 1.5.1</h2>\n<h2>What's Changed</h2>\n<ul>\n<li>Reject inverted single-byte Range like <code>bytes=5-4</code> by <a href=\"https://github.com/nikolauspschuetz\"><code>@​nikolauspschuetz</code></a> in <a href=\"https://redirect.github.com/encode/starlette/pull/3389\">encode/starlette#3389</a></li>\n<li>Limit <code>FileResponse</code> to 100 ranges by <a href=\"https://github.com/Kludex\"><code>@​Kludex</code></a> in <a href=\"https://redirect.github.com/encode/starlette/pull/3430\">encode/starlette#3430</a></li>\n</ul>\n<p><strong>Full Changelog</strong>: <a href=\"https://github.com/encode/starlette/compare/1.5.0...1.5.1\">https://github.com/encode/starlette/compare/1.5.0...1.5.1</a></p>\n<h2>Version 1.5.0</h2>\n<p>This release is all about giving <code>GZipMiddleware</code> some love. 🗜️</p>\n<h2>What's Changed</h2>\n<ul>\n<li>Add <code>exclude_content_types</code> parameter to <code>GZipMiddleware</code> by <a href=\"https://github.com/Kludex\"><code>@​Kludex</code></a> in <a href=\"https://redirect.github.com/encode/starlette/pull/3418\">encode/starlette#3418</a></li>\n<li>Flush GZip output for each streamed chunk by <a href=\"https://github.com/Kludex\"><code>@​Kludex</code></a> in <a href=\"https://redirect.github.com/encode/starlette/pull/3419\">encode/starlette#3419</a></li>\n<li>Skip compression of partial responses in <code>GZipMiddleware</code> by <a href=\"https://github.com/Kludex\"><code>@​Kludex</code></a> in <a href=\"https://redirect.github.com/encode/starlette/pull/3420\">encode/starlette#3420</a></li>\n<li>Expand default excluded content types in <code>GZipMiddleware</code> by <a href=\"https://github.com/Kludex\"><code>@​Kludex</code></a> in <a href=\"https://redirect.github.com/encode/starlette/pull/3421\">encode/starlette#3421</a></li>\n</ul>\n<p><strong>Full Changelog</strong>: <a href=\"https://github.com/encode/starlette/compare/1.4.1...1.5.0\">https://github.com/encode/starlette/compare/1.4.1...1.5.0</a></p>\n<h2>Version 1.4.1</h2>\n<h2>What's Changed</h2>\n<ul>\n<li>Default <code>thread_minimum_size</code> in <code>GZipResponder</code> by <a href=\"https://github.com/Kludex\"><code>@​Kludex</code></a> in <a href=\"https://redirect.github.com/Kludex/starlette/pull/3415\">Kludex/starlette#3415</a></li>\n</ul>\n<p><strong>Full Changelog</strong>: <a href=\"https://github.com/Kludex/starlette/compare/1.4.0...1.4.1\">https://github.com/Kludex/starlette/compare/1.4.0...1.4.1</a></p>\n<h2>Version 1.4.0</h2>\n<h2>What's Changed</h2>\n<ul>\n<li>Lazily allocate GZipMiddleware compression resources by <a href=\"https://github.com/Kludex\"><code>@​Kludex</code></a> in <a href=\"https://redirect.github.com/Kludex/starlette/pull/3407\">Kludex/starlette#3407</a></li>\n<li>Use <code>zlib.compressobj</code> instead of <code>GzipFile</code> in <code>GZipMiddleware</code> by <a href=\"https://github.com/Kludex\"><code>@​Kludex</code></a> in <a href=\"https://redirect.github.com/Kludex/starlette/pull/3411\">Kludex/starlette#3411</a></li>\n<li>Offload large GZip compression by <a href=\"https://github.com/Kludex\"><code>@​Kludex</code></a> in <a href=\"https://redirect.github.com/Kludex/starlette/pull/3410\">Kludex/starlette#3410</a></li>\n</ul>\n<h2>New Contributors</h2>\n<ul>\n<li><a href=\"https://github.com/benberryallwood\"><code>@​benberryallwood</code></a> made their first contribution in <a href=\"https://redirect.github.com/Kludex/starlette/pull/3334\">Kludex/starlette#3334</a></li>\n<li><a href=\"https://github.com/lkk7\"><code>@​lkk7</code></a> made their first contribution in <a href=\"https://redirect.github.com/Kludex/starlette/pull/3359\">Kludex/starlette#3359</a></li>\n</ul>\n<p><strong>Full Changelog</strong>: <a href=\"https://github.com/Kludex/starlette/compare/1.3.1...1.4.0\">https://github.com/Kludex/starlette/compare/1.3.1...1.4.0</a></p>\n</blockquote>\n</details>",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 4976,
+          "end": 7763,
+          "text": "<details>\n<summary>Changelog</summary>\n<p><em>Sourced from <a href=\"https://github.com/Kludex/starlette/blob/main/docs/release-notes.md\">starlette's changelog</a>.</em></p>\n<blockquote>\n<h2>1.6.0 (August 8, 2026)</h2>\n<h4>Added</h4>\n<ul>\n<li>Add <code>max_body_size</code> to <code>Starlette</code> and route classes <a href=\"https://redirect.github.com/encode/starlette/pull/3431\">#3431</a>.</li>\n<li>Expose <code>http.response.debug</code> information via response extensions <a href=\"https://redirect.github.com/encode/starlette/pull/3130\">#3130</a>.</li>\n</ul>\n<h2>1.5.1 (August 8, 2026)</h2>\n<h4>Fixed</h4>\n<ul>\n<li>Reject inverted single-byte ranges in <code>FileResponse</code> <a href=\"https://redirect.github.com/encode/starlette/pull/3389\">#3389</a>.</li>\n<li>Limit <code>FileResponse</code> to 100 ranges <a href=\"https://redirect.github.com/encode/starlette/pull/3430\">#3430</a>.</li>\n</ul>\n<h2>1.5.0 (August 8, 2026)</h2>\n<h4>Added</h4>\n<ul>\n<li>Add <code>exclude_content_types</code> parameter to <code>GZipMiddleware</code> <a href=\"https://redirect.github.com/encode/starlette/pull/3418\">#3418</a>.</li>\n</ul>\n<h4>Changed</h4>\n<ul>\n<li>Expand default excluded content types in <code>GZipMiddleware</code> <a href=\"https://redirect.github.com/encode/starlette/pull/3421\">#3421</a>.</li>\n</ul>\n<h4>Fixed</h4>\n<ul>\n<li>Flush GZip output for each streamed chunk <a href=\"https://redirect.github.com/encode/starlette/pull/3419\">#3419</a>.</li>\n<li>Skip compression of partial responses in <code>GZipMiddleware</code> <a href=\"https://redirect.github.com/encode/starlette/pull/3420\">#3420</a>.</li>\n</ul>\n<h2>1.4.1 (August 5, 2026)</h2>\n<h4>Fixed</h4>\n<ul>\n<li>Default <code>thread_minimum_size</code> to 128 KiB in <code>GZipResponder</code>, keeping it usable without the new keyword argument <a href=\"https://redirect.github.com/encode/starlette/pull/3415\">#3415</a>.</li>\n</ul>\n<h2>1.4.0 (August 5, 2026)</h2>\n<h4>Added</h4>\n<ul>\n<li>Offload large GZip compression to a worker thread, keeping the event loop responsive. <code>GZipMiddleware</code> accepts a new <code>thread_minimum_size</code> parameter (default 128 KiB) controlling the minimum body chunk size compressed in a thread <a href=\"https://redirect.github.com/encode/starlette/pull/3410\">#3410</a>.</li>\n</ul>\n<h4>Changed</h4>\n<ul>\n<li>Use <code>zlib.compressobj</code> instead of <code>GzipFile</code> in <code>GZipMiddleware</code>, reducing memory usage during compression <a href=\"https://redirect.github.com/encode/starlette/pull/3411\">#3411</a>.</li>\n<li>Lazily allocate <code>GZipMiddleware</code> compression resources, avoiding compressor allocation for responses that are never compressed <a href=\"https://redirect.github.com/encode/starlette/pull/3407\">#3407</a>.</li>\n</ul>\n</blockquote>\n</details>",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 7764,
+          "end": 10385,
+          "text": "<details>\n<summary>Commits</summary>\n<ul>\n<li><a href=\"https://github.com/Kludex/starlette/commit/4f250d6b814587e20c5365f0a5f0c4d42bcb929f\"><code>4f250d6</code></a> Version 1.6.0 (<a href=\"https://redirect.github.com/Kludex/starlette/issues/3434\">#3434</a>)</li>\n<li><a href=\"https://github.com/Kludex/starlette/commit/9eea41ad3c26ad21b9bdfe4578c1cdad6c9b9ac2\"><code>9eea41a</code></a> Expose <code>http.response.debug</code> info via response extensions (<a href=\"https://redirect.github.com/Kludex/starlette/issues/3130\">#3130</a>)</li>\n<li><a href=\"https://github.com/Kludex/starlette/commit/38f8999a229610b36f39d11f67d80515a15c6330\"><code>38f8999</code></a> Add <code>max_body_size</code> to <code>Starlette</code> and route classes (<a href=\"https://redirect.github.com/Kludex/starlette/issues/3431\">#3431</a>)</li>\n<li><a href=\"https://github.com/Kludex/starlette/commit/c41236c03868fb3779a64101f4ea88cd47877e23\"><code>c41236c</code></a> Version 1.5.1 (<a href=\"https://redirect.github.com/Kludex/starlette/issues/3432\">#3432</a>)</li>\n<li><a href=\"https://github.com/Kludex/starlette/commit/9c500db197859dba4a8db13fa8e7d2c55de8152c\"><code>9c500db</code></a> Limit <code>FileResponse</code> to 100 ranges (<a href=\"https://redirect.github.com/Kludex/starlette/issues/3430\">#3430</a>)</li>\n<li><a href=\"https://github.com/Kludex/starlette/commit/78ae82cad482fe66a73fb1217f0a6609b3f998f6\"><code>78ae82c</code></a> Reject inverted single-byte Range like bytes=5-4 (<a href=\"https://redirect.github.com/Kludex/starlette/issues/3389\">#3389</a>)</li>\n<li><a href=\"https://github.com/Kludex/starlette/commit/c1d6edaf43920104d4389e983c3e0314f6af14cf\"><code>c1d6eda</code></a> chore(deps): bump pymdown-extensions from 11.0 to 11.0.1 (<a href=\"https://redirect.github.com/Kludex/starlette/issues/3429\">#3429</a>)</li>\n<li><a href=\"https://github.com/Kludex/starlette/commit/ee66ca48418780d6415d231851b31464febc32de\"><code>ee66ca4</code></a> chore(deps): bump the python-packages group across 1 directory with 8 updates...</li>\n<li><a href=\"https://github.com/Kludex/starlette/commit/00d10167523f819d39d5ca36732348d58645a447\"><code>00d1016</code></a> fix(tests): skip test_staticfiles_filename_too_long on Windows where os.pathc...</li>\n<li><a href=\"https://github.com/Kludex/starlette/commit/d96887ea7b49db3d1d15994be6438c7fe99936f4\"><code>d96887e</code></a> Add Pydantic Logfire banner to the docs (<a href=\"https://redirect.github.com/Kludex/starlette/issues/3428\">#3428</a>)</li>\n<li>Additional commits viewable in <a href=\"https://github.com/Kludex/starlette/compare/1.3.1...1.6.0\">compare view</a></li>\n</ul>\n</details>",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-6",
+          "sourceKind": "pr_body",
+          "start": 10386,
+          "end": 10392,
+          "text": "<br />",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "fastapi-fastapi-16203",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/fastapi/fastapi/pull/16203",
+        "title": "🌐 Update translations for es (update-outdated)",
+        "description": "🌐 Update translations for es (update-outdated)\n\nThis PR was created automatically using LLMs.\n\nIt uses the prompt file https://github.com/fastapi/fastapi/blob/master/docs/es/llm-prompt.md.\n\nIn most cases, it's better to make PRs updating that file so that the LLM can do a better job generating the translations than suggesting changes in this PR.",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "88ee2cbf49c9b1da4ef30007bfb8c6f2e8305f9a",
+        "baseSha": "30a2a89487f63bb6a678760ed28efda96d297968",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 47,
+          "text": "🌐 Update translations for es (update-outdated)",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 47,
+          "text": "🌐 Update translations for es (update-outdated)",
+          "label": "requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 49,
+          "end": 94,
+          "text": "This PR was created automatically using LLMs.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 96,
+          "end": 189,
+          "text": "It uses the prompt file https://github.com/fastapi/fastapi/blob/master/docs/es/llm-prompt.md.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 191,
+          "end": 348,
+          "text": "In most cases, it's better to make PRs updating that file so that the LLM can do a better job generating the translations than suggesting changes in this PR.",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "fastapi-fastapi-16196",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/fastapi/fastapi/pull/16196",
+        "title": "📱 Improve mobile responsiveness of conference rail",
+        "description": "## Pull Request\n\n📱 Improve mobile responsiveness of conference rail\n\n## Description\n\nRelated to #16193 ",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "8218130a4c8155877d83e29daf0eed821c8aed81",
+        "baseSha": "13a5f34dce029671645f72695383265c5b3a8d48",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 51,
+          "text": "📱 Improve mobile responsiveness of conference rail",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 15,
+          "text": "## Pull Request",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 17,
+          "end": 68,
+          "text": "📱 Improve mobile responsiveness of conference rail",
+          "label": "requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 70,
+          "end": 84,
+          "text": "## Description",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 86,
+          "end": 103,
+          "text": "Related to #16193",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "sveltejs-svelte-18752",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/sveltejs/svelte/pull/18752",
+        "title": "chore: bump packages",
+        "description": "esrap bump ensures a bugfix, devalue silences vulnerability reports\n\n",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "449f4ac5c2b7c07dc08177d325e5331479309181",
+        "baseSha": "b1142efe966cc7091fb6d79b1756e79ad97b4f59",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 20,
+          "text": "chore: bump packages",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 67,
+          "text": "esrap bump ensures a bugfix, devalue silences vulnerability reports",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "sveltejs-svelte-18714",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/sveltejs/svelte/pull/18714",
+        "title": "perf: use `$.comment()` for lone-anchor rich select content",
+        "description": "Drops a hoisted template when a rich `<select>`/`<optgroup>`/`<option>` has a single block child.\n\n`Fragment` already special-cases a single-comment template as `$.comment()`, but the `customizable_select` path in `RegularElement` does not, so it hoists a template that only ever produces an anchor:\n\n```diff\n-var select_content = $.from_html(`<!>`, 1);\n ...\n-\t\tvar fragment_2 = select_content();\n+\t\tvar fragment_2 = $.comment();\n```\n\n`from_html(\"<!>\", 1)` parses `<!><!>` into a `<template>` and clones it on every call. `$.comment()` just creates the two nodes. Triggers for `<select><Component /></select>`, `{@render}`, `{@html}` and blocks directly inside select/optgroup/option.\n\nTest: `runtime-runes/samples/customizable-select-comment-anchor` covers component, `{@render}` and `{@html}` children across an update. The existing `hydration/samples/rich-select` covers the hydration path.",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "94a630c81d0e7e8b1486cd8bfca0a25e93c69066",
+        "baseSha": "359413f5122bf866175e516141515c5387ad7743",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 59,
+          "text": "perf: use `$.comment()` for lone-anchor rich select content",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 97,
+          "text": "Drops a hoisted template when a rich `<select>`/`<optgroup>`/`<option>` has a single block child.",
+          "label": "ambiguous"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 99,
+          "end": 299,
+          "text": "`Fragment` already special-cases a single-comment template as `$.comment()`, but the `customizable_select` path in `RegularElement` does not, so it hoists a template that only ever produces an anchor:",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 301,
+          "end": 433,
+          "text": "```diff\n-var select_content = $.from_html(`<!>`, 1);\n ...\n-\t\tvar fragment_2 = select_content();\n+\t\tvar fragment_2 = $.comment();\n```",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 435,
+          "end": 684,
+          "text": "`from_html(\"<!>\", 1)` parses `<!><!>` into a `<template>` and clones it on every call. `$.comment()` just creates the two nodes. Triggers for `<select><Component /></select>`, `{@render}`, `{@html}` and blocks directly inside select/optgroup/option.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-6",
+          "sourceKind": "pr_body",
+          "start": 686,
+          "end": 893,
+          "text": "Test: `runtime-runes/samples/customizable-select-comment-anchor` covers component, `{@render}` and `{@html}` children across an update. The existing `hydration/samples/rich-select` covers the hydration path.",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "sveltejs-svelte-18721",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/sveltejs/svelte/pull/18721",
+        "title": "fix: keep boolean attributes with an empty string value when rendering attribute objects on the server",
+        "description": "`<input disabled=\"\" {...props}>` and any other boolean attribute written as `\"\"` now renders on the server the way it does on the client and in plain markup.\n\n`attr` in `internal/shared/attributes.js` drops a boolean attribute when its value is falsy, and `\"\"` is falsy, so once an element's attributes go through the object path (a spread, or the `<select>`/`<option>` special casing) `disabled=\"\"`, `hidden=\"\"` or `multiple=\"\"` vanish from the output. The client's `set_attributes` sets them, so the two disagree until hydration. #18591 worked around it for `multiple` on `<select>` only.\n\n`attr` keeps `\"\"` for boolean attributes and still drops `null`, `undefined`, `false` and `0`.\n",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "c5df6263df05a17a808b0632c7dab50dd6969f26",
+        "baseSha": "aadc97ce1be06e3dad4b98469ac385a07f34fd06",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 102,
+          "text": "fix: keep boolean attributes with an empty string value when rendering attribute objects on the server",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 157,
+          "text": "`<input disabled=\"\" {...props}>` and any other boolean attribute written as `\"\"` now renders on the server the way it does on the client and in plain markup.",
+          "label": "ambiguous"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 159,
+          "end": 590,
+          "text": "`attr` in `internal/shared/attributes.js` drops a boolean attribute when its value is falsy, and `\"\"` is falsy, so once an element's attributes go through the object path (a spread, or the `<select>`/`<option>` special casing) `disabled=\"\"`, `hidden=\"\"` or `multiple=\"\"` vanish from the output. The client's `set_attributes` sets them, so the two disagree until hydration. #18591 worked around it for `multiple` on `<select>` only.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 592,
+          "end": 686,
+          "text": "`attr` keeps `\"\"` for boolean attributes and still drops `null`, `undefined`, `false` and `0`.",
+          "label": "ambiguous"
+        }
+      ]
+    },
+    {
+      "id": "sveltejs-svelte-18718",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/sveltejs/svelte/pull/18718",
+        "title": "fix: apply ownership mutation ignores to bindings",
+        "description": "Fixes #18715.\n\nThe assignment generated for a `bind:` directive did not inherit the directive's compiler ignore-map entry. Consequently, ownership mutation validation was still generated even when the binding had an associated `svelte-ignore ownership_invalid_mutation` comment.\n\nThis change carries the binding's ignores onto its generated setter assignment before transforming it. It also adds a runtime regression test that verifies the binding updates parent state without emitting an ownership warning.\n\nTests:\n- `pnpm test runtime-runes -t ownership-invalid-mutation-binding-ignore`\n- `pnpm test runtime-runes` — 2709 passed, 47 skipped\n- `pnpm --filter svelte check`\n- `pnpm test --exclude packages/svelte/tests/runtime-browser/test.ts` — 7673 passed, 69 skipped\n\nThe unfiltered test run could not launch the browser-only suite because the sandbox did not contain the Playwright Chromium executable; all other test files passed.",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "7e06f84f49bba327e3130e1944adbde0bd2df750",
+        "baseSha": "6b99f9fb52ae8db0f1d7f28b4cbdbcc2f4187a34",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 49,
+          "text": "fix: apply ownership mutation ignores to bindings",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 13,
+          "text": "Fixes #18715.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 15,
+          "end": 278,
+          "text": "The assignment generated for a `bind:` directive did not inherit the directive's compiler ignore-map entry. Consequently, ownership mutation validation was still generated even when the binding had an associated `svelte-ignore ownership_invalid_mutation` comment.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 280,
+          "end": 507,
+          "text": "This change carries the binding's ignores onto its generated setter assignment before transforming it. It also adds a runtime regression test that verifies the binding updates parent state without emitting an ownership warning.",
+          "label": "ambiguous"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 509,
+          "end": 769,
+          "text": "Tests:\n- `pnpm test runtime-runes -t ownership-invalid-mutation-binding-ignore`\n- `pnpm test runtime-runes` — 2709 passed, 47 skipped\n- `pnpm --filter svelte check`\n- `pnpm test --exclude packages/svelte/tests/runtime-browser/test.ts` — 7673 passed, 69 skipped",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-6",
+          "sourceKind": "pr_body",
+          "start": 771,
+          "end": 935,
+          "text": "The unfiltered test run could not launch the browser-only suite because the sandbox did not contain the Playwright Chromium executable; all other test files passed.",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "sveltejs-svelte-18749",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/sveltejs/svelte/pull/18749",
+        "title": "fix: cancel deferred event listener attachment",
+        "description": "## What\n\n- Cancel deferred pointer, touch, and wheel listener attachment when cleanup runs first\n- Apply cancellation to both `svelte/events` subscriptions and template global-event teardown\n- Preserve synchronous removal for listeners whose deferred attachment already completed\n- Add runtime regressions covering both cleanup paths\n\nFixes #18748\n\n## Test plan\n\n- `pnpm test runtime-runes -t event-cleanup-before-attachment`\n- `pnpm test runtime-runes`\n- `cd packages/svelte && pnpm check`\n- `cd packages/svelte && pnpm build`\n- `pnpm format`\n- `pnpm lint`",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "6290354cb06e809feba9151217c0667f3858122a",
+        "baseSha": "7bc0a70fe64dbb3fa3848b741963f31d1e10a8dc",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 46,
+          "text": "fix: cancel deferred event listener attachment",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 7,
+          "text": "## What",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 9,
+          "end": 333,
+          "text": "- Cancel deferred pointer, touch, and wheel listener attachment when cleanup runs first\n- Apply cancellation to both `svelte/events` subscriptions and template global-event teardown\n- Preserve synchronous removal for listeners whose deferred attachment already completed\n- Add runtime regressions covering both cleanup paths",
+          "label": "requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 335,
+          "end": 347,
+          "text": "Fixes #18748",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 349,
+          "end": 361,
+          "text": "## Test plan",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-6",
+          "sourceKind": "pr_body",
+          "start": 363,
+          "end": 557,
+          "text": "- `pnpm test runtime-runes -t event-cleanup-before-attachment`\n- `pnpm test runtime-runes`\n- `cd packages/svelte && pnpm check`\n- `cd packages/svelte && pnpm build`\n- `pnpm format`\n- `pnpm lint`",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "sveltejs-svelte-18739",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/sveltejs/svelte/pull/18739",
+        "title": "fix: throw when `setContext` is called after an `await` during SSR",
+        "description": "Fixes #17233.\n\n`setContext` after a top-level `await` throws `set_context_after_init` on the client since #17031, but the server never got the equivalent check, so it silently succeeded.\n\n### Why `pop()` is the wrong place\n\nThe client marks `component_context.i = true` in `pop()`. Doing the same on the server does not work, and it fails silently, so it is worth spelling out.\n\n`Renderer.component` calls `push()`, then `child()`, then `pop()`. But `child()` does not reuse the pushed context, it rebuilds it:\n\n```js\nset_ssr_context({ ...ssr_context, p: parent, c: null, r: child });\n```\n\nThe component body runs inside that spread copy, so `Renderer.run` captures the copy, not the object `push()` created. `pop()` then mutates the original, which nothing reads again. I tried it: with the flag set in `pop()` and the test un-skipped, the guard never fires and the test still fails with `Expected an error to be thrown, but rendering succeeded.`\n\n### What this does instead\n\nThe compiler already draws the line for us. `<script>` code around a top-level `await` compiles to:\n\n```js\n$$renderer.run([\n\t() => Promise.resolve('hi'),\n\t() => void setContext('key', 'value')\n]);\n```\n\n`thunks[0]` is the awaited expression and everything before it stays outside `run()` entirely. Every thunk from index 1 on is resumed from a `.then()`, so it is by definition post-await. So `run()` marks its captured context once, when there is more than one thunk, and `setContext` checks the flag.\n\nThe check does not need an `async_mode_flag` guard the way the client's does. `run()` is only ever emitted under `experimental.async`, so the flag cannot be set in sync mode.\n\n`push()` and the root context in `#open_render` now set `i: false`, and `set_context_after_init` moves from client to shared errors so both runtimes throw the same code, the same way `lifecycle_outside_component` already does. The error text and its `svelte.dev/e/` page are unchanged.\n\n### The skipped test\n\nThe sample from #17154 is un-skipped. Its comment said:\n\n> TODO it appears there might be an actual bug here; the promise isn't ever actually awaited in spite of being awaited in the component\n\nThat is not what is happening, so I removed it rather than reword it. Rendering that component with a 120ms timer instead of `Promise.resolve` shows the render waiting for it and collecting output written after the await:\n\n```\nt+0ms    thunk0: starting 120ms timer\nt+122ms  timer fired\nt+122ms  thunk1: post-await, calling setContext\nt+122ms  thunk1: setContext returned normally\nt+122ms  awaited render, body = \"<!--[-->POST_AWAIT_CONTENT<!--]-->\"\n```\n\nThe promise is awaited. The only thing missing was the guard. The expected error also changes from `lifecycle_outside_component` to `set_context_after_init`, matching the client.\n\n### Not changed\n\n`setContext('key', await x)` compiles to a single thunk, so it is outside what this checks. On `main` it already fails with `lifecycle_outside_component`, and it still does. Worth a separate look, but it is a different shape from the one in the issue.\n\n### Test plan\n\n`pnpm test`, before and after, on the same machine:\n\n| | files | passed | skipped |\n|---|---|---|---|\n| `main` | 34 | 7762 | 56 |\n| this branch | 34 | 7763 | 55 |\n\nThe only delta is the sample that was skipped.\n\nCounterfactual, with the test un-skipped and only the `run()` marking removed:\n\n```\nFAIL  packages/svelte/tests/server-side-rendering/test.ts > async-context-throws-after-await (async)\nAssertionError: Expected an error to be thrown, but rendering succeeded.\n```\n\nRestored, it passes.\n\nNegative cases, checked directly against the compiled SSR shapes so the guard is not just eager:\n\n| case | result |\n|---|---|\n| `setContext` after `await` | throws `set_context_after_init` |\n| `setContext` before `await` | works |\n| `setContext`, no `await` | works |\n| `setContext` before and after `await` | throws on the second |\n| two `await`s then `setContext` | throws |\n| parent awaits, child sets context | works |\n\nThe last one matters: a child goes through `push()`, which builds a fresh context, so the parent's flag does not leak into it. The existing `server-side-rendering/samples/context` and `runtime-runes/samples/async-set-context` samples both cover that shape and both still pass.\n\n`pnpm lint` and `pnpm check` are clean.\n\n### Before submitting the PR, please make sure you do the following\n\n- [x] It's really useful if your PR references an issue where it is discussed ahead of time. In many cases, features are absent for a reason. For large changes, please create an RFC: https://github.com/sveltejs/rfcs\n- [x] Prefix your PR title with `feat:`, `fix:`, `chore:`, or `docs:`.\n- [x] This message body should clearly illustrate what problems it solves.\n- [x] Ideally, include a test that fails without this PR but passes with it.\n- [x] If this PR changes code within `packages/svelte/src`, add a changeset (`npx changeset`).\n\n### Tests and linting\n\n- [x] Run the tests with `pnpm test` and lint the project with `pnpm lint`\n",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "8f8efb343f4e919ca9821566b554b408a5ad78ac",
+        "baseSha": "7bc0a70fe64dbb3fa3848b741963f31d1e10a8dc",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 66,
+          "text": "fix: throw when `setContext` is called after an `await` during SSR",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 13,
+          "text": "Fixes #17233.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 15,
+          "end": 186,
+          "text": "`setContext` after a top-level `await` throws `set_context_after_init` on the client since #17031, but the server never got the equivalent check, so it silently succeeded.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 188,
+          "end": 222,
+          "text": "### Why `pop()` is the wrong place",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 224,
+          "end": 377,
+          "text": "The client marks `component_context.i = true` in `pop()`. Doing the same on the server does not work, and it fails silently, so it is worth spelling out.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-6",
+          "sourceKind": "pr_body",
+          "start": 379,
+          "end": 510,
+          "text": "`Renderer.component` calls `push()`, then `child()`, then `pop()`. But `child()` does not reuse the pushed context, it rebuilds it:",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-7",
+          "sourceKind": "pr_body",
+          "start": 512,
+          "end": 588,
+          "text": "```js\nset_ssr_context({ ...ssr_context, p: parent, c: null, r: child });\n```",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-8",
+          "sourceKind": "pr_body",
+          "start": 590,
+          "end": 947,
+          "text": "The component body runs inside that spread copy, so `Renderer.run` captures the copy, not the object `push()` created. `pop()` then mutates the original, which nothing reads again. I tried it: with the flag set in `pop()` and the test un-skipped, the guard never fires and the test still fails with `Expected an error to be thrown, but rendering succeeded.`",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-9",
+          "sourceKind": "pr_body",
+          "start": 949,
+          "end": 975,
+          "text": "### What this does instead",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-10",
+          "sourceKind": "pr_body",
+          "start": 977,
+          "end": 1076,
+          "text": "The compiler already draws the line for us. `<script>` code around a top-level `await` compiles to:",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-11",
+          "sourceKind": "pr_body",
+          "start": 1078,
+          "end": 1177,
+          "text": "```js\n$$renderer.run([\n\t() => Promise.resolve('hi'),\n\t() => void setContext('key', 'value')\n]);\n```",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-12",
+          "sourceKind": "pr_body",
+          "start": 1179,
+          "end": 1478,
+          "text": "`thunks[0]` is the awaited expression and everything before it stays outside `run()` entirely. Every thunk from index 1 on is resumed from a `.then()`, so it is by definition post-await. So `run()` marks its captured context once, when there is more than one thunk, and `setContext` checks the flag.",
+          "label": "ambiguous"
+        },
+        {
+          "id": "label-13",
+          "sourceKind": "pr_body",
+          "start": 1480,
+          "end": 1654,
+          "text": "The check does not need an `async_mode_flag` guard the way the client's does. `run()` is only ever emitted under `experimental.async`, so the flag cannot be set in sync mode.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-14",
+          "sourceKind": "pr_body",
+          "start": 1656,
+          "end": 1941,
+          "text": "`push()` and the root context in `#open_render` now set `i: false`, and `set_context_after_init` moves from client to shared errors so both runtimes throw the same code, the same way `lifecycle_outside_component` already does. The error text and its `svelte.dev/e/` page are unchanged.",
+          "label": "ambiguous"
+        },
+        {
+          "id": "label-15",
+          "sourceKind": "pr_body",
+          "start": 1943,
+          "end": 1963,
+          "text": "### The skipped test",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-16",
+          "sourceKind": "pr_body",
+          "start": 1965,
+          "end": 2020,
+          "text": "The sample from #17154 is un-skipped. Its comment said:",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-17",
+          "sourceKind": "pr_body",
+          "start": 2022,
+          "end": 2157,
+          "text": "> TODO it appears there might be an actual bug here; the promise isn't ever actually awaited in spite of being awaited in the component",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-18",
+          "sourceKind": "pr_body",
+          "start": 2159,
+          "end": 2380,
+          "text": "That is not what is happening, so I removed it rather than reword it. Rendering that component with a 120ms timer instead of `Promise.resolve` shows the render waiting for it and collecting output written after the await:",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-19",
+          "sourceKind": "pr_body",
+          "start": 2382,
+          "end": 2611,
+          "text": "```\nt+0ms    thunk0: starting 120ms timer\nt+122ms  timer fired\nt+122ms  thunk1: post-await, calling setContext\nt+122ms  thunk1: setContext returned normally\nt+122ms  awaited render, body = \"<!--[-->POST_AWAIT_CONTENT<!--]-->\"\n```",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-20",
+          "sourceKind": "pr_body",
+          "start": 2613,
+          "end": 2791,
+          "text": "The promise is awaited. The only thing missing was the guard. The expected error also changes from `lifecycle_outside_component` to `set_context_after_init`, matching the client.",
+          "label": "ambiguous"
+        },
+        {
+          "id": "label-21",
+          "sourceKind": "pr_body",
+          "start": 2793,
+          "end": 2808,
+          "text": "### Not changed",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-22",
+          "sourceKind": "pr_body",
+          "start": 2810,
+          "end": 3061,
+          "text": "`setContext('key', await x)` compiles to a single thunk, so it is outside what this checks. On `main` it already fails with `lifecycle_outside_component`, and it still does. Worth a separate look, but it is a different shape from the one in the issue.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-23",
+          "sourceKind": "pr_body",
+          "start": 3063,
+          "end": 3076,
+          "text": "### Test plan",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-24",
+          "sourceKind": "pr_body",
+          "start": 3078,
+          "end": 3129,
+          "text": "`pnpm test`, before and after, on the same machine:",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-25",
+          "sourceKind": "pr_body",
+          "start": 3131,
+          "end": 3240,
+          "text": "| | files | passed | skipped |\n|---|---|---|---|\n| `main` | 34 | 7762 | 56 |\n| this branch | 34 | 7763 | 55 |",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-26",
+          "sourceKind": "pr_body",
+          "start": 3242,
+          "end": 3288,
+          "text": "The only delta is the sample that was skipped.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-27",
+          "sourceKind": "pr_body",
+          "start": 3290,
+          "end": 3368,
+          "text": "Counterfactual, with the test un-skipped and only the `run()` marking removed:",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-28",
+          "sourceKind": "pr_body",
+          "start": 3370,
+          "end": 3551,
+          "text": "```\nFAIL  packages/svelte/tests/server-side-rendering/test.ts > async-context-throws-after-await (async)\nAssertionError: Expected an error to be thrown, but rendering succeeded.\n```",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-29",
+          "sourceKind": "pr_body",
+          "start": 3553,
+          "end": 3573,
+          "text": "Restored, it passes.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-30",
+          "sourceKind": "pr_body",
+          "start": 3575,
+          "end": 3671,
+          "text": "Negative cases, checked directly against the compiled SSR shapes so the guard is not just eager:",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-31",
+          "sourceKind": "pr_body",
+          "start": 3673,
+          "end": 3997,
+          "text": "| case | result |\n|---|---|\n| `setContext` after `await` | throws `set_context_after_init` |\n| `setContext` before `await` | works |\n| `setContext`, no `await` | works |\n| `setContext` before and after `await` | throws on the second |\n| two `await`s then `setContext` | throws |\n| parent awaits, child sets context | works |",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-32",
+          "sourceKind": "pr_body",
+          "start": 3999,
+          "end": 4275,
+          "text": "The last one matters: a child goes through `push()`, which builds a fresh context, so the parent's flag does not leak into it. The existing `server-side-rendering/samples/context` and `runtime-runes/samples/async-set-context` samples both cover that shape and both still pass.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-33",
+          "sourceKind": "pr_body",
+          "start": 4277,
+          "end": 4316,
+          "text": "`pnpm lint` and `pnpm check` are clean.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-34",
+          "sourceKind": "pr_body",
+          "start": 4318,
+          "end": 4385,
+          "text": "### Before submitting the PR, please make sure you do the following",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-35",
+          "sourceKind": "pr_body",
+          "start": 4387,
+          "end": 4920,
+          "text": "- [x] It's really useful if your PR references an issue where it is discussed ahead of time. In many cases, features are absent for a reason. For large changes, please create an RFC: https://github.com/sveltejs/rfcs\n- [x] Prefix your PR title with `feat:`, `fix:`, `chore:`, or `docs:`.\n- [x] This message body should clearly illustrate what problems it solves.\n- [x] Ideally, include a test that fails without this PR but passes with it.\n- [x] If this PR changes code within `packages/svelte/src`, add a changeset (`npx changeset`).",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-36",
+          "sourceKind": "pr_body",
+          "start": 4922,
+          "end": 4943,
+          "text": "### Tests and linting",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-37",
+          "sourceKind": "pr_body",
+          "start": 4945,
+          "end": 5019,
+          "text": "- [x] Run the tests with `pnpm test` and lint the project with `pnpm lint`",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "expressjs-express-7403",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/expressjs/express/pull/7403",
+        "title": "build(deps): bump actions/checkout from 7.0.0 to 7.0.1",
+        "description": "Bumps [actions/checkout](https://github.com/actions/checkout) from 7.0.0 to 7.0.1.\n<details>\n<summary>Release notes</summary>\n<p><em>Sourced from <a href=\"https://github.com/actions/checkout/releases\">actions/checkout's releases</a>.</em></p>\n<blockquote>\n<h2>v7.0.1</h2>\n<h2>What's Changed</h2>\n<ul>\n<li>skip running unsafe pr check if input is default by <a href=\"https://github.com/aiqiaoy\"><code>@​aiqiaoy</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2518\">actions/checkout#2518</a></li>\n<li>trim only ascii whitespace for branch by <a href=\"https://github.com/aiqiaoy\"><code>@​aiqiaoy</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2521\">actions/checkout#2521</a></li>\n<li>escape values passed to --unset by <a href=\"https://github.com/aiqiaoy\"><code>@​aiqiaoy</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2530\">actions/checkout#2530</a></li>\n<li>Various dependency updates</li>\n</ul>\n<p><strong>Full Changelog</strong>: <a href=\"https://github.com/actions/checkout/compare/v7...v7.0.1\">https://github.com/actions/checkout/compare/v7...v7.0.1</a></p>\n</blockquote>\n</details>\n<details>\n<summary>Changelog</summary>\n<p><em>Sourced from <a href=\"https://github.com/actions/checkout/blob/main/CHANGELOG.md\">actions/checkout's changelog</a>.</em></p>\n<blockquote>\n<h1>Changelog</h1>\n<h2>v7.0.1</h2>\n<ul>\n<li>Skip running unsafe pr check if input is default by <a href=\"https://github.com/aiqiaoy\"><code>@​aiqiaoy</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2518\">actions/checkout#2518</a></li>\n<li>Trim only ascii whitespace for branch by <a href=\"https://github.com/aiqiaoy\"><code>@​aiqiaoy</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2521\">actions/checkout#2521</a></li>\n<li>Escape values passed to --unset by <a href=\"https://github.com/aiqiaoy\"><code>@​aiqiaoy</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2530\">actions/checkout#2530</a></li>\n<li>Various dependency updates</li>\n</ul>\n<h2>v7.0.0</h2>\n<ul>\n<li>Block checking out fork PR for pull_request_target and workflow_run by <a href=\"https://github.com/aiqiaoy\"><code>@​aiqiaoy</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2454\">actions/checkout#2454</a></li>\n<li>Various dependency updates</li>\n</ul>\n<h2>v6.0.3</h2>\n<ul>\n<li>Fix checkout init for SHA-256 repositories by <a href=\"https://github.com/yaananth\"><code>@​yaananth</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2439\">actions/checkout#2439</a></li>\n<li>fix: expand merge commit SHA regex and add SHA-256 test cases by <a href=\"https://github.com/yaananth\"><code>@​yaananth</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2414\">actions/checkout#2414</a></li>\n</ul>\n<h2>v6.0.2</h2>\n<ul>\n<li>Fix tag handling: preserve annotations and explicit fetch-tags by <a href=\"https://github.com/ericsciple\"><code>@​ericsciple</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2356\">actions/checkout#2356</a></li>\n</ul>\n<h2>v6.0.1</h2>\n<ul>\n<li>Add worktree support for persist-credentials includeIf by <a href=\"https://github.com/ericsciple\"><code>@​ericsciple</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2327\">actions/checkout#2327</a></li>\n</ul>\n<h2>v6.0.0</h2>\n<ul>\n<li>Persist creds to a separate file by <a href=\"https://github.com/ericsciple\"><code>@​ericsciple</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2286\">actions/checkout#2286</a></li>\n<li>Update README to include Node.js 24 support details and requirements by <a href=\"https://github.com/salmanmkc\"><code>@​salmanmkc</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2248\">actions/checkout#2248</a></li>\n</ul>\n<h2>v5.0.1</h2>\n<ul>\n<li>Port v6 cleanup to v5 by <a href=\"https://github.com/ericsciple\"><code>@​ericsciple</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2301\">actions/checkout#2301</a></li>\n</ul>\n<h2>v5.0.0</h2>\n<ul>\n<li>Update actions checkout to use node 24 by <a href=\"https://github.com/salmanmkc\"><code>@​salmanmkc</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2226\">actions/checkout#2226</a></li>\n</ul>\n<h2>v4.3.1</h2>\n<ul>\n<li>Port v6 cleanup to v4 by <a href=\"https://github.com/ericsciple\"><code>@​ericsciple</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2305\">actions/checkout#2305</a></li>\n</ul>\n<h2>v4.3.0</h2>\n<ul>\n<li>docs: update README.md by <a href=\"https://github.com/motss\"><code>@​motss</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/1971\">actions/checkout#1971</a></li>\n<li>Add internal repos for checking out multiple repositories by <a href=\"https://github.com/mouismail\"><code>@​mouismail</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/1977\">actions/checkout#1977</a></li>\n<li>Documentation update - add recommended permissions to Readme by <a href=\"https://github.com/benwells\"><code>@​benwells</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2043\">actions/checkout#2043</a></li>\n<li>Adjust positioning of user email note and permissions heading by <a href=\"https://github.com/joshmgross\"><code>@​joshmgross</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2044\">actions/checkout#2044</a></li>\n<li>Update README.md by <a href=\"https://github.com/nebuk89\"><code>@​nebuk89</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2194\">actions/checkout#2194</a></li>\n<li>Update CODEOWNERS for actions by <a href=\"https://github.com/TingluoHuang\"><code>@​TingluoHuang</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2224\">actions/checkout#2224</a></li>\n<li>Update package dependencies by <a href=\"https://github.com/salmanmkc\"><code>@​salmanmkc</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2236\">actions/checkout#2236</a></li>\n</ul>\n<h2>v4.2.2</h2>\n<ul>\n<li><code>url-helper.ts</code> now leverages well-known environment variables by <a href=\"https://github.com/jww3\"><code>@​jww3</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/1941\">actions/checkout#1941</a></li>\n<li>Expand unit test coverage for <code>isGhes</code> by <a href=\"https://github.com/jww3\"><code>@​jww3</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/1946\">actions/checkout#1946</a></li>\n</ul>\n<h2>v4.2.1</h2>\n<ul>\n<li>Check out other refs/* by commit if provided, fall back to ref by <a href=\"https://github.com/orhantoy\"><code>@​orhantoy</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/1924\">actions/checkout#1924</a></li>\n</ul>\n<!-- raw HTML omitted -->\n</blockquote>\n<p>... (truncated)</p>\n</details>\n<details>\n<summary>Commits</summary>\n<ul>\n<li><a href=\"https://github.com/actions/checkout/commit/3d3c42e5aac5ba805825da76410c181273ba90b1\"><code>3d3c42e</code></a> prep v7.0.1 release (<a href=\"https://redirect.github.com/actions/checkout/issues/2531\">#2531</a>)</li>\n<li><a href=\"https://github.com/actions/checkout/commit/28802689a136bfcdb721715abd713740beecbe07\"><code>2880268</code></a> escape values passed to --unset (<a href=\"https://redirect.github.com/actions/checkout/issues/2530\">#2530</a>)</li>\n<li><a href=\"https://github.com/actions/checkout/commit/12cd2235efa0937479335606d7c3ac9f6c0973b1\"><code>12cd223</code></a> trim only ascii whitespace for branch (<a href=\"https://redirect.github.com/actions/checkout/issues/2521\">#2521</a>)</li>\n<li><a href=\"https://github.com/actions/checkout/commit/62661c4e71a304b2823ed026347b8d34c3eac541\"><code>62661c4</code></a> skip running unsafe pr check if input is default (<a href=\"https://redirect.github.com/actions/checkout/issues/2518\">#2518</a>)</li>\n<li><a href=\"https://github.com/actions/checkout/commit/e8d4307400f9427dba7cb98e488d6ab85f1cec5f\"><code>e8d4307</code></a> Bump the minor-actions-dependencies group with 2 updates (<a href=\"https://redirect.github.com/actions/checkout/issues/2499\">#2499</a>)</li>\n<li><a href=\"https://github.com/actions/checkout/commit/631c942040754b6e095e929c1677c07e10ed4f87\"><code>631c942</code></a> eslint 9 (<a href=\"https://redirect.github.com/actions/checkout/issues/2474\">#2474</a>)</li>\n<li><a href=\"https://github.com/actions/checkout/commit/4f1f4aec02e41874fa0262ea8ff5172d7978ad1e\"><code>4f1f4ae</code></a> Bump actions/upload-artifact from 4 to 7 (<a href=\"https://redirect.github.com/actions/checkout/issues/2476\">#2476</a>)</li>\n<li><a href=\"https://github.com/actions/checkout/commit/ba097532fb203f7e88c9c3c0b899b49469908a92\"><code>ba09753</code></a> Bump actions/checkout from 6 to 7 (<a href=\"https://redirect.github.com/actions/checkout/issues/2488\">#2488</a>)</li>\n<li><a href=\"https://github.com/actions/checkout/commit/b9e0990d219a03df7633c93f6f005a8fecbcab22\"><code>b9e0990</code></a> Bump docker/login-action from 3.3.0 to 4.2.0 (<a href=\"https://redirect.github.com/actions/checkout/issues/2479\">#2479</a>)</li>\n<li><a href=\"https://github.com/actions/checkout/commit/e8cb398be4a550817e382abf69e4c12c76fce1f2\"><code>e8cb398</code></a> Bump docker/build-push-action from 6.5.0 to 7.2.0 (<a href=\"https://redirect.github.com/actions/checkout/issues/2478\">#2478</a>)</li>\n<li>Additional commits viewable in <a href=\"https://github.com/actions/checkout/compare/9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0...3d3c42e5aac5ba805825da76410c181273ba90b1\">compare view</a></li>\n</ul>\n</details>\n<br />\n\n\n[![Dependabot compatibility score](https://dependabot-badges.githubapp.com/badges/compatibility_score?dependency-name=actions/checkout&package-manager=github_actions&previous-version=7.0.0&new-version=7.0.1)](https://docs.github.com/en/github/managing-security-vulnerabilities/about-dependabot-security-updates#about-compatibility-scores)\n\nDependabot will resolve any conflicts with this PR as long as you don't alter it yourself. You can also trigger a rebase manually by commenting `@dependabot rebase`.\n\n[//]: # (dependabot-automerge-start)\n[//]: # (dependabot-automerge-end)\n\n---\n\n<details>\n<summary>Dependabot commands and options</summary>\n<br />\n\nYou can trigger Dependabot actions by commenting on this PR:\n- `@dependabot rebase` will rebase this PR\n- `@dependabot recreate` will recreate this PR, overwriting any edits that have been made to it\n- `@dependabot show <dependency name> ignore conditions` will show all of the ignore conditions of the specified dependency\n- `@dependabot ignore this major version` will close this PR and stop Dependabot creating any more for this major version (unless you reopen the PR or upgrade to it yourself)\n- `@dependabot ignore this minor version` will close this PR and stop Dependabot creating any more for this minor version (unless you reopen the PR or upgrade to it yourself)\n- `@dependabot ignore this dependency` will close this PR and stop Dependabot creating any more for this dependency (unless you reopen the PR or upgrade to it yourself)\n\n\n</details>",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "86be1aca028c55cd4a8c86a23bb631e1a8d1200c",
+        "baseSha": "a3714473feb3d2908add734d340e7755fd85e0a3",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 54,
+          "text": "build(deps): bump actions/checkout from 7.0.0 to 7.0.1",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 82,
+          "text": "Bumps [actions/checkout](https://github.com/actions/checkout) from 7.0.0 to 7.0.1.",
+          "label": "requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 83,
+          "end": 1162,
+          "text": "<details>\n<summary>Release notes</summary>\n<p><em>Sourced from <a href=\"https://github.com/actions/checkout/releases\">actions/checkout's releases</a>.</em></p>\n<blockquote>\n<h2>v7.0.1</h2>\n<h2>What's Changed</h2>\n<ul>\n<li>skip running unsafe pr check if input is default by <a href=\"https://github.com/aiqiaoy\"><code>@​aiqiaoy</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2518\">actions/checkout#2518</a></li>\n<li>trim only ascii whitespace for branch by <a href=\"https://github.com/aiqiaoy\"><code>@​aiqiaoy</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2521\">actions/checkout#2521</a></li>\n<li>escape values passed to --unset by <a href=\"https://github.com/aiqiaoy\"><code>@​aiqiaoy</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2530\">actions/checkout#2530</a></li>\n<li>Various dependency updates</li>\n</ul>\n<p><strong>Full Changelog</strong>: <a href=\"https://github.com/actions/checkout/compare/v7...v7.0.1\">https://github.com/actions/checkout/compare/v7...v7.0.1</a></p>\n</blockquote>\n</details>",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 1163,
+          "end": 6860,
+          "text": "<details>\n<summary>Changelog</summary>\n<p><em>Sourced from <a href=\"https://github.com/actions/checkout/blob/main/CHANGELOG.md\">actions/checkout's changelog</a>.</em></p>\n<blockquote>\n<h1>Changelog</h1>\n<h2>v7.0.1</h2>\n<ul>\n<li>Skip running unsafe pr check if input is default by <a href=\"https://github.com/aiqiaoy\"><code>@​aiqiaoy</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2518\">actions/checkout#2518</a></li>\n<li>Trim only ascii whitespace for branch by <a href=\"https://github.com/aiqiaoy\"><code>@​aiqiaoy</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2521\">actions/checkout#2521</a></li>\n<li>Escape values passed to --unset by <a href=\"https://github.com/aiqiaoy\"><code>@​aiqiaoy</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2530\">actions/checkout#2530</a></li>\n<li>Various dependency updates</li>\n</ul>\n<h2>v7.0.0</h2>\n<ul>\n<li>Block checking out fork PR for pull_request_target and workflow_run by <a href=\"https://github.com/aiqiaoy\"><code>@​aiqiaoy</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2454\">actions/checkout#2454</a></li>\n<li>Various dependency updates</li>\n</ul>\n<h2>v6.0.3</h2>\n<ul>\n<li>Fix checkout init for SHA-256 repositories by <a href=\"https://github.com/yaananth\"><code>@​yaananth</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2439\">actions/checkout#2439</a></li>\n<li>fix: expand merge commit SHA regex and add SHA-256 test cases by <a href=\"https://github.com/yaananth\"><code>@​yaananth</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2414\">actions/checkout#2414</a></li>\n</ul>\n<h2>v6.0.2</h2>\n<ul>\n<li>Fix tag handling: preserve annotations and explicit fetch-tags by <a href=\"https://github.com/ericsciple\"><code>@​ericsciple</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2356\">actions/checkout#2356</a></li>\n</ul>\n<h2>v6.0.1</h2>\n<ul>\n<li>Add worktree support for persist-credentials includeIf by <a href=\"https://github.com/ericsciple\"><code>@​ericsciple</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2327\">actions/checkout#2327</a></li>\n</ul>\n<h2>v6.0.0</h2>\n<ul>\n<li>Persist creds to a separate file by <a href=\"https://github.com/ericsciple\"><code>@​ericsciple</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2286\">actions/checkout#2286</a></li>\n<li>Update README to include Node.js 24 support details and requirements by <a href=\"https://github.com/salmanmkc\"><code>@​salmanmkc</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2248\">actions/checkout#2248</a></li>\n</ul>\n<h2>v5.0.1</h2>\n<ul>\n<li>Port v6 cleanup to v5 by <a href=\"https://github.com/ericsciple\"><code>@​ericsciple</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2301\">actions/checkout#2301</a></li>\n</ul>\n<h2>v5.0.0</h2>\n<ul>\n<li>Update actions checkout to use node 24 by <a href=\"https://github.com/salmanmkc\"><code>@​salmanmkc</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2226\">actions/checkout#2226</a></li>\n</ul>\n<h2>v4.3.1</h2>\n<ul>\n<li>Port v6 cleanup to v4 by <a href=\"https://github.com/ericsciple\"><code>@​ericsciple</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2305\">actions/checkout#2305</a></li>\n</ul>\n<h2>v4.3.0</h2>\n<ul>\n<li>docs: update README.md by <a href=\"https://github.com/motss\"><code>@​motss</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/1971\">actions/checkout#1971</a></li>\n<li>Add internal repos for checking out multiple repositories by <a href=\"https://github.com/mouismail\"><code>@​mouismail</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/1977\">actions/checkout#1977</a></li>\n<li>Documentation update - add recommended permissions to Readme by <a href=\"https://github.com/benwells\"><code>@​benwells</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2043\">actions/checkout#2043</a></li>\n<li>Adjust positioning of user email note and permissions heading by <a href=\"https://github.com/joshmgross\"><code>@​joshmgross</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2044\">actions/checkout#2044</a></li>\n<li>Update README.md by <a href=\"https://github.com/nebuk89\"><code>@​nebuk89</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2194\">actions/checkout#2194</a></li>\n<li>Update CODEOWNERS for actions by <a href=\"https://github.com/TingluoHuang\"><code>@​TingluoHuang</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2224\">actions/checkout#2224</a></li>\n<li>Update package dependencies by <a href=\"https://github.com/salmanmkc\"><code>@​salmanmkc</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/2236\">actions/checkout#2236</a></li>\n</ul>\n<h2>v4.2.2</h2>\n<ul>\n<li><code>url-helper.ts</code> now leverages well-known environment variables by <a href=\"https://github.com/jww3\"><code>@​jww3</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/1941\">actions/checkout#1941</a></li>\n<li>Expand unit test coverage for <code>isGhes</code> by <a href=\"https://github.com/jww3\"><code>@​jww3</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/1946\">actions/checkout#1946</a></li>\n</ul>\n<h2>v4.2.1</h2>\n<ul>\n<li>Check out other refs/* by commit if provided, fall back to ref by <a href=\"https://github.com/orhantoy\"><code>@​orhantoy</code></a> in <a href=\"https://redirect.github.com/actions/checkout/pull/1924\">actions/checkout#1924</a></li>\n</ul>\n<!-- raw HTML omitted -->\n</blockquote>\n<p>... (truncated)</p>\n</details>",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 6861,
+          "end": 9559,
+          "text": "<details>\n<summary>Commits</summary>\n<ul>\n<li><a href=\"https://github.com/actions/checkout/commit/3d3c42e5aac5ba805825da76410c181273ba90b1\"><code>3d3c42e</code></a> prep v7.0.1 release (<a href=\"https://redirect.github.com/actions/checkout/issues/2531\">#2531</a>)</li>\n<li><a href=\"https://github.com/actions/checkout/commit/28802689a136bfcdb721715abd713740beecbe07\"><code>2880268</code></a> escape values passed to --unset (<a href=\"https://redirect.github.com/actions/checkout/issues/2530\">#2530</a>)</li>\n<li><a href=\"https://github.com/actions/checkout/commit/12cd2235efa0937479335606d7c3ac9f6c0973b1\"><code>12cd223</code></a> trim only ascii whitespace for branch (<a href=\"https://redirect.github.com/actions/checkout/issues/2521\">#2521</a>)</li>\n<li><a href=\"https://github.com/actions/checkout/commit/62661c4e71a304b2823ed026347b8d34c3eac541\"><code>62661c4</code></a> skip running unsafe pr check if input is default (<a href=\"https://redirect.github.com/actions/checkout/issues/2518\">#2518</a>)</li>\n<li><a href=\"https://github.com/actions/checkout/commit/e8d4307400f9427dba7cb98e488d6ab85f1cec5f\"><code>e8d4307</code></a> Bump the minor-actions-dependencies group with 2 updates (<a href=\"https://redirect.github.com/actions/checkout/issues/2499\">#2499</a>)</li>\n<li><a href=\"https://github.com/actions/checkout/commit/631c942040754b6e095e929c1677c07e10ed4f87\"><code>631c942</code></a> eslint 9 (<a href=\"https://redirect.github.com/actions/checkout/issues/2474\">#2474</a>)</li>\n<li><a href=\"https://github.com/actions/checkout/commit/4f1f4aec02e41874fa0262ea8ff5172d7978ad1e\"><code>4f1f4ae</code></a> Bump actions/upload-artifact from 4 to 7 (<a href=\"https://redirect.github.com/actions/checkout/issues/2476\">#2476</a>)</li>\n<li><a href=\"https://github.com/actions/checkout/commit/ba097532fb203f7e88c9c3c0b899b49469908a92\"><code>ba09753</code></a> Bump actions/checkout from 6 to 7 (<a href=\"https://redirect.github.com/actions/checkout/issues/2488\">#2488</a>)</li>\n<li><a href=\"https://github.com/actions/checkout/commit/b9e0990d219a03df7633c93f6f005a8fecbcab22\"><code>b9e0990</code></a> Bump docker/login-action from 3.3.0 to 4.2.0 (<a href=\"https://redirect.github.com/actions/checkout/issues/2479\">#2479</a>)</li>\n<li><a href=\"https://github.com/actions/checkout/commit/e8cb398be4a550817e382abf69e4c12c76fce1f2\"><code>e8cb398</code></a> Bump docker/build-push-action from 6.5.0 to 7.2.0 (<a href=\"https://redirect.github.com/actions/checkout/issues/2478\">#2478</a>)</li>\n<li>Additional commits viewable in <a href=\"https://github.com/actions/checkout/compare/9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0...3d3c42e5aac5ba805825da76410c181273ba90b1\">compare view</a></li>\n</ul>\n</details>",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-6",
+          "sourceKind": "pr_body",
+          "start": 9560,
+          "end": 9566,
+          "text": "<br />",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-7",
+          "sourceKind": "pr_body",
+          "start": 9569,
+          "end": 9907,
+          "text": "[![Dependabot compatibility score](https://dependabot-badges.githubapp.com/badges/compatibility_score?dependency-name=actions/checkout&package-manager=github_actions&previous-version=7.0.0&new-version=7.0.1)](https://docs.github.com/en/github/managing-security-vulnerabilities/about-dependabot-security-updates#about-compatibility-scores)",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-8",
+          "sourceKind": "pr_body",
+          "start": 9909,
+          "end": 10074,
+          "text": "Dependabot will resolve any conflicts with this PR as long as you don't alter it yourself. You can also trigger a rebase manually by commenting `@dependabot rebase`.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-9",
+          "sourceKind": "pr_body",
+          "start": 10076,
+          "end": 10147,
+          "text": "[//]: # (dependabot-automerge-start)\n[//]: # (dependabot-automerge-end)",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-10",
+          "sourceKind": "pr_body",
+          "start": 10149,
+          "end": 10152,
+          "text": "---",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-11",
+          "sourceKind": "pr_body",
+          "start": 10154,
+          "end": 11078,
+          "text": "<details>\n<summary>Dependabot commands and options</summary>\n<br />\n\nYou can trigger Dependabot actions by commenting on this PR:\n- `@dependabot rebase` will rebase this PR\n- `@dependabot recreate` will recreate this PR, overwriting any edits that have been made to it\n- `@dependabot show <dependency name> ignore conditions` will show all of the ignore conditions of the specified dependency\n- `@dependabot ignore this major version` will close this PR and stop Dependabot creating any more for this major version (unless you reopen the PR or upgrade to it yourself)\n- `@dependabot ignore this minor version` will close this PR and stop Dependabot creating any more for this minor version (unless you reopen the PR or upgrade to it yourself)\n- `@dependabot ignore this dependency` will close this PR and stop Dependabot creating any more for this dependency (unless you reopen the PR or upgrade to it yourself)\n\n\n</details>",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "expressjs-express-7233",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/expressjs/express/pull/7233",
+        "title": "Upgrade `content-disposition`",
+        "description": "Version 2 upgrade will mostly only be relevant for users that want to generate non-ASCII by ISO-8859-1 valid filenames. There was a gap in theoretical vs real behavior of browsers that sniffed this and failed to have the correct encoding for filenames because it treated them as UTF-8 instead. See https://github.com/jshttp/content-disposition/issues/27 for more information.\n\nSeparately, the API no longer attempts to `basename` inputs so I need to do that in the Express API instead.",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "754a1831de09be6ffb81acf7af12c60164c7f7f7",
+        "baseSha": "b3004cb8c825321279efa48d6ad115d91a6c1b83",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 29,
+          "text": "Upgrade `content-disposition`",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 375,
+          "text": "Version 2 upgrade will mostly only be relevant for users that want to generate non-ASCII by ISO-8859-1 valid filenames. There was a gap in theoretical vs real behavior of browsers that sniffed this and failed to have the correct encoding for filenames because it treated them as UTF-8 instead. See https://github.com/jshttp/content-disposition/issues/27 for more information.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 377,
+          "end": 485,
+          "text": "Separately, the API no longer attempts to `basename` inputs so I need to do that in the Express API instead.",
+          "label": "requirement"
+        }
+      ]
+    },
+    {
+      "id": "expressjs-express-7390",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/expressjs/express/pull/7390",
+        "title": "deps: bump body-parser to ^2.3.0 to fix CVE-2026-12590",
+        "description": "## Summary\n\nBumps `body-parser` from `^2.2.1` to `^2.3.0` to remediate **CVE-2026-12590** (GHSA-v422-hmwv-36x6).\n\nbody-parser `>=2.0.0 <2.3.0` (and `<1.20.6` on the 1.x line) fails open when\ngiven an invalid `limit` option value: `bytes.parse()` returns `null`, which\nsilently disables request body size enforcement and allows a denial of service\nvia arbitrarily large payloads. body-parser 2.3.0 (expressjs/body-parser#698)\nnow throws on an invalid `limit` at parser initialization instead of ignoring it.\n\nExpress's existing `^2.2.1` range technically already permits 2.3.0, but\ndeclaring `^2.3.0` makes the security intent explicit and ensures consumers\n(and scanners like Trivy) resolve to the patched release.\n\n## Changes\n- `package.json`: `body-parser` `^2.2.1` → `^2.3.0`\n- `History.md`: changelog entry under Unreleased → 🚀 Improvements\n\n## Testing\n- `body-parser`-backed middleware tests pass (211 passing): `express.json`, `express.urlencoded`, `express.raw`, `express.text`.\n\n## References\n- https://www.cve.org/CVERecord?id=CVE-2026-12590\n- https://github.com/expressjs/body-parser/security/advisories/GHSA-v422-hmwv-36x6",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "7f6c30742e4209062f48472bdd442c84b5893f55",
+        "baseSha": "ae6dd37680e3a00618d6c8a3e522f0ee4eeba1a4",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 54,
+          "text": "deps: bump body-parser to ^2.3.0 to fix CVE-2026-12590",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 10,
+          "text": "## Summary",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 12,
+          "end": 112,
+          "text": "Bumps `body-parser` from `^2.2.1` to `^2.3.0` to remediate **CVE-2026-12590** (GHSA-v422-hmwv-36x6).",
+          "label": "requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 114,
+          "end": 506,
+          "text": "body-parser `>=2.0.0 <2.3.0` (and `<1.20.6` on the 1.x line) fails open when\ngiven an invalid `limit` option value: `bytes.parse()` returns `null`, which\nsilently disables request body size enforcement and allows a denial of service\nvia arbitrarily large payloads. body-parser 2.3.0 (expressjs/body-parser#698)\nnow throws on an invalid `limit` at parser initialization instead of ignoring it.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 508,
+          "end": 714,
+          "text": "Express's existing `^2.2.1` range technically already permits 2.3.0, but\ndeclaring `^2.3.0` makes the security intent explicit and ensures consumers\n(and scanners like Trivy) resolve to the patched release.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-6",
+          "sourceKind": "pr_body",
+          "start": 716,
+          "end": 726,
+          "text": "## Changes",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-7",
+          "sourceKind": "pr_body",
+          "start": 727,
+          "end": 845,
+          "text": "- `package.json`: `body-parser` `^2.2.1` → `^2.3.0`\n- `History.md`: changelog entry under Unreleased → 🚀 Improvements",
+          "label": "requirement"
+        },
+        {
+          "id": "label-8",
+          "sourceKind": "pr_body",
+          "start": 847,
+          "end": 857,
+          "text": "## Testing",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-9",
+          "sourceKind": "pr_body",
+          "start": 858,
+          "end": 986,
+          "text": "- `body-parser`-backed middleware tests pass (211 passing): `express.json`, `express.urlencoded`, `express.raw`, `express.text`.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-10",
+          "sourceKind": "pr_body",
+          "start": 988,
+          "end": 1001,
+          "text": "## References",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-11",
+          "sourceKind": "pr_body",
+          "start": 1002,
+          "end": 1134,
+          "text": "- https://www.cve.org/CVERecord?id=CVE-2026-12590\n- https://github.com/expressjs/body-parser/security/advisories/GHSA-v422-hmwv-36x6",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "expressjs-express-7377",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/expressjs/express/pull/7377",
+        "title": "feat: allow conditional revalidation for QUERY requests (v4)",
+        "description": "Identical to #7366 but targeting the v4 branch as requested at https://github.com/expressjs/express/issues/7365#issuecomment-4952018598. Below is a copy of that PR's description:\n\n---\n\n`req.fresh` only performed weak freshness validation for `GET` and `HEAD`, so responses to `QUERY` requests never returned `304 Not Modified` even when the client sent a matching `If-None-Match`. This extends the method guard to include `QUERY`.\n\n```diff\n-  // GET or HEAD for weak freshness validation only\n-  if ('GET' !== method && 'HEAD' !== method) return false;\n+  // GET, HEAD, or QUERY for weak freshness validation only\n+  if ('GET' !== method && 'HEAD' !== method && 'QUERY' !== method) return false;\n```\n\n---\nAs far as I can tell, QUERY is a safe, idempotent, cacheable method whose responses explicitly support conditional revalidation, as per https://datatracker.ietf.org/doc/rfc10008/, so it should behave like `GET`/`HEAD` here.",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "741598e4d7d2fec16d6815b59c0114d61a740702",
+        "baseSha": "715101bd27ec9c14a7ccc8a37c476f330d98ad53",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 60,
+          "text": "feat: allow conditional revalidation for QUERY requests (v4)",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 178,
+          "text": "Identical to #7366 but targeting the v4 branch as requested at https://github.com/expressjs/express/issues/7365#issuecomment-4952018598. Below is a copy of that PR's description:",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 180,
+          "end": 183,
+          "text": "---",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 185,
+          "end": 380,
+          "text": "`req.fresh` only performed weak freshness validation for `GET` and `HEAD`, so responses to `QUERY` requests never returned `304 Not Modified` even when the client sent a matching `If-None-Match`.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 381,
+          "end": 430,
+          "text": "This extends the method guard to include `QUERY`.",
+          "label": "ambiguous"
+        },
+        {
+          "id": "label-6",
+          "sourceKind": "pr_body",
+          "start": 432,
+          "end": 699,
+          "text": "```diff\n-  // GET or HEAD for weak freshness validation only\n-  if ('GET' !== method && 'HEAD' !== method) return false;\n+  // GET, HEAD, or QUERY for weak freshness validation only\n+  if ('GET' !== method && 'HEAD' !== method && 'QUERY' !== method) return false;\n```",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-7",
+          "sourceKind": "pr_body",
+          "start": 701,
+          "end": 704,
+          "text": "---",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-8",
+          "sourceKind": "pr_body",
+          "start": 705,
+          "end": 928,
+          "text": "As far as I can tell, QUERY is a safe, idempotent, cacheable method whose responses explicitly support conditional revalidation, as per https://datatracker.ietf.org/doc/rfc10008/, so it should behave like `GET`/`HEAD` here.",
+          "label": "ambiguous"
+        }
+      ]
+    },
+    {
+      "id": "expressjs-express-7353",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/expressjs/express/pull/7353",
+        "title": "build(deps-dev): bump morgan from 1.10.1 to 1.11.0",
+        "description": "Bumps [morgan](https://github.com/expressjs/morgan) from 1.10.1 to 1.11.0.\n<details>\n<summary>Release notes</summary>\n<p><em>Sourced from <a href=\"https://github.com/expressjs/morgan/releases\">morgan's releases</a>.</em></p>\n<blockquote>\n<h2>1.11.0</h2>\n<h2>What's Changed</h2>\n<ul>\n<li>feat: add :pid token by <a href=\"https://github.com/ganesh3367\"><code>@​ganesh3367</code></a> in <a href=\"https://redirect.github.com/expressjs/morgan/pull/329\">expressjs/morgan#329</a></li>\n</ul>\n<p>Security Fix:</p>\n<ul>\n<li>Escape control characters in <code>:remote-user</code> token to prevent log injection\n<ul>\n<li>Fixes <a href=\"https://www.cve.org/CVERecord?id=CVE-2026-5078\">CVE-2026-5078</a> <a href=\"https://github.com/expressjs/morgan/security/advisories/GHSA-4vj7-5mj6-jm8m\">GHSA-4vj7-5mj6-jm8m</a></li>\n</ul>\n</li>\n</ul>\n<h2>New Contributors</h2>\n<ul>\n<li><a href=\"https://github.com/inigomarquinez\"><code>@​inigomarquinez</code></a> made their first contribution in <a href=\"https://redirect.github.com/expressjs/morgan/pull/291\">expressjs/morgan#291</a></li>\n<li><a href=\"https://github.com/jonchurch\"><code>@​jonchurch</code></a> made their first contribution in <a href=\"https://redirect.github.com/expressjs/morgan/pull/299\">expressjs/morgan#299</a></li>\n<li><a href=\"https://github.com/bjohansebas\"><code>@​bjohansebas</code></a> made their first contribution in <a href=\"https://redirect.github.com/expressjs/morgan/pull/301\">expressjs/morgan#301</a></li>\n<li><a href=\"https://github.com/UlisesGascon\"><code>@​UlisesGascon</code></a> made their first contribution in <a href=\"https://redirect.github.com/expressjs/morgan/pull/300\">expressjs/morgan#300</a></li>\n<li><a href=\"https://github.com/ctcpip\"><code>@​ctcpip</code></a> made their first contribution in <a href=\"https://redirect.github.com/expressjs/morgan/pull/319\">expressjs/morgan#319</a></li>\n<li><a href=\"https://github.com/ganesh3367\"><code>@​ganesh3367</code></a> made their first contribution in <a href=\"https://redirect.github.com/expressjs/morgan/pull/329\">expressjs/morgan#329</a></li>\n</ul>\n<p><strong>Full Changelog</strong>: <a href=\"https://github.com/expressjs/morgan/compare/1.10.0...1.11.0\">https://github.com/expressjs/morgan/compare/1.10.0...1.11.0</a></p>\n</blockquote>\n</details>\n<details>\n<summary>Changelog</summary>\n<p><em>Sourced from <a href=\"https://github.com/expressjs/morgan/blob/master/HISTORY.md\">morgan's changelog</a>.</em></p>\n<blockquote>\n<h1>1.11.0 / 2026-06-02</h1>\n<ul>\n<li>add <code>:pid</code> token</li>\n</ul>\n<p>Security Fix:</p>\n<ul>\n<li>Escape control characters in <code>:remote-user</code> token to prevent log injection\n<ul>\n<li>Fixes <a href=\"https://www.cve.org/CVERecord?id=CVE-2026-5078\">CVE-2026-5078</a> <a href=\"https://github.com/expressjs/morgan/security/advisories/GHSA-4vj7-5mj6-jm8m\">GHSA-4vj7-5mj6-jm8m</a></li>\n</ul>\n</li>\n</ul>\n</blockquote>\n</details>\n<details>\n<summary>Commits</summary>\n<ul>\n<li><a href=\"https://github.com/expressjs/morgan/commit/e0e6f17574db56396f8e60ebb03bb7aaaeb9cc6f\"><code>e0e6f17</code></a> Release 1.11.0 (<a href=\"https://redirect.github.com/expressjs/morgan/issues/350\">#350</a>)</li>\n<li><a href=\"https://github.com/expressjs/morgan/commit/b3f5d9bdb388690dfae9c06ab966328f49b7982b\"><code>b3f5d9b</code></a> Merge commit from fork</li>\n<li><a href=\"https://github.com/expressjs/morgan/commit/203c75852adadcc5e3a9ba23b0ef07a8e81c5af7\"><code>203c758</code></a> build(deps): bump github/codeql-action from 4.32.4 to 4.35.2 (<a href=\"https://redirect.github.com/expressjs/morgan/issues/346\">#346</a>)</li>\n<li><a href=\"https://github.com/expressjs/morgan/commit/002bc81f47a7641d86b7e16ee0f343e5eed81a6a\"><code>002bc81</code></a> build(deps): bump actions/upload-artifact from 7.0.0 to 7.0.1 (<a href=\"https://redirect.github.com/expressjs/morgan/issues/347\">#347</a>)</li>\n<li><a href=\"https://github.com/expressjs/morgan/commit/561b0d70bf4486245b311a02259d32ae45756331\"><code>561b0d7</code></a> build(deps): bump actions/upload-artifact from 5.0.0 to 7.0.0 (<a href=\"https://redirect.github.com/expressjs/morgan/issues/338\">#338</a>)</li>\n<li><a href=\"https://github.com/expressjs/morgan/commit/2db705ecf05eed5a2990da4be8731a1d7051692c\"><code>2db705e</code></a> build(deps): bump github/codeql-action from 3.29.7 to 4.32.4 (<a href=\"https://redirect.github.com/expressjs/morgan/issues/337\">#337</a>)</li>\n<li><a href=\"https://github.com/expressjs/morgan/commit/a373c5f25df88c7f31b4abb36306d7e025edcc8c\"><code>a373c5f</code></a> build(deps): bump ossf/scorecard-action from 2.3.1 to 2.4.3 (<a href=\"https://redirect.github.com/expressjs/morgan/issues/327\">#327</a>)</li>\n<li><a href=\"https://github.com/expressjs/morgan/commit/c8e72fa73c7e54a00f0e28db1bc6edbeb83dbbc0\"><code>c8e72fa</code></a> build(deps): bump actions/checkout from 4.1.1 to 6.0.1 (<a href=\"https://redirect.github.com/expressjs/morgan/issues/324\">#324</a>)</li>\n<li><a href=\"https://github.com/expressjs/morgan/commit/023300e37da5e2a3394a50171d07a0bb6860eab5\"><code>023300e</code></a> build(deps): bump actions/upload-artifact from 4.3.1 to 4.6.2 (<a href=\"https://redirect.github.com/expressjs/morgan/issues/307\">#307</a>)</li>\n<li><a href=\"https://github.com/expressjs/morgan/commit/9d8d6c099765b1d4722aadfb68dbf0a227ff8e64\"><code>9d8d6c0</code></a> build(deps): bump coverallsapp/github-action from 1.2.5 to 2.3.6 (<a href=\"https://redirect.github.com/expressjs/morgan/issues/306\">#306</a>)</li>\n<li>Additional commits viewable in <a href=\"https://github.com/expressjs/morgan/compare/1.10.1...1.11.0\">compare view</a></li>\n</ul>\n</details>\n<br />\n\n\n[![Dependabot compatibility score](https://dependabot-badges.githubapp.com/badges/compatibility_score?dependency-name=morgan&package-manager=npm_and_yarn&previous-version=1.10.1&new-version=1.11.0)](https://docs.github.com/en/github/managing-security-vulnerabilities/about-dependabot-security-updates#about-compatibility-scores)\n\nDependabot will resolve any conflicts with this PR as long as you don't alter it yourself. You can also trigger a rebase manually by commenting `@dependabot rebase`.\n\n[//]: # (dependabot-automerge-start)\n[//]: # (dependabot-automerge-end)\n\n---\n\n<details>\n<summary>Dependabot commands and options</summary>\n<br />\n\nYou can trigger Dependabot actions by commenting on this PR:\n- `@dependabot rebase` will rebase this PR\n- `@dependabot recreate` will recreate this PR, overwriting any edits that have been made to it\n- `@dependabot show <dependency name> ignore conditions` will show all of the ignore conditions of the specified dependency\n- `@dependabot ignore this major version` will close this PR and stop Dependabot creating any more for this major version (unless you reopen the PR or upgrade to it yourself)\n- `@dependabot ignore this minor version` will close this PR and stop Dependabot creating any more for this minor version (unless you reopen the PR or upgrade to it yourself)\n- `@dependabot ignore this dependency` will close this PR and stop Dependabot creating any more for this dependency (unless you reopen the PR or upgrade to it yourself)\n\n\n</details>",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "44a1765da914f181101dc04fd8d47657478f3ef9",
+        "baseSha": "18e5985b8a9d5e8423db0a9121f22bdaecd5b120",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 50,
+          "text": "build(deps-dev): bump morgan from 1.10.1 to 1.11.0",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 74,
+          "text": "Bumps [morgan](https://github.com/expressjs/morgan) from 1.10.1 to 1.11.0.",
+          "label": "requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 75,
+          "end": 2268,
+          "text": "<details>\n<summary>Release notes</summary>\n<p><em>Sourced from <a href=\"https://github.com/expressjs/morgan/releases\">morgan's releases</a>.</em></p>\n<blockquote>\n<h2>1.11.0</h2>\n<h2>What's Changed</h2>\n<ul>\n<li>feat: add :pid token by <a href=\"https://github.com/ganesh3367\"><code>@​ganesh3367</code></a> in <a href=\"https://redirect.github.com/expressjs/morgan/pull/329\">expressjs/morgan#329</a></li>\n</ul>\n<p>Security Fix:</p>\n<ul>\n<li>Escape control characters in <code>:remote-user</code> token to prevent log injection\n<ul>\n<li>Fixes <a href=\"https://www.cve.org/CVERecord?id=CVE-2026-5078\">CVE-2026-5078</a> <a href=\"https://github.com/expressjs/morgan/security/advisories/GHSA-4vj7-5mj6-jm8m\">GHSA-4vj7-5mj6-jm8m</a></li>\n</ul>\n</li>\n</ul>\n<h2>New Contributors</h2>\n<ul>\n<li><a href=\"https://github.com/inigomarquinez\"><code>@​inigomarquinez</code></a> made their first contribution in <a href=\"https://redirect.github.com/expressjs/morgan/pull/291\">expressjs/morgan#291</a></li>\n<li><a href=\"https://github.com/jonchurch\"><code>@​jonchurch</code></a> made their first contribution in <a href=\"https://redirect.github.com/expressjs/morgan/pull/299\">expressjs/morgan#299</a></li>\n<li><a href=\"https://github.com/bjohansebas\"><code>@​bjohansebas</code></a> made their first contribution in <a href=\"https://redirect.github.com/expressjs/morgan/pull/301\">expressjs/morgan#301</a></li>\n<li><a href=\"https://github.com/UlisesGascon\"><code>@​UlisesGascon</code></a> made their first contribution in <a href=\"https://redirect.github.com/expressjs/morgan/pull/300\">expressjs/morgan#300</a></li>\n<li><a href=\"https://github.com/ctcpip\"><code>@​ctcpip</code></a> made their first contribution in <a href=\"https://redirect.github.com/expressjs/morgan/pull/319\">expressjs/morgan#319</a></li>\n<li><a href=\"https://github.com/ganesh3367\"><code>@​ganesh3367</code></a> made their first contribution in <a href=\"https://redirect.github.com/expressjs/morgan/pull/329\">expressjs/morgan#329</a></li>\n</ul>\n<p><strong>Full Changelog</strong>: <a href=\"https://github.com/expressjs/morgan/compare/1.10.0...1.11.0\">https://github.com/expressjs/morgan/compare/1.10.0...1.11.0</a></p>\n</blockquote>\n</details>",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 2269,
+          "end": 2883,
+          "text": "<details>\n<summary>Changelog</summary>\n<p><em>Sourced from <a href=\"https://github.com/expressjs/morgan/blob/master/HISTORY.md\">morgan's changelog</a>.</em></p>\n<blockquote>\n<h1>1.11.0 / 2026-06-02</h1>\n<ul>\n<li>add <code>:pid</code> token</li>\n</ul>\n<p>Security Fix:</p>\n<ul>\n<li>Escape control characters in <code>:remote-user</code> token to prevent log injection\n<ul>\n<li>Fixes <a href=\"https://www.cve.org/CVERecord?id=CVE-2026-5078\">CVE-2026-5078</a> <a href=\"https://github.com/expressjs/morgan/security/advisories/GHSA-4vj7-5mj6-jm8m\">GHSA-4vj7-5mj6-jm8m</a></li>\n</ul>\n</li>\n</ul>\n</blockquote>\n</details>",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 2884,
+          "end": 5568,
+          "text": "<details>\n<summary>Commits</summary>\n<ul>\n<li><a href=\"https://github.com/expressjs/morgan/commit/e0e6f17574db56396f8e60ebb03bb7aaaeb9cc6f\"><code>e0e6f17</code></a> Release 1.11.0 (<a href=\"https://redirect.github.com/expressjs/morgan/issues/350\">#350</a>)</li>\n<li><a href=\"https://github.com/expressjs/morgan/commit/b3f5d9bdb388690dfae9c06ab966328f49b7982b\"><code>b3f5d9b</code></a> Merge commit from fork</li>\n<li><a href=\"https://github.com/expressjs/morgan/commit/203c75852adadcc5e3a9ba23b0ef07a8e81c5af7\"><code>203c758</code></a> build(deps): bump github/codeql-action from 4.32.4 to 4.35.2 (<a href=\"https://redirect.github.com/expressjs/morgan/issues/346\">#346</a>)</li>\n<li><a href=\"https://github.com/expressjs/morgan/commit/002bc81f47a7641d86b7e16ee0f343e5eed81a6a\"><code>002bc81</code></a> build(deps): bump actions/upload-artifact from 7.0.0 to 7.0.1 (<a href=\"https://redirect.github.com/expressjs/morgan/issues/347\">#347</a>)</li>\n<li><a href=\"https://github.com/expressjs/morgan/commit/561b0d70bf4486245b311a02259d32ae45756331\"><code>561b0d7</code></a> build(deps): bump actions/upload-artifact from 5.0.0 to 7.0.0 (<a href=\"https://redirect.github.com/expressjs/morgan/issues/338\">#338</a>)</li>\n<li><a href=\"https://github.com/expressjs/morgan/commit/2db705ecf05eed5a2990da4be8731a1d7051692c\"><code>2db705e</code></a> build(deps): bump github/codeql-action from 3.29.7 to 4.32.4 (<a href=\"https://redirect.github.com/expressjs/morgan/issues/337\">#337</a>)</li>\n<li><a href=\"https://github.com/expressjs/morgan/commit/a373c5f25df88c7f31b4abb36306d7e025edcc8c\"><code>a373c5f</code></a> build(deps): bump ossf/scorecard-action from 2.3.1 to 2.4.3 (<a href=\"https://redirect.github.com/expressjs/morgan/issues/327\">#327</a>)</li>\n<li><a href=\"https://github.com/expressjs/morgan/commit/c8e72fa73c7e54a00f0e28db1bc6edbeb83dbbc0\"><code>c8e72fa</code></a> build(deps): bump actions/checkout from 4.1.1 to 6.0.1 (<a href=\"https://redirect.github.com/expressjs/morgan/issues/324\">#324</a>)</li>\n<li><a href=\"https://github.com/expressjs/morgan/commit/023300e37da5e2a3394a50171d07a0bb6860eab5\"><code>023300e</code></a> build(deps): bump actions/upload-artifact from 4.3.1 to 4.6.2 (<a href=\"https://redirect.github.com/expressjs/morgan/issues/307\">#307</a>)</li>\n<li><a href=\"https://github.com/expressjs/morgan/commit/9d8d6c099765b1d4722aadfb68dbf0a227ff8e64\"><code>9d8d6c0</code></a> build(deps): bump coverallsapp/github-action from 1.2.5 to 2.3.6 (<a href=\"https://redirect.github.com/expressjs/morgan/issues/306\">#306</a>)</li>\n<li>Additional commits viewable in <a href=\"https://github.com/expressjs/morgan/compare/1.10.1...1.11.0\">compare view</a></li>\n</ul>\n</details>",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-6",
+          "sourceKind": "pr_body",
+          "start": 5569,
+          "end": 5575,
+          "text": "<br />",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-7",
+          "sourceKind": "pr_body",
+          "start": 5578,
+          "end": 5906,
+          "text": "[![Dependabot compatibility score](https://dependabot-badges.githubapp.com/badges/compatibility_score?dependency-name=morgan&package-manager=npm_and_yarn&previous-version=1.10.1&new-version=1.11.0)](https://docs.github.com/en/github/managing-security-vulnerabilities/about-dependabot-security-updates#about-compatibility-scores)",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-8",
+          "sourceKind": "pr_body",
+          "start": 5908,
+          "end": 6073,
+          "text": "Dependabot will resolve any conflicts with this PR as long as you don't alter it yourself. You can also trigger a rebase manually by commenting `@dependabot rebase`.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-9",
+          "sourceKind": "pr_body",
+          "start": 6075,
+          "end": 6146,
+          "text": "[//]: # (dependabot-automerge-start)\n[//]: # (dependabot-automerge-end)",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-10",
+          "sourceKind": "pr_body",
+          "start": 6148,
+          "end": 6151,
+          "text": "---",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-11",
+          "sourceKind": "pr_body",
+          "start": 6153,
+          "end": 7077,
+          "text": "<details>\n<summary>Dependabot commands and options</summary>\n<br />\n\nYou can trigger Dependabot actions by commenting on this PR:\n- `@dependabot rebase` will rebase this PR\n- `@dependabot recreate` will recreate this PR, overwriting any edits that have been made to it\n- `@dependabot show <dependency name> ignore conditions` will show all of the ignore conditions of the specified dependency\n- `@dependabot ignore this major version` will close this PR and stop Dependabot creating any more for this major version (unless you reopen the PR or upgrade to it yourself)\n- `@dependabot ignore this minor version` will close this PR and stop Dependabot creating any more for this minor version (unless you reopen the PR or upgrade to it yourself)\n- `@dependabot ignore this dependency` will close this PR and stop Dependabot creating any more for this dependency (unless you reopen the PR or upgrade to it yourself)\n\n\n</details>",
+          "label": "non_requirement"
+        }
+      ]
+    },
+    {
+      "id": "expressjs-express-7450",
+      "cohort": "public",
+      "input": {
+        "url": "https://github.com/expressjs/express/pull/7450",
+        "title": "build(deps-dev): bump hbs from 4.2.1 to 4.3.0",
+        "description": "Bumps [hbs](https://github.com/pillarjs/hbs) from 4.2.1 to 4.3.0.\n<details>\n<summary>Release notes</summary>\n<p><em>Sourced from <a href=\"https://github.com/pillarjs/hbs/releases\">hbs's releases</a>.</em></p>\n<blockquote>\n<h2>4.3.0</h2>\n<h2>Important</h2>\n<ul>\n<li>Fix <a href=\"https://www.cve.org/CVERecord?id=CVE-2026-16231\">CVE-2026-16231</a> (<a href=\"https://github.com/pillarjs/hbs/security/advisories/GHSA-rg36-rxv9-2m9q\">GHSA-rg36-rxv9-2m9q</a>)</li>\n</ul>\n<h2>What's Changed</h2>\n<ul>\n<li>build(deps): bump actions/checkout from 6.0.2 to 6.0.3 by <a href=\"https://github.com/dependabot\"><code>@​dependabot</code></a>[bot] in <a href=\"https://redirect.github.com/pillarjs/hbs/pull/258\">pillarjs/hbs#258</a></li>\n<li>build(deps): bump github/codeql-action from 4.32.4 to 4.36.1 by <a href=\"https://github.com/dependabot\"><code>@​dependabot</code></a>[bot] in <a href=\"https://redirect.github.com/pillarjs/hbs/pull/257\">pillarjs/hbs#257</a></li>\n<li>build(deps): bump actions/upload-artifact from 7.0.0 to 7.0.1 by <a href=\"https://github.com/dependabot\"><code>@​dependabot</code></a>[bot] in <a href=\"https://redirect.github.com/pillarjs/hbs/pull/255\">pillarjs/hbs#255</a></li>\n<li>build(deps): bump GitHub Actions to latest SHA-pinned versions and supertest to 6.3.4 by <a href=\"https://github.com/sheplu\"><code>@​sheplu</code></a> in <a href=\"https://redirect.github.com/pillarjs/hbs/pull/264\">pillarjs/hbs#264</a></li>\n<li>build(deps): bump github/codeql-action/upload-sarif to 4.37.8 by <a href=\"https://github.com/dependabot\"><code>@​dependabot</code></a>[bot] in <a href=\"https://redirect.github.com/pillarjs/hbs/pull/261\">pillarjs/hbs#261</a></li>\n<li>ci:  add multiple missing Node.JS versions to test matrix by <a href=\"https://github.com/imangas\"><code>@​imangas</code></a> in <a href=\"https://redirect.github.com/pillarjs/hbs/pull/238\">pillarjs/hbs#238</a></li>\n<li>docs: remove dates from HISTORY.md by <a href=\"https://github.com/UlisesGascon\"><code>@​UlisesGascon</code></a> in <a href=\"https://redirect.github.com/pillarjs/hbs/pull/267\">pillarjs/hbs#267</a></li>\n<li>chore(ci): npm-publish via stage publish by <a href=\"https://github.com/sheplu\"><code>@​sheplu</code></a> in <a href=\"https://redirect.github.com/pillarjs/hbs/pull/265\">pillarjs/hbs#265</a></li>\n<li>4.3.0 by <a href=\"https://github.com/UlisesGascon\"><code>@​UlisesGascon</code></a> in <a href=\"https://redirect.github.com/pillarjs/hbs/pull/269\">pillarjs/hbs#269</a></li>\n</ul>\n<h2>New Contributors</h2>\n<ul>\n<li><a href=\"https://github.com/sheplu\"><code>@​sheplu</code></a> made their first contribution in <a href=\"https://redirect.github.com/pillarjs/hbs/pull/264\">pillarjs/hbs#264</a></li>\n<li><a href=\"https://github.com/imangas\"><code>@​imangas</code></a> made their first contribution in <a href=\"https://redirect.github.com/pillarjs/hbs/pull/238\">pillarjs/hbs#238</a></li>\n</ul>\n<p><strong>Full Changelog</strong>: <a href=\"https://github.com/pillarjs/hbs/compare/v4.2.1...v4.3.0\">https://github.com/pillarjs/hbs/compare/v4.2.1...v4.3.0</a></p>\n</blockquote>\n</details>\n<details>\n<summary>Changelog</summary>\n<p><em>Sourced from <a href=\"https://github.com/pillarjs/hbs/blob/master/HISTORY.md\">hbs's changelog</a>.</em></p>\n<blockquote>\n<h1>4.3.0</h1>\n<ul>\n<li>Fix <a href=\"https://www.cve.org/CVERecord?id=CVE-2026-16231\">CVE-2026-16231</a> (<a href=\"https://github.com/pillarjs/hbs/security/advisories/GHSA-rg36-rxv9-2m9q\">GHSA-rg36-rxv9-2m9q</a>)</li>\n</ul>\n</blockquote>\n</details>\n<details>\n<summary>Commits</summary>\n<ul>\n<li><a href=\"https://github.com/pillarjs/hbs/commit/2f979ff3c3cef96413d016b5abda881223795033\"><code>2f979ff</code></a> 4.3.0 (<a href=\"https://redirect.github.com/pillarjs/hbs/issues/269\">#269</a>)</li>\n<li><a href=\"https://github.com/pillarjs/hbs/commit/1f67ecf53626101ccdca39aa2905c94fb5362c6d\"><code>1f67ecf</code></a> fix: escape async helper values at the render substitution sites</li>\n<li><a href=\"https://github.com/pillarjs/hbs/commit/bbdce19fe0c9fe08461b707122792021272401bb\"><code>bbdce19</code></a> chore(ci): npm-publish via stage publish (<a href=\"https://redirect.github.com/pillarjs/hbs/issues/265\">#265</a>)</li>\n<li><a href=\"https://github.com/pillarjs/hbs/commit/516ca5c7a35b34b0087cd2aa369f285ec13ba0c6\"><code>516ca5c</code></a> docs: remove dates from HISTORY.md (<a href=\"https://redirect.github.com/pillarjs/hbs/issues/267\">#267</a>)</li>\n<li><a href=\"https://github.com/pillarjs/hbs/commit/b49949baed0ff0a77b78dc1c3e42a3e3273d5792\"><code>b49949b</code></a> ci:  add multiple missing Node.JS versions to test matrix (<a href=\"https://redirect.github.com/pillarjs/hbs/issues/238\">#238</a>)</li>\n<li><a href=\"https://github.com/pillarjs/hbs/commit/4392e8bbc71303d5a3bbc4e9efd4583e2d2afa36\"><code>4392e8b</code></a> build(deps): bump github/codeql-action/upload-sarif to 4.37.8 (<a href=\"https://redirect.github.com/pillarjs/hbs/issues/261\">#261</a>)</li>\n<li><a href=\"https://github.com/pillarjs/hbs/commit/702a1641c6f05a72fc1a9e13d92aa6cc583c00ca\"><code>702a164</code></a> build(deps): bump GitHub Actions to latest SHA-pinned versions and supertest ...</li>\n<li><a href=\"https://github.com/pillarjs/hbs/commit/9c97857bc590fca85e014a67cab905f6f1ea42b8\"><code>9c97857</code></a> build(deps): bump actions/upload-artifact from 7.0.0 to 7.0.1 (<a href=\"https://redirect.github.com/pillarjs/hbs/issues/255\">#255</a>)</li>\n<li><a href=\"https://github.com/pillarjs/hbs/commit/f21645d7317b88b95e89241a8fd476f851632968\"><code>f21645d</code></a> build(deps): bump github/codeql-action from 4.32.4 to 4.36.1 (<a href=\"https://redirect.github.com/pillarjs/hbs/issues/257\">#257</a>)</li>\n<li><a href=\"https://github.com/pillarjs/hbs/commit/7067e29d4b55242a6843ed238a8b6b57af5eaa36\"><code>7067e29</code></a> build(deps): bump actions/checkout from 6.0.2 to 6.0.3 (<a href=\"https://redirect.github.com/pillarjs/hbs/issues/258\">#258</a>)</li>\n<li>See full diff in <a href=\"https://github.com/pillarjs/hbs/compare/v4.2.1...v4.3.0\">compare view</a></li>\n</ul>\n</details>\n<details>\n<summary>Maintainer changes</summary>\n<p>This version was pushed to npm by <a href=\"https://www.npmjs.com/~GitHub%20Actions\">GitHub Actions</a>, a new releaser for hbs since your current version.</p>\n</details>\n<br />\n\n\n[![Dependabot compatibility score](https://dependabot-badges.githubapp.com/badges/compatibility_score?dependency-name=hbs&package-manager=npm_and_yarn&previous-version=4.2.1&new-version=4.3.0)](https://docs.github.com/en/github/managing-security-vulnerabilities/about-dependabot-security-updates#about-compatibility-scores)\n\nDependabot will resolve any conflicts with this PR as long as you don't alter it yourself. You can also trigger a rebase manually by commenting `@dependabot rebase`.\n\n[//]: # (dependabot-automerge-start)\n[//]: # (dependabot-automerge-end)\n\n---\n\n<details>\n<summary>Dependabot commands and options</summary>\n<br />\n\nYou can trigger Dependabot actions by commenting on this PR:\n- `@dependabot rebase` will rebase this PR\n- `@dependabot recreate` will recreate this PR, overwriting any edits that have been made to it\n- `@dependabot show <dependency name> ignore conditions` will show all of the ignore conditions of the specified dependency\n- `@dependabot ignore this major version` will close this PR and stop Dependabot creating any more for this major version (unless you reopen the PR or upgrade to it yourself)\n- `@dependabot ignore this minor version` will close this PR and stop Dependabot creating any more for this minor version (unless you reopen the PR or upgrade to it yourself)\n- `@dependabot ignore this dependency` will close this PR and stop Dependabot creating any more for this dependency (unless you reopen the PR or upgrade to it yourself)\n\n\n</details>",
+        "taskText": "",
+        "taskSource": "task",
+        "repositoryPrivate": false,
+        "headSha": "f430bae044e41a2240efd70d1db403415e49c551",
+        "baseSha": "023767fe9872e029271df1418f73401bff20ff40",
+        "changedFiles": [],
+        "checks": [],
+        "logs": []
+      },
+      "labels": [
+        {
+          "id": "label-1",
+          "sourceKind": "pr_title",
+          "start": 0,
+          "end": 45,
+          "text": "build(deps-dev): bump hbs from 4.2.1 to 4.3.0",
+          "label": "requirement"
+        },
+        {
+          "id": "label-2",
+          "sourceKind": "pr_body",
+          "start": 0,
+          "end": 65,
+          "text": "Bumps [hbs](https://github.com/pillarjs/hbs) from 4.2.1 to 4.3.0.",
+          "label": "requirement"
+        },
+        {
+          "id": "label-3",
+          "sourceKind": "pr_body",
+          "start": 66,
+          "end": 3065,
+          "text": "<details>\n<summary>Release notes</summary>\n<p><em>Sourced from <a href=\"https://github.com/pillarjs/hbs/releases\">hbs's releases</a>.</em></p>\n<blockquote>\n<h2>4.3.0</h2>\n<h2>Important</h2>\n<ul>\n<li>Fix <a href=\"https://www.cve.org/CVERecord?id=CVE-2026-16231\">CVE-2026-16231</a> (<a href=\"https://github.com/pillarjs/hbs/security/advisories/GHSA-rg36-rxv9-2m9q\">GHSA-rg36-rxv9-2m9q</a>)</li>\n</ul>\n<h2>What's Changed</h2>\n<ul>\n<li>build(deps): bump actions/checkout from 6.0.2 to 6.0.3 by <a href=\"https://github.com/dependabot\"><code>@​dependabot</code></a>[bot] in <a href=\"https://redirect.github.com/pillarjs/hbs/pull/258\">pillarjs/hbs#258</a></li>\n<li>build(deps): bump github/codeql-action from 4.32.4 to 4.36.1 by <a href=\"https://github.com/dependabot\"><code>@​dependabot</code></a>[bot] in <a href=\"https://redirect.github.com/pillarjs/hbs/pull/257\">pillarjs/hbs#257</a></li>\n<li>build(deps): bump actions/upload-artifact from 7.0.0 to 7.0.1 by <a href=\"https://github.com/dependabot\"><code>@​dependabot</code></a>[bot] in <a href=\"https://redirect.github.com/pillarjs/hbs/pull/255\">pillarjs/hbs#255</a></li>\n<li>build(deps): bump GitHub Actions to latest SHA-pinned versions and supertest to 6.3.4 by <a href=\"https://github.com/sheplu\"><code>@​sheplu</code></a> in <a href=\"https://redirect.github.com/pillarjs/hbs/pull/264\">pillarjs/hbs#264</a></li>\n<li>build(deps): bump github/codeql-action/upload-sarif to 4.37.8 by <a href=\"https://github.com/dependabot\"><code>@​dependabot</code></a>[bot] in <a href=\"https://redirect.github.com/pillarjs/hbs/pull/261\">pillarjs/hbs#261</a></li>\n<li>ci:  add multiple missing Node.JS versions to test matrix by <a href=\"https://github.com/imangas\"><code>@​imangas</code></a> in <a href=\"https://redirect.github.com/pillarjs/hbs/pull/238\">pillarjs/hbs#238</a></li>\n<li>docs: remove dates from HISTORY.md by <a href=\"https://github.com/UlisesGascon\"><code>@​UlisesGascon</code></a> in <a href=\"https://redirect.github.com/pillarjs/hbs/pull/267\">pillarjs/hbs#267</a></li>\n<li>chore(ci): npm-publish via stage publish by <a href=\"https://github.com/sheplu\"><code>@​sheplu</code></a> in <a href=\"https://redirect.github.com/pillarjs/hbs/pull/265\">pillarjs/hbs#265</a></li>\n<li>4.3.0 by <a href=\"https://github.com/UlisesGascon\"><code>@​UlisesGascon</code></a> in <a href=\"https://redirect.github.com/pillarjs/hbs/pull/269\">pillarjs/hbs#269</a></li>\n</ul>\n<h2>New Contributors</h2>\n<ul>\n<li><a href=\"https://github.com/sheplu\"><code>@​sheplu</code></a> made their first contribution in <a href=\"https://redirect.github.com/pillarjs/hbs/pull/264\">pillarjs/hbs#264</a></li>\n<li><a href=\"https://github.com/imangas\"><code>@​imangas</code></a> made their first contribution in <a href=\"https://redirect.github.com/pillarjs/hbs/pull/238\">pillarjs/hbs#238</a></li>\n</ul>\n<p><strong>Full Changelog</strong>: <a href=\"https://github.com/pillarjs/hbs/compare/v4.2.1...v4.3.0\">https://github.com/pillarjs/hbs/compare/v4.2.1...v4.3.0</a></p>\n</blockquote>\n</details>",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-4",
+          "sourceKind": "pr_body",
+          "start": 3066,
+          "end": 3481,
+          "text": "<details>\n<summary>Changelog</summary>\n<p><em>Sourced from <a href=\"https://github.com/pillarjs/hbs/blob/master/HISTORY.md\">hbs's changelog</a>.</em></p>\n<blockquote>\n<h1>4.3.0</h1>\n<ul>\n<li>Fix <a href=\"https://www.cve.org/CVERecord?id=CVE-2026-16231\">CVE-2026-16231</a> (<a href=\"https://github.com/pillarjs/hbs/security/advisories/GHSA-rg36-rxv9-2m9q\">GHSA-rg36-rxv9-2m9q</a>)</li>\n</ul>\n</blockquote>\n</details>",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-5",
+          "sourceKind": "pr_body",
+          "start": 3482,
+          "end": 5999,
+          "text": "<details>\n<summary>Commits</summary>\n<ul>\n<li><a href=\"https://github.com/pillarjs/hbs/commit/2f979ff3c3cef96413d016b5abda881223795033\"><code>2f979ff</code></a> 4.3.0 (<a href=\"https://redirect.github.com/pillarjs/hbs/issues/269\">#269</a>)</li>\n<li><a href=\"https://github.com/pillarjs/hbs/commit/1f67ecf53626101ccdca39aa2905c94fb5362c6d\"><code>1f67ecf</code></a> fix: escape async helper values at the render substitution sites</li>\n<li><a href=\"https://github.com/pillarjs/hbs/commit/bbdce19fe0c9fe08461b707122792021272401bb\"><code>bbdce19</code></a> chore(ci): npm-publish via stage publish (<a href=\"https://redirect.github.com/pillarjs/hbs/issues/265\">#265</a>)</li>\n<li><a href=\"https://github.com/pillarjs/hbs/commit/516ca5c7a35b34b0087cd2aa369f285ec13ba0c6\"><code>516ca5c</code></a> docs: remove dates from HISTORY.md (<a href=\"https://redirect.github.com/pillarjs/hbs/issues/267\">#267</a>)</li>\n<li><a href=\"https://github.com/pillarjs/hbs/commit/b49949baed0ff0a77b78dc1c3e42a3e3273d5792\"><code>b49949b</code></a> ci:  add multiple missing Node.JS versions to test matrix (<a href=\"https://redirect.github.com/pillarjs/hbs/issues/238\">#238</a>)</li>\n<li><a href=\"https://github.com/pillarjs/hbs/commit/4392e8bbc71303d5a3bbc4e9efd4583e2d2afa36\"><code>4392e8b</code></a> build(deps): bump github/codeql-action/upload-sarif to 4.37.8 (<a href=\"https://redirect.github.com/pillarjs/hbs/issues/261\">#261</a>)</li>\n<li><a href=\"https://github.com/pillarjs/hbs/commit/702a1641c6f05a72fc1a9e13d92aa6cc583c00ca\"><code>702a164</code></a> build(deps): bump GitHub Actions to latest SHA-pinned versions and supertest ...</li>\n<li><a href=\"https://github.com/pillarjs/hbs/commit/9c97857bc590fca85e014a67cab905f6f1ea42b8\"><code>9c97857</code></a> build(deps): bump actions/upload-artifact from 7.0.0 to 7.0.1 (<a href=\"https://redirect.github.com/pillarjs/hbs/issues/255\">#255</a>)</li>\n<li><a href=\"https://github.com/pillarjs/hbs/commit/f21645d7317b88b95e89241a8fd476f851632968\"><code>f21645d</code></a> build(deps): bump github/codeql-action from 4.32.4 to 4.36.1 (<a href=\"https://redirect.github.com/pillarjs/hbs/issues/257\">#257</a>)</li>\n<li><a href=\"https://github.com/pillarjs/hbs/commit/7067e29d4b55242a6843ed238a8b6b57af5eaa36\"><code>7067e29</code></a> build(deps): bump actions/checkout from 6.0.2 to 6.0.3 (<a href=\"https://redirect.github.com/pillarjs/hbs/issues/258\">#258</a>)</li>\n<li>See full diff in <a href=\"https://github.com/pillarjs/hbs/compare/v4.2.1...v4.3.0\">compare view</a></li>\n</ul>\n</details>",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-6",
+          "sourceKind": "pr_body",
+          "start": 6000,
+          "end": 6220,
+          "text": "<details>\n<summary>Maintainer changes</summary>\n<p>This version was pushed to npm by <a href=\"https://www.npmjs.com/~GitHub%20Actions\">GitHub Actions</a>, a new releaser for hbs since your current version.</p>\n</details>",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-7",
+          "sourceKind": "pr_body",
+          "start": 6221,
+          "end": 6227,
+          "text": "<br />",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-8",
+          "sourceKind": "pr_body",
+          "start": 6230,
+          "end": 6553,
+          "text": "[![Dependabot compatibility score](https://dependabot-badges.githubapp.com/badges/compatibility_score?dependency-name=hbs&package-manager=npm_and_yarn&previous-version=4.2.1&new-version=4.3.0)](https://docs.github.com/en/github/managing-security-vulnerabilities/about-dependabot-security-updates#about-compatibility-scores)",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-9",
+          "sourceKind": "pr_body",
+          "start": 6555,
+          "end": 6720,
+          "text": "Dependabot will resolve any conflicts with this PR as long as you don't alter it yourself. You can also trigger a rebase manually by commenting `@dependabot rebase`.",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-10",
+          "sourceKind": "pr_body",
+          "start": 6722,
+          "end": 6793,
+          "text": "[//]: # (dependabot-automerge-start)\n[//]: # (dependabot-automerge-end)",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-11",
+          "sourceKind": "pr_body",
+          "start": 6795,
+          "end": 6798,
+          "text": "---",
+          "label": "non_requirement"
+        },
+        {
+          "id": "label-12",
+          "sourceKind": "pr_body",
+          "start": 6800,
+          "end": 7724,
+          "text": "<details>\n<summary>Dependabot commands and options</summary>\n<br />\n\nYou can trigger Dependabot actions by commenting on this PR:\n- `@dependabot rebase` will rebase this PR\n- `@dependabot recreate` will recreate this PR, overwriting any edits that have been made to it\n- `@dependabot show <dependency name> ignore conditions` will show all of the ignore conditions of the specified dependency\n- `@dependabot ignore this major version` will close this PR and stop Dependabot creating any more for this major version (unless you reopen the PR or upgrade to it yourself)\n- `@dependabot ignore this minor version` will close this PR and stop Dependabot creating any more for this minor version (unless you reopen the PR or upgrade to it yourself)\n- `@dependabot ignore this dependency` will close this PR and stop Dependabot creating any more for this dependency (unless you reopen the PR or upgrade to it yourself)\n\n\n</details>",
+          "label": "non_requirement"
+        }
+      ]
+    }
+  ]
+}

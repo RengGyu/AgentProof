@@ -1549,7 +1549,8 @@ export function buildEvidenceIndex(
 }
 
 export function buildEvidenceIndexResult(
-  taskText: string, prDescription: string, changedFiles: ChangedFile[], checks: CheckRun[], logs: LogSnippet[], taskSource: PullRequestInput["taskSource"] = "task"
+  taskText: string, prDescription: string, changedFiles: ChangedFile[], checks: CheckRun[], logs: LogSnippet[], taskSource: PullRequestInput["taskSource"] = "task",
+  sourceProvenance?: PullRequestInput["sourceProvenance"]
 ): EvidenceIndexResult {
   const items: EvidenceItem[] = [];
 
@@ -1584,12 +1585,24 @@ export function buildEvidenceIndexResult(
     const riskSignal = isRiskFile(file.path) ? " Risk-sensitive path." : "";
 
     const patchSummary = file.patch ? ` Patch excerpt: ${compactPatchExcerpt(file.patch)}` : "";
+    const codeSide = file.status === "removed" ? "base" as const : "head" as const;
+    const codeLine = firstChangedLine(file.patch, codeSide);
+    const codeRevisionSha = exactRevisionSha(codeSide === "base" ? sourceProvenance?.baseSha : sourceProvenance?.headSha);
 
     items.push({
       id: `ev_${items.length + 1}`,
       kind: isTestFile(file.path) ? "test" : file.patch ? "diff" : "changed_file",
       label: safePath,
       locator: safePath,
+      ...(file.status ? {
+        codeLocation: {
+          path: safePath,
+          side: codeSide,
+          ...(codeRevisionSha ? { revisionSha: codeRevisionSha } : {}),
+          ...(file.status === "renamed" && file.previousPath ? { previousPath: redactSecrets(file.previousPath) } : {}),
+          ...(codeLine ? { line: codeLine } : {})
+        }
+      } : {}),
       summary: `${status}${safePath}${stats}.${testSignal}${riskSignal}${patchSummary}`.trim(),
       confidence: 0.85
     });
@@ -1632,6 +1645,16 @@ export function buildEvidenceIndexResult(
   const omittedByKind: EvidenceIndexResult["omittedByKind"] = {};
   for (const item of ranked.slice(MAX_REPORT_EVIDENCE_ITEMS)) omittedByKind[item.kind] = (omittedByKind[item.kind] ?? 0) + 1;
   return { items: kept, omittedByKind };
+}
+
+function firstChangedLine(patch: string | undefined, side: "head" | "base"): number | undefined {
+  const match = patch?.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/m);
+  const value = Number(side === "base" ? match?.[1] : match?.[2]);
+  return Number.isSafeInteger(value) && value > 0 ? value : undefined;
+}
+
+function exactRevisionSha(value: string | undefined): string | undefined {
+  return value && /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(value) ? value : undefined;
 }
 
 function evidenceRank(item: EvidenceItem): number {

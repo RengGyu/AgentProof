@@ -1,0 +1,1774 @@
+[
+  {
+    "repo": "pallets/flask",
+    "ranked": [
+      {
+        "url": "https://github.com/pallets/flask/pull/5917",
+        "number": 5917,
+        "hash": "00de69cf60fb2a0c4c65bc4ed59945ed731f4ea7d44e74360accc8e0dd676295",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/pallets/flask/pull/5899",
+        "number": 5899,
+        "hash": "0b7ddaf826c03aad3ea9be2b94364c7cd028010f6b2a9c63d32c0f37d3a3dbc5",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/pallets/flask/pull/5962",
+        "number": 5962,
+        "hash": "0d794aaf49710ed28810e87ec1c078c0214d33b8bc137c5421653c9f14226497",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/pallets/flask/pull/6096",
+        "number": 6096,
+        "hash": "1b02dbe5d4eaa1b0765471e59a0ec5d9fcd84144c2ea653e49afb21d7a698c3c",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/pallets/flask/pull/5945",
+        "number": 5945,
+        "hash": "1da93a05f14003bcea5fb18de5958a8cfadd17ff237f1b53dd73fd6dc3a52d77",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/pallets/flask/pull/6133",
+        "number": 6133,
+        "hash": "26b6eea22fd647d8c653ef6ebd93d8db84ed0ab86c5c1bf959cf5737afae5b27",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/pallets/flask/pull/5827",
+        "number": 5827,
+        "hash": "4afcb0bf2c00630320cfcbd876445c5b477fcc4ab1d915df81fac768b2f8f3f6",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/pallets/flask/pull/5900",
+        "number": 5900,
+        "hash": "560551767799696e9264c0a9048d04ab6c035fbd87f421778ea99785bab01ee7",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/pallets/flask/pull/6095",
+        "number": 6095,
+        "hash": "67691e37d79c412207be4ea179eeac3b32aa0d30af9c22a1d2f9173f24b35298",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/pallets/flask/pull/5928",
+        "number": 5928,
+        "hash": "725b4d24a704708d5784907fda5e12fef83bdcb3d2260c82155b9cf026bb0ea6",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/pallets/flask/pull/5898",
+        "number": 5898,
+        "hash": "8de9fe16d06332868e1a98a845bcf89772a225faeba8462817daf3a1c1f283f9",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/pallets/flask/pull/6013",
+        "number": 6013,
+        "hash": "9a08fc271fde96dc00455bf44f89661b797ebcf9bed6e9f48854b0f8ca4afc58",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/pallets/flask/pull/5808",
+        "number": 5808,
+        "hash": "a4e5a641fd98535dcfdd84a12dc6c72f36a36a6947c806d766656fe502d31ed1",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/pallets/flask/pull/5903",
+        "number": 5903,
+        "hash": "af3c758c772d7b52179729fe89f1d4c1dacdc0bbce9c766b0250f58ac113cdcf",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/pallets/flask/pull/5924",
+        "number": 5924,
+        "hash": "d3866e47385336a758295d2d7571a8609423c44e7cb8ff78b2eb7612e912f816",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/pallets/flask/pull/5865",
+        "number": 5865,
+        "hash": "d442da9313b2e5ab7fa7cc291c951c7a432c0234fd3762e58b0c18c6d75a18e4",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/pallets/flask/pull/5844",
+        "number": 5844,
+        "hash": "ea70734e066984df524d2d4417715949a5897212912fe52ce4f9bd0cd5d4d638",
+        "excluded": false
+      }
+    ]
+  },
+  {
+    "repo": "django/django",
+    "ranked": [
+      {
+        "url": "https://github.com/django/django/pull/21900",
+        "number": 21900,
+        "hash": "1437b796624abeb78eff778eaa10a5861bc748e3562b436a34de685c72b55240",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/django/django/pull/21808",
+        "number": 21808,
+        "hash": "1da349030a98f119902fb0339d3815f228975971f059323b4ba4658481cb1cd9",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/django/django/pull/21803",
+        "number": 21803,
+        "hash": "255a538898d1efdf0863ae6f78c6161229c99a32764a65a0ca13c8f44a9ce803",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/django/django/pull/21897",
+        "number": 21897,
+        "hash": "26390873baad5b48461e79c74913cc4b08aae0f845ecffb9792709919f45bcab",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/django/django/pull/21787",
+        "number": 21787,
+        "hash": "268b1119cdac67af618bf272391841d475756c3464db84df9db015c09596691a",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/django/django/pull/21802",
+        "number": 21802,
+        "hash": "3b4506879ecc103dd5560dc2cc47a92f4a290a42b71ad46a98977df7fb4c34ee",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/django/django/pull/21798",
+        "number": 21798,
+        "hash": "3f464919f791a5dfb2e1b786e45f55839ed799862d2886496077c1963c59e349",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/django/django/pull/21853",
+        "number": 21853,
+        "hash": "433b59c8af2abbb7cee6225e8eb5166e14da10b86c96d8cc1e0c239e40553a65",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/django/django/pull/21860",
+        "number": 21860,
+        "hash": "566924e4f0bd29b31f71ee59f8e4690ae53a3d44616ad63bd84f54f148bb704f",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/django/django/pull/21867",
+        "number": 21867,
+        "hash": "5a8db8860261b23367c0eb157e39c2a46a6476a1162c73548eb41f3c179782e0",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/django/django/pull/21864",
+        "number": 21864,
+        "hash": "5c1f96a66cf1fe7b6e5619453ec15d07c83197f423d63571f92985a858d3f9a7",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/django/django/pull/21886",
+        "number": 21886,
+        "hash": "62ba41723115337015e9321acd1a8a44ef28dbd21b6e8006a1c42e7a20d708ee",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/django/django/pull/21807",
+        "number": 21807,
+        "hash": "62c3ed56dc31a5ba5c68eebdd3f0aa8006c463f26b157adb102720e41eb24755",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/django/django/pull/21784",
+        "number": 21784,
+        "hash": "66d5d50d953c7130a6a90dfabf9d229761c7846c47d31105794d97f202f4a8a9",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/django/django/pull/21820",
+        "number": 21820,
+        "hash": "70706ef4cb54a5a53c8ab206b74131b3db4368dde8ce30a0213135b30eeeff7a",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/django/django/pull/21783",
+        "number": 21783,
+        "hash": "745ae14a2b4857d042d7c0c2e9afc215707ec21d5145e33eb7e0a514504e8e44",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/django/django/pull/21805",
+        "number": 21805,
+        "hash": "74db3a1a021ff858315e4f592a9ca825413c8f4b5cdb85d77148112e64e31af7",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/django/django/pull/21875",
+        "number": 21875,
+        "hash": "83d83e722a2e7073e1d8972b0d184bf13f2a7daa848bd80911ec951ba8da8391",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/django/django/pull/21861",
+        "number": 21861,
+        "hash": "865830bf442af318b1f0e3948807c19ec946eb41750a46e1fa3a49e2bdf5fe07",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/django/django/pull/21865",
+        "number": 21865,
+        "hash": "9aac7d34ac55fa708f8731723e5ab994e76aa76874df226dda4a0b513cef83ba",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/django/django/pull/21929",
+        "number": 21929,
+        "hash": "9c9b0b8be48d833137197a48392c31beb8b743ae61218eea10ede7be9559f109",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/django/django/pull/21881",
+        "number": 21881,
+        "hash": "9e7aa5a7b300fabb79be602277f3ecf6a64d7ce7d30aeeebf267c872b3a9f791",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/django/django/pull/21799",
+        "number": 21799,
+        "hash": "ba5c2de01527d582fc613480210c90efb49261829bb18bd6baba081f37cdd257",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/django/django/pull/21785",
+        "number": 21785,
+        "hash": "c9a6a4aa5f587b710c2c10dd8c7a676a4819aef150abcbf479d9e3157fa5ab70",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/django/django/pull/21794",
+        "number": 21794,
+        "hash": "cc9e261cb71236e351a6bc73e8dafaa977e68b6204f752a183b3ec506beda4c4",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/django/django/pull/21834",
+        "number": 21834,
+        "hash": "d35df5b0d8de1711b0d8af77ffe3b94395679b8c7b336b83948d4839db64ed7c",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/django/django/pull/21836",
+        "number": 21836,
+        "hash": "e1dfd7c06c9ad432fcd02836a56a711ff2c0acddcc5f9599bab2e248ef629bf4",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/django/django/pull/21898",
+        "number": 21898,
+        "hash": "ed5567efe3a232891ccfe8768c67a33745eb51489e55be75b865e18bb2ce0fc2",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/django/django/pull/21782",
+        "number": 21782,
+        "hash": "f1217bf6e35ea327e81c599b4ac6a5b484da394c7cd582039dddbcf19744ccff",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/django/django/pull/21813",
+        "number": 21813,
+        "hash": "f2aa214d8877cd5dadace2b6e4fa10e9e88653d4a25bba2bbcda2e285025ed6c",
+        "excluded": false
+      }
+    ]
+  },
+  {
+    "repo": "fastapi/fastapi",
+    "ranked": [
+      {
+        "url": "https://github.com/fastapi/fastapi/pull/16205",
+        "number": 16205,
+        "hash": "04a7c63690c74554029f6328961a7e689be9ebd8aea7770cf30a271bfc246bb7",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/fastapi/fastapi/pull/16224",
+        "number": 16224,
+        "hash": "1384cd174375a324d7ac972a3106f4418d263f95aea557470dd19d298ab47854",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/fastapi/fastapi/pull/16208",
+        "number": 16208,
+        "hash": "1620abb887491b5757e3fe5dd6c4ffb0e22d31a2f3fb3ba1fe3562ba1d14d85c",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/fastapi/fastapi/pull/16289",
+        "number": 16289,
+        "hash": "18e24579fa41933c126bb41ed4cc8cf710fb35d6c06aedac77c3dce78b2b8e67",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/fastapi/fastapi/pull/16203",
+        "number": 16203,
+        "hash": "3ad098ca18d7515bae3d932a8162b6ccd115444845265b50f79ce2a1f2031ffb",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/fastapi/fastapi/pull/16196",
+        "number": 16196,
+        "hash": "3f4fde5714aaaaf79d441b23a13e545d39a909be97bdc1460e7f8249a39fc0a1",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/fastapi/fastapi/pull/16252",
+        "number": 16252,
+        "hash": "47a3554cd1e1c12cc4081244503782519feeded3a3fb1e2c05030cb1f38b2609",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/fastapi/fastapi/pull/16207",
+        "number": 16207,
+        "hash": "4e9139b678508a25e9843e62a5aca34d29e25728567db4f298a1974c191eaa9f",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/fastapi/fastapi/pull/16282",
+        "number": 16282,
+        "hash": "59cf2013ede4e4ba656072728eee7780c1c301c90683f5ad16b26c638c39c4ee",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/fastapi/fastapi/pull/16209",
+        "number": 16209,
+        "hash": "5fbc675bf215ecc859e630f5c837732cd2b95a4009d9008c70c94eb8ac865dff",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/fastapi/fastapi/pull/16249",
+        "number": 16249,
+        "hash": "60049c72764d92e70f5482bbe8ef7fbbdc8b062e398c8d1d4833dbead4fde6f3",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/fastapi/fastapi/pull/16204",
+        "number": 16204,
+        "hash": "612d4dbe1d8c577ced40704487855e5a81c24be92b37175aa01af1cfe50637c8",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/fastapi/fastapi/pull/16210",
+        "number": 16210,
+        "hash": "744c3a20bf2fa9da42e1718b7a765666906c4c2a60735b85745e1666186f913f",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/fastapi/fastapi/pull/16285",
+        "number": 16285,
+        "hash": "7694023230347cef21b73d5ea097494fa50c470695214d0de5dd462e85829fe9",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/fastapi/fastapi/pull/16216",
+        "number": 16216,
+        "hash": "79b1f7966b90ab57f9d65a0082d25849fbbe5b2e71967fff8b249630c1cfd93e",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/fastapi/fastapi/pull/16202",
+        "number": 16202,
+        "hash": "79dd27aa60052fa8dc49bb966bb48d7b8e31f27b2debab4b37d60d668a8d0861",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/fastapi/fastapi/pull/16291",
+        "number": 16291,
+        "hash": "7e899a15f00eefe33c55a5de7c7fa444517dbfa32456a806f1ba6a34ad1aec30",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/fastapi/fastapi/pull/16286",
+        "number": 16286,
+        "hash": "82a907e9b8d1dfb295a491bb256ed3b0ae7d83b8f6cd97cda1fc19e873ae8b1d",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/fastapi/fastapi/pull/16288",
+        "number": 16288,
+        "hash": "852213a263d05ee66dd327a6e59ae753c26deccd001e1c1732db6285c91810a7",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/fastapi/fastapi/pull/16180",
+        "number": 16180,
+        "hash": "99647967ffb8fb3c432ae524d782426bd322b4bd45c51fbe40bd3e381f1fb477",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/fastapi/fastapi/pull/16287",
+        "number": 16287,
+        "hash": "9966aef01db6d8a8fb73f8c86dcd598f98d0384fd2c4847e54eb609af2c325ee",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/fastapi/fastapi/pull/16206",
+        "number": 16206,
+        "hash": "a28669238a6d6533d789684d15d20f60f3f710f0b017fe44f25f4fbe77eeab2b",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/fastapi/fastapi/pull/16201",
+        "number": 16201,
+        "hash": "bc3d007314193c219ac449036d510ccdc82dc6d8a4117adc27970b4f844c1332",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/fastapi/fastapi/pull/16290",
+        "number": 16290,
+        "hash": "c2da04ac56a7f5c68fbeaca093e17df14ac7f6b80dafeb9e7a1b4d4223ea7dba",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/fastapi/fastapi/pull/16211",
+        "number": 16211,
+        "hash": "cc385ff1b8638948c0766ffce67988fc4014b5a443ca4ee68ceb5c3624bb6d14",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/fastapi/fastapi/pull/16185",
+        "number": 16185,
+        "hash": "cc58b1025ef71e6d0d5a2f9e2d6ac42eadbbc9f6f6dea4e692c1d5f791f4daad",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/fastapi/fastapi/pull/16195",
+        "number": 16195,
+        "hash": "ce4f7cb443d1f1eb78a9210e2d77936767d746a833c1dd7eae38b61ca219d10e",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/fastapi/fastapi/pull/16193",
+        "number": 16193,
+        "hash": "ef57079414c9ae8270a832a8b655ecbc5369c4bb177b943eb3caab958d845f8f",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/fastapi/fastapi/pull/16284",
+        "number": 16284,
+        "hash": "f09ce8fe4d66bd139b6a8dcc73a25f85226f397fd74a533542c6ab7218a7429a",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/fastapi/fastapi/pull/16212",
+        "number": 16212,
+        "hash": "fcd9f339c19679c777e11bea5364464d410ecd7f1794b4e512a66d3c75195544",
+        "excluded": false
+      }
+    ]
+  },
+  {
+    "repo": "sveltejs/svelte",
+    "ranked": [
+      {
+        "url": "https://github.com/sveltejs/svelte/pull/18752",
+        "number": 18752,
+        "hash": "0c3b5a3e8a9b97abcf94b518411dddd18912c08405deee0273078777d91724c9",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/sveltejs/svelte/pull/18714",
+        "number": 18714,
+        "hash": "1d55fd5836240f4d14f516e13b0d30d9822c298aa9b0b3d644444fc9a6cd230e",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/sveltejs/svelte/pull/18721",
+        "number": 18721,
+        "hash": "2245d8ae18caabcdc8b81fdff2500ee76a4eaf8fd5cede68848b8bd6df0092c8",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/sveltejs/svelte/pull/18718",
+        "number": 18718,
+        "hash": "42532fa480e4f33e1dce6c2251b6d16a851e55a044b1416672b83314930c480b",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/sveltejs/svelte/pull/18749",
+        "number": 18749,
+        "hash": "4e10b80fa5b251430e5b224c9529ceec2af7c205dd700a5dcbcbc1550a64d0a0",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/sveltejs/svelte/pull/18739",
+        "number": 18739,
+        "hash": "58c395ce8f3c28cee60a41bed49c4ca493e4451aafb0762a0b12437265026f0b",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/sveltejs/svelte/pull/18703",
+        "number": 18703,
+        "hash": "599addd2b1fe2b76b8f1c01576986d6fd9dac21ab19b96fe62d07e8f28173567",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/sveltejs/svelte/pull/18705",
+        "number": 18705,
+        "hash": "640e9d8669a0bbf17edefd92c5c9e51d6972574274c4c5f026e7fda63c1817a1",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/sveltejs/svelte/pull/18751",
+        "number": 18751,
+        "hash": "6ebb85cde957c1f0c88b463a6aa4e8b38744f0902555c8dd73316cf2b21f16b8",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/sveltejs/svelte/pull/18733",
+        "number": 18733,
+        "hash": "73d4ecceac11588fdbf04ba0235c82d426e00406259e829efff01f5a6a76a9f5",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/sveltejs/svelte/pull/18730",
+        "number": 18730,
+        "hash": "77b072c9148439d1f29e8615dc8f1d5885b4c8c8ae6ba921456d21b3b8b0ee6e",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/sveltejs/svelte/pull/18708",
+        "number": 18708,
+        "hash": "7ed2551d48a4af22f349590a11e831d7ea60945cef3ef24d02b27dc0b163ded4",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/sveltejs/svelte/pull/18765",
+        "number": 18765,
+        "hash": "7f57019b2d384e7051edee0543af2d212c2a55689672d510719eadb3a94b687b",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/sveltejs/svelte/pull/18713",
+        "number": 18713,
+        "hash": "98fe628ae65299272a434960270243894e555f08d48ce333480744806dca70ab",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/sveltejs/svelte/pull/18717",
+        "number": 18717,
+        "hash": "9e35c1da8c5e919308846022261eb8c1bb69b1d72bb642598dfc88b973078577",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/sveltejs/svelte/pull/18711",
+        "number": 18711,
+        "hash": "a29bea8f63d85d510156a6c6c89169a86fc1957d96b5b7afb291f5ace45d9ed5",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/sveltejs/svelte/pull/18767",
+        "number": 18767,
+        "hash": "ba642a324b301478b54178f957964f3f074e60105eeb9a8803f3ed3e2d8c32a8",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/sveltejs/svelte/pull/18719",
+        "number": 18719,
+        "hash": "baea0bdacb6463c9fe4497e6be1011de048a5a47f8746ae2712955e326bcb1fc",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/sveltejs/svelte/pull/18728",
+        "number": 18728,
+        "hash": "bebf5d609525c269ad1ebf3bd6dacd09cf9a8687de506ef33cd37cb91b932b30",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/sveltejs/svelte/pull/18736",
+        "number": 18736,
+        "hash": "c19562edfeb4d5a9d2cb25222cd696ab8b2b213fdca3dcebf4bedfed80abbf9f",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/sveltejs/svelte/pull/18701",
+        "number": 18701,
+        "hash": "cb2a7a4c2741e0f12e12d472ee8f39808596e29a77c75c43e804a3ff10ad3756",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/sveltejs/svelte/pull/18727",
+        "number": 18727,
+        "hash": "cb8b9f2981a547e00eb8039ae6d8f8329f45ff2f6dedf460c0d832d9daaed43a",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/sveltejs/svelte/pull/18724",
+        "number": 18724,
+        "hash": "cbe8ec80ba6e9add4011805cf4cc924f82f7529cfb5e6cff051c939f7a79fee8",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/sveltejs/svelte/pull/18712",
+        "number": 18712,
+        "hash": "cd1a60e8658e032c0f42340f270aa40db08645aa7d68e3fe0ba5898e6d2a02d1",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/sveltejs/svelte/pull/18740",
+        "number": 18740,
+        "hash": "d11137668853a8ee3364ad9448d1e678069eed9e45922358c5cb0a7b18c44664",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/sveltejs/svelte/pull/18720",
+        "number": 18720,
+        "hash": "e0e450c779e41a1dd4cc88c5bf478de675183595be42bb25fb109f30335b157a",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/sveltejs/svelte/pull/18738",
+        "number": 18738,
+        "hash": "e9589173ca32b21492335e7ed549663ff5c07172510f12a19ad0d7473a12f099",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/sveltejs/svelte/pull/18729",
+        "number": 18729,
+        "hash": "f459126987aa5c40b4706c6d64b872a5df119c86e41e45339056f9c2417a182e",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/sveltejs/svelte/pull/18710",
+        "number": 18710,
+        "hash": "f8cacf1166e7ea51c9f30bd5ce01c2eee34701e3a7312f7480f9c952a83f86f8",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/sveltejs/svelte/pull/18722",
+        "number": 18722,
+        "hash": "ff58282e1930326fee14e5abcbf19d5c1a36f0cd0a40a8f5ab35f81c87982a66",
+        "excluded": false
+      }
+    ]
+  },
+  {
+    "repo": "expressjs/express",
+    "ranked": [
+      {
+        "url": "https://github.com/expressjs/express/pull/7403",
+        "number": 7403,
+        "hash": "08c3b239b4805ec721e182ec11d47f2e1f6ad7ea96fbca72d9d4e934f642ae93",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/expressjs/express/pull/7233",
+        "number": 7233,
+        "hash": "08fa03e99d46cb901e154c36a23c4d316a415960bb8eb8bd88e7de9ea4e0c63d",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/expressjs/express/pull/7390",
+        "number": 7390,
+        "hash": "0984840b20f2ff187edbcf304c5024db1e9443f815488ab6deb2ac21a27e6577",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/expressjs/express/pull/7377",
+        "number": 7377,
+        "hash": "2af7f4097d31459930181e22f3efa639c88df341add95ac9059d298babfc8891",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/expressjs/express/pull/7353",
+        "number": 7353,
+        "hash": "2ca916b0b7094d5f67bf9eaab54735b94a38232d13d0860ce3a68ba99bd64678",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/expressjs/express/pull/7450",
+        "number": 7450,
+        "hash": "3296c572551c56695a05632820b02ef0179bb2fd9e8dbe2cd9c759eb901f3d4e",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/expressjs/express/pull/7400",
+        "number": 7400,
+        "hash": "4202b1e7575f0c81e2e635cd48e4e2f3ef06be8351da86fdff8e8740d8b6bce5",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/expressjs/express/pull/7461",
+        "number": 7461,
+        "hash": "4b0e8b3b079bf7e1a79cba1717286cfa29f40fab7e9c77848192d7b6ce6d848f",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/expressjs/express/pull/7225",
+        "number": 7225,
+        "hash": "4b3c8ab0837552ec18cb8955a7c838bc87eba106d4867a8d7a705ac0232fb4d5",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/expressjs/express/pull/7399",
+        "number": 7399,
+        "hash": "525dc62a48bdd43d8e530fe95991ccd587d309888cc380703917ac403c871048",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/expressjs/express/pull/7265",
+        "number": 7265,
+        "hash": "55df7e4c00e52abc2035d7650fec88627182659c49da9b435ed0af0b68d08cd1",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/expressjs/express/pull/7345",
+        "number": 7345,
+        "hash": "58d84ce9cb306ca88ffa9342b8e53acf1c96095c85711ca1a4b221391b373cb6",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/expressjs/express/pull/7159",
+        "number": 7159,
+        "hash": "7f17cead2155f6e9ba7d95df3b2da9ec437165d479f63d5903103e47b0643e18",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/expressjs/express/pull/7150",
+        "number": 7150,
+        "hash": "838412e19889ddd1c7507fd3b8e784a10f1e409b00aa0edfdae49eeffd2a779d",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/expressjs/express/pull/7149",
+        "number": 7149,
+        "hash": "841de14a47a74d94c1e84c364290696b6ecfb40fb73e6c069ce1f59cc3ab6fb5",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/expressjs/express/pull/7152",
+        "number": 7152,
+        "hash": "86f6d3c6bfccf53a384651bce626b1be5f3f6fad54f19f34ce78ae99fb183ee3",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/expressjs/express/pull/7218",
+        "number": 7218,
+        "hash": "8a3301dd0cc3765d14de6f0d8d46b1c584162a3eda148b04950d7d9e25135f8e",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/expressjs/express/pull/7460",
+        "number": 7460,
+        "hash": "8d08c85fa08217abd0bd2b7a1756c75d9476512b3e23e80a338ab2f29a8434ae",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/expressjs/express/pull/7305",
+        "number": 7305,
+        "hash": "aa5429b68ea76cd26aa5352a6bcc396e538a83ca69a1e38da24da6e086fa7538",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/expressjs/express/pull/7212",
+        "number": 7212,
+        "hash": "b0925d8bb541174ca5674f2b783c5050b5e419af9b2f925a1f430a8a7493844f",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/expressjs/express/pull/7224",
+        "number": 7224,
+        "hash": "b97534d153fc4e4f4078ca1a6e483fcfd6805547ecd6202aea301c6faeb53658",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/expressjs/express/pull/7366",
+        "number": 7366,
+        "hash": "bb0bc8d649541f4022732f457d179a0235004624500dcf30322cb90047592403",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/expressjs/express/pull/7462",
+        "number": 7462,
+        "hash": "c3ce95a504f3b4a20c0dba5cee1c1eb84959879c8984d59c71f02d40e169077c",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/expressjs/express/pull/7191",
+        "number": 7191,
+        "hash": "ce8a6c2727e01a6584b8e822331698074571e7cf9eb4d61085af842ec8fd8bf9",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/expressjs/express/pull/7234",
+        "number": 7234,
+        "hash": "daacfcb2e1aae669f63075858cf71705622f441281fbc5f70d693aacd0396a0b",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/expressjs/express/pull/7297",
+        "number": 7297,
+        "hash": "dbbae28fe6c5988503b875e7dd9a0352161629d2653d680a70049132ecef0b7c",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/expressjs/express/pull/7210",
+        "number": 7210,
+        "hash": "df1dd30c5d00ca1028ddba1b099425e5838472710b4211f646e31c30ec60c094",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/expressjs/express/pull/7316",
+        "number": 7316,
+        "hash": "e4d7a77d204b9068347caf3643033a63782d5135f5ce8e4168f1a2e26ec78be1",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/expressjs/express/pull/7211",
+        "number": 7211,
+        "hash": "f41b1d145333749643f73b2751924fe11d9d6ceff79939a209d61d4bc18b7f44",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/expressjs/express/pull/7406",
+        "number": 7406,
+        "hash": "fd510a51ed6e8d848648bae689bdc9d96fa18ea4977f563d1334149b6a07c35a",
+        "excluded": false
+      }
+    ]
+  },
+  {
+    "repo": "astral-sh/ruff",
+    "ranked": [
+      {
+        "url": "https://github.com/astral-sh/ruff/pull/28443",
+        "number": 28443,
+        "hash": "0005e347d7a7804652f5631f32ad5ddffa518822856f0d26916b46cd5f677e2a",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/astral-sh/ruff/pull/28412",
+        "number": 28412,
+        "hash": "019a97873c71ff23354491b7572be9df4e942cf62493972903e243d8fb0aff52",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/astral-sh/ruff/pull/28460",
+        "number": 28460,
+        "hash": "06d6077ea806d06f6688da442452e45f3e939b1b1ed6e22332e9db9aa43698c7",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/astral-sh/ruff/pull/28451",
+        "number": 28451,
+        "hash": "1289212fbdd7b9891d0459ead6744ec7d9595d2a2ce60117f5f51f7572c852bf",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/astral-sh/ruff/pull/28433",
+        "number": 28433,
+        "hash": "160647e68fde81057f76cb8c8b9305d2f202002bea5c3e5753638491baeea135",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/astral-sh/ruff/pull/28426",
+        "number": 28426,
+        "hash": "1ac9b3128929604baaa76c5bb6c95ee94dc865908aaeaaaefd80e21d98e80f0b",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/astral-sh/ruff/pull/28461",
+        "number": 28461,
+        "hash": "22dcb08c7dfce08c883e954a56cb96dcfb53d0bcb4ee190a675a47e82415aabb",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/astral-sh/ruff/pull/28467",
+        "number": 28467,
+        "hash": "2ddb8f8c251d9f8a44da5755b879289172b8097ff32696e075ab26e1f7e01bf8",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/astral-sh/ruff/pull/28439",
+        "number": 28439,
+        "hash": "33d1c3a5350fa18d9333bfd7d22e889b4cba61ccd5e7553ab2238f333bb8c436",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/astral-sh/ruff/pull/28437",
+        "number": 28437,
+        "hash": "355a6187d398843af69f9e002245d3387bcb763a0ff9db5d4b6478315dbedde0",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/astral-sh/ruff/pull/28470",
+        "number": 28470,
+        "hash": "4cf25f545c6f3a9cf6ff97eb5263f94ae7c9640c51470dd6ba985d609f755b44",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/astral-sh/ruff/pull/28432",
+        "number": 28432,
+        "hash": "51177f99d2e49c4e9b1088dd93ce6312452af896e6269b522d33aced14cc90fd",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/astral-sh/ruff/pull/28430",
+        "number": 28430,
+        "hash": "52ec18c685ff4f8028f99046586274ad657fb97e1045acb1a1f4a10b72bba37a",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/astral-sh/ruff/pull/28468",
+        "number": 28468,
+        "hash": "5a9c9100b37a2478e9198570d1835327fbdee9480884d72f638a4e9905e6d2fc",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/astral-sh/ruff/pull/28478",
+        "number": 28478,
+        "hash": "82703722ca09c107f947aa45b08856458b73058f8317657accbac0841ba97dd5",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/astral-sh/ruff/pull/28446",
+        "number": 28446,
+        "hash": "8299f52b2f5521d27f5b904b52cf8541b1c662d28ce9e7cc90d8300364b74019",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/astral-sh/ruff/pull/28409",
+        "number": 28409,
+        "hash": "891c25714ae722e85ced61b00df9fdc5f806e61bf78c48c0073b682d8440dd81",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/astral-sh/ruff/pull/28431",
+        "number": 28431,
+        "hash": "8b2b2d8e2e4be91119d34e6770fbc4deaf2ea4f0a93ad741841df214dfa848f7",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/astral-sh/ruff/pull/28444",
+        "number": 28444,
+        "hash": "96d5e655f9ed7d7aa2b517879cd2985062d085afa726c9043da3630606a2ac3b",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/astral-sh/ruff/pull/28438",
+        "number": 28438,
+        "hash": "9efc28f6abd5161b447ba90a6abe2a8cb86ce1e5c3d1888fef1f6f9f93850b34",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/astral-sh/ruff/pull/28448",
+        "number": 28448,
+        "hash": "9f3eaa3785f6a23e9842b24d81473c3b8d633f8c037a15ff680a256379b3dfb9",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/astral-sh/ruff/pull/28477",
+        "number": 28477,
+        "hash": "ada2676b3627630130cfc925d80855edbd7ce22b19541936fae0bee624448e62",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/astral-sh/ruff/pull/28436",
+        "number": 28436,
+        "hash": "b657a9b73bc899bf5702cdf5b0182ab8b7f6473c3f3cba19804794a5b1699436",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/astral-sh/ruff/pull/28440",
+        "number": 28440,
+        "hash": "cddd6c7b225e721a8e4fb37ed2c64022f2e1f792f46313b18cd5b9222d6db70c",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/astral-sh/ruff/pull/28435",
+        "number": 28435,
+        "hash": "d0b83b5a71b313b0eb839767fb1ab483ab83b09bd2b70df909362f42cfe0bdaa",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/astral-sh/ruff/pull/28434",
+        "number": 28434,
+        "hash": "d3d8a156d3b40f656cfa49100ed01499cffb2f4864dc52f7c61d0e6d4b2b1bdc",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/astral-sh/ruff/pull/28408",
+        "number": 28408,
+        "hash": "e55e982fbb1aca305d8f5a621848c8225b63cdaf8f449830c3c5073dd120c191",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/astral-sh/ruff/pull/28456",
+        "number": 28456,
+        "hash": "ebe5c2ad31adb5fe935dae47c3061077306a880911afb4a6522de801c8c68688",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/astral-sh/ruff/pull/28454",
+        "number": 28454,
+        "hash": "f5f6dfb4bdd913d3f7ae4b675674be47aa36cc8e3a4be923f93ceca19136dfa0",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/astral-sh/ruff/pull/28406",
+        "number": 28406,
+        "hash": "f9ee0b522c0fb7038289f17cd670f1b6394619643fb450ce8eab394c6fe8fb28",
+        "excluded": false
+      }
+    ]
+  },
+  {
+    "repo": "rust-lang/rust",
+    "ranked": [
+      {
+        "url": "https://github.com/rust-lang/rust/pull/162475",
+        "number": 162475,
+        "hash": "00b60c41c16c121cdedbe9c0edd64110b5d08ed88923f78ac35548b424e280ff",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/rust-lang/rust/pull/162509",
+        "number": 162509,
+        "hash": "1c0bdcfe4039c02068bcee8b740df121492171a42c23d3414374d6fb6d2b4431",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/rust-lang/rust/pull/162532",
+        "number": 162532,
+        "hash": "1ec18d85058291cd8ff529514d370cc2574570d3af783cc5dcee927e04f56cfa",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/rust-lang/rust/pull/162521",
+        "number": 162521,
+        "hash": "217b6c59064196b2b8a4768d1cb7ce2ec19d56e8fc9bdcd0856f23f1ada23e62",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/rust-lang/rust/pull/162526",
+        "number": 162526,
+        "hash": "23e483aed55c1f5edb6dc2a95c291fce5ece38619d73f0cf6c2c874749098ecf",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/rust-lang/rust/pull/162500",
+        "number": 162500,
+        "hash": "30f39465daf35b43ee3d6da531d90ce6273b4e7432d075b60e0091f5751dba50",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/rust-lang/rust/pull/162502",
+        "number": 162502,
+        "hash": "3d03773e878f329172c50a8fffb5fd7c40f3abcaa7511c52dc0ebd0da8446c47",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/rust-lang/rust/pull/162473",
+        "number": 162473,
+        "hash": "4012fdb2185b773c704215e1643ea8bded74147a3bd7fd6beb0a1c4a3bbf4fec",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/rust-lang/rust/pull/162477",
+        "number": 162477,
+        "hash": "4246a4b76524c27f9f2756f64c606788b3909322713c93c449851f7c2bd52765",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/rust-lang/rust/pull/162528",
+        "number": 162528,
+        "hash": "4baa116a07a3c2177fb7bf3f44b6f755dd1d9adf666841b3e5518766eafc0a65",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/rust-lang/rust/pull/162482",
+        "number": 162482,
+        "hash": "5033b5d23ba36cd8b037f7b68093bc163cff7978ed0a9bfdef820454210d7777",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/rust-lang/rust/pull/162476",
+        "number": 162476,
+        "hash": "51b74ac37fd5c8de9fc61600bbf98aaef58fec7376070e3f2cda7464529664d6",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/rust-lang/rust/pull/162489",
+        "number": 162489,
+        "hash": "53d8e36cb8572e47906e2eab347917782848526a6282a02f419c95a43eb3c4f1",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/rust-lang/rust/pull/162495",
+        "number": 162495,
+        "hash": "5e255c118ab43d3f61983813488537e59881368253cea99085f35b9e420669e2",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/rust-lang/rust/pull/162470",
+        "number": 162470,
+        "hash": "71c0ba0cf775dcde5db7241072f9373728692582b496782b5a5f18dc3069a87b",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/rust-lang/rust/pull/162503",
+        "number": 162503,
+        "hash": "77648e0611a78deb05f645e9cf33864b9879798e2369cd65866473ca6b8ea82d",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/rust-lang/rust/pull/162456",
+        "number": 162456,
+        "hash": "780ab888a4c62a1df903317279a88c6c5d0d29d3ac590d1f76c43257ac3a4f94",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/rust-lang/rust/pull/162550",
+        "number": 162550,
+        "hash": "835c7e51d982c44f2917a83aad8953f148fdd2bbe936a4fad8f834c108f8e686",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/rust-lang/rust/pull/162462",
+        "number": 162462,
+        "hash": "83c79ac0fff750aaabba73849659370d2a774eb0b9ab78df83f90f3a733b1448",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/rust-lang/rust/pull/162465",
+        "number": 162465,
+        "hash": "8da9b97c3c8dc7ae84afff450a247b778accbe23422f82e1af3cd0fca58db716",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/rust-lang/rust/pull/162494",
+        "number": 162494,
+        "hash": "97c6dc2ba4c0debe4e32e648eed9a89f74d9420b54aed2b1c49146a44a89d68b",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/rust-lang/rust/pull/162510",
+        "number": 162510,
+        "hash": "a5c4333ec0b27846250213196ac13fcdcdae04cdf66c4fba7df66a097a5b57bc",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/rust-lang/rust/pull/162488",
+        "number": 162488,
+        "hash": "a71a22f33b7c6bed444b5ca95f0aa3e83739e4f75ba0d1b4c5cd306f4e4fd594",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/rust-lang/rust/pull/162487",
+        "number": 162487,
+        "hash": "ad9e85071576e1f96b066986f666638eb6baeb7e5e6d3161a7b2a87e8d262d49",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/rust-lang/rust/pull/162459",
+        "number": 162459,
+        "hash": "b8269f0105928f2675c2b05aeae77c45ddc7b24b3b41496b98eccff8fcfaa0b0",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/rust-lang/rust/pull/162455",
+        "number": 162455,
+        "hash": "cde84d918507f5cc2d6c0bb96646d9143ff3baf285048489019587f2e36f35bd",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/rust-lang/rust/pull/162461",
+        "number": 162461,
+        "hash": "cfe581e8ec0512a109e834bb3f90a0582890a486c9a9c265ff6f7140a3107c2d",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/rust-lang/rust/pull/162468",
+        "number": 162468,
+        "hash": "e9a34df7386394f4f007790e8e4dad634d293e794978de20787f69d21bfa0f9c",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/rust-lang/rust/pull/162453",
+        "number": 162453,
+        "hash": "ede26e1034001f50e22bbb0037f30404cfe771aea613904ac16fcc8fd4308785",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/rust-lang/rust/pull/162505",
+        "number": 162505,
+        "hash": "f21eea071db02f0144c723b379ccde90727f50e0f518bf4310efc9676f9e280f",
+        "excluded": false
+      }
+    ]
+  },
+  {
+    "repo": "denoland/deno",
+    "ranked": [
+      {
+        "url": "https://github.com/denoland/deno/pull/36685",
+        "number": 36685,
+        "hash": "0a080e85ca59a6ccd003d3781bab5e7cfeca83587982d15d3e2b1a5e2dff8673",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/denoland/deno/pull/36784",
+        "number": 36784,
+        "hash": "0e1edd0a4886f8d4832303c3174609cb5fbb7e680435dc57c280198dc4652533",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/denoland/deno/pull/36753",
+        "number": 36753,
+        "hash": "2a66bb3a3c6fcba7238ff31432f1b54917fcd9c28e6455af7c1ee4523354e8da",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/denoland/deno/pull/36711",
+        "number": 36711,
+        "hash": "3f7505ce4063e56f2f4d9266eeaff1263f915c6e929dc588efb14b4dbeb939eb",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/denoland/deno/pull/36723",
+        "number": 36723,
+        "hash": "4a73e3889bd43fb23c198915ddcb1719885a278397633f022702037f992c48be",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/denoland/deno/pull/36747",
+        "number": 36747,
+        "hash": "529d1c29c15f97ebf9211b1c278f70e3438b4027067399008609bfcd6770e2a8",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/denoland/deno/pull/36785",
+        "number": 36785,
+        "hash": "529f9c12205308bdd5bf63a938093a69efd53b0ce5bb8e7ca220cab070b0301e",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/denoland/deno/pull/36718",
+        "number": 36718,
+        "hash": "5f43bd15f0c5494ebefd9c6c7926fdf80274e33117ff639a4ce6455de7fd035f",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/denoland/deno/pull/36743",
+        "number": 36743,
+        "hash": "61b20504a7a7e388d6c648a2d41d1c083cbd15edab19dc8d8f2e13688a01e04a",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/denoland/deno/pull/36774",
+        "number": 36774,
+        "hash": "65730e468d680742fd79bc453308f7ecbe0c01aa7509fc9428fe9be220e6c701",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/denoland/deno/pull/36697",
+        "number": 36697,
+        "hash": "6ca4d0ccd80a835319467ac667edc683cb0f2b99880e9c3a206314ea7acc2901",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/denoland/deno/pull/36696",
+        "number": 36696,
+        "hash": "7054fdaf8b40adf257812a7d4741f7d1f30e4b7ec6467752ae794f3514e18581",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/denoland/deno/pull/36720",
+        "number": 36720,
+        "hash": "75365530f577a6e390f55a478f4b4b6d8694c06d84664e9c7c5ddb9ab5bdc01e",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/denoland/deno/pull/36745",
+        "number": 36745,
+        "hash": "7a5c7cb3bdc67d4f52993c3764ed725433c3de018df99c6688a77ebbaa36390f",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/denoland/deno/pull/36757",
+        "number": 36757,
+        "hash": "7e6355c127886d225cf5c1462403b1c3fed2adec78e4406575fed5fc03b7d9b5",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/denoland/deno/pull/36722",
+        "number": 36722,
+        "hash": "83813a1b3d0b06f11cc6798a68d52860b205ed5d9748a278ba75e7bf748bc7b8",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/denoland/deno/pull/36797",
+        "number": 36797,
+        "hash": "8d072a5fe66ac81884eae6dc021c74bf83b8208129d09b271c69637fe1814835",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/denoland/deno/pull/36742",
+        "number": 36742,
+        "hash": "9373a1101b86bb157011f00d8eb805bbb31f14647ba37c7d8d2537508777aa29",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/denoland/deno/pull/36716",
+        "number": 36716,
+        "hash": "9a4a30863b81770a918ff07073c46327311fb937bf0f20dc3e86396e0ed9cc21",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/denoland/deno/pull/36699",
+        "number": 36699,
+        "hash": "a71a156868f96e0dab5254c2c04a94fae2c183acdcbbae467dd440ea57a52c5e",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/denoland/deno/pull/36707",
+        "number": 36707,
+        "hash": "c07e50309ffccea845776dedfc1a209c1be51d81f5ac82355a9694ea937eeb7a",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/denoland/deno/pull/36693",
+        "number": 36693,
+        "hash": "c0bd18593b875bb8f433ec611c4d3223bf3cd300c93019d124b310dd2c88ddfd",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/denoland/deno/pull/36765",
+        "number": 36765,
+        "hash": "d7f964b97ad79835f85e6f81c3052cb7749c5f8e1db6bee3ee944de21e0c8c42",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/denoland/deno/pull/36728",
+        "number": 36728,
+        "hash": "e18ae758fed4ce49f34e60f57cdd6813b0862b9ced1320d857ac550166a1e2e2",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/denoland/deno/pull/36727",
+        "number": 36727,
+        "hash": "e9c3d789bf765de8b5228fddd7f02dfa0e07c2499eb65da07d05d3832e9a2550",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/denoland/deno/pull/36706",
+        "number": 36706,
+        "hash": "eae7a5b0ce071d59e976e9efe5783be88601b42b4c96340bb170e640b059a1dc",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/denoland/deno/pull/36694",
+        "number": 36694,
+        "hash": "ee96af44d2b750ec8261749c0d81ce36a859c7e27e6c04e4be7c5322cb1172cf",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/denoland/deno/pull/36708",
+        "number": 36708,
+        "hash": "f3cdce13c24a18796fb766d8a42ab46bda0230f25c69a489932bcc651d1c72cf",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/denoland/deno/pull/36744",
+        "number": 36744,
+        "hash": "f46947995ce0ff6c250f31a512ce58a64d53f697559790e4b3f228544edb2e46",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/denoland/deno/pull/36690",
+        "number": 36690,
+        "hash": "fc615085a7adb07919c6f83f0df60a9e5fdd200f8a8abb6227d04b0190d2af4e",
+        "excluded": false
+      }
+    ]
+  },
+  {
+    "repo": "kubernetes/kubernetes",
+    "ranked": [
+      {
+        "url": "https://github.com/kubernetes/kubernetes/pull/141881",
+        "number": 141881,
+        "hash": "0113b24a65ff4167cd45d4bb968cf05306d4841d4d049ded38802de321ba8967",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/kubernetes/kubernetes/pull/141962",
+        "number": 141962,
+        "hash": "01de576858be62556370eb924b80bb3b756e2d04b1663c8e179e5709d5ea9d49",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/kubernetes/kubernetes/pull/141975",
+        "number": 141975,
+        "hash": "04ddf1b257114c3be6e62f0031d0dc99667a00e7e51d2e44ffc3fe08fc885e85",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/kubernetes/kubernetes/pull/141811",
+        "number": 141811,
+        "hash": "0f88a585dc16233270f14a36ec00185b7016a55891156807861e058b3f814732",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/kubernetes/kubernetes/pull/141873",
+        "number": 141873,
+        "hash": "311684142f4dbf18d7f81dd3a52229cfa4255ad93686c2a0de892156dc0e8900",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/kubernetes/kubernetes/pull/141886",
+        "number": 141886,
+        "hash": "3b0165984c7c492a48cd24c8469738e36c70997504585b908d2c0bfa181b62f6",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/kubernetes/kubernetes/pull/141910",
+        "number": 141910,
+        "hash": "4512937660fb52cdedaed558f1a6a8f77d19f9b2eb0557a923bf000f95f62765",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/kubernetes/kubernetes/pull/141918",
+        "number": 141918,
+        "hash": "55b969748e410f5e9cbe73264b9789f9f086e876d04463543899d95d8b1e2f27",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/kubernetes/kubernetes/pull/141864",
+        "number": 141864,
+        "hash": "624ed0dffc66860d3867caae06194dfd4319db645f3a7b6ab41417fb22aea64d",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/kubernetes/kubernetes/pull/141968",
+        "number": 141968,
+        "hash": "750952f89240e1f0a66b9495b7f16fea661d742bfbaf1dbf8d8bb207c3773e16",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/kubernetes/kubernetes/pull/141808",
+        "number": 141808,
+        "hash": "7b45fbcce1000aa9eac7638f5ad48ff6ad8bf624b9c75fd1ee6a5f00bc797d3e",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/kubernetes/kubernetes/pull/141863",
+        "number": 141863,
+        "hash": "7c0c53f4915da5afb5e9558ab98ae67e10dec5b9a8d1d89342c07816ada68d42",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/kubernetes/kubernetes/pull/141828",
+        "number": 141828,
+        "hash": "82f12369dd216e46308df9c2460b697cfbad9715252b5df09af720913da25334",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/kubernetes/kubernetes/pull/141889",
+        "number": 141889,
+        "hash": "8afff0c3d7dbf0ff533e2241f8894844957df7418820512ba37fb3d049ae1f6f",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/kubernetes/kubernetes/pull/141827",
+        "number": 141827,
+        "hash": "91cfe8c18ff9caf00f3bf7e17307c494c110d4b6bf06f98bbabc0fe4018d1b35",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/kubernetes/kubernetes/pull/141937",
+        "number": 141937,
+        "hash": "92bbeea7ec72f672f07fb3e06a8458d1dd16d9e6cc81486c648275dead217dad",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/kubernetes/kubernetes/pull/141817",
+        "number": 141817,
+        "hash": "9bd81b0df9337222dd2b61adb33cfc508c394880a2dce9c1ad1c775b70b9956f",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/kubernetes/kubernetes/pull/141871",
+        "number": 141871,
+        "hash": "9d6942b2252d9ea70957ccbaafca57168dff938cadf374afdd8100330b8df4d6",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/kubernetes/kubernetes/pull/141938",
+        "number": 141938,
+        "hash": "9f07bd2276a77a926b4987c233307aebaa4e34bacef0b3bf9d58cd5b546ec17b",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/kubernetes/kubernetes/pull/141947",
+        "number": 141947,
+        "hash": "a4b681ff9891a67e3933abeacb892ea2a0756d8ddf6a6553467d6f0d1a592d1c",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/kubernetes/kubernetes/pull/141865",
+        "number": 141865,
+        "hash": "a977f26bf13e599db37e153a26f38d554780dca8e7f599a3ca9902efa152fed7",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/kubernetes/kubernetes/pull/141815",
+        "number": 141815,
+        "hash": "adece49dfc1af41b1c71db4e6a09f0dd1c695eaae608fea748586e39f21df310",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/kubernetes/kubernetes/pull/141895",
+        "number": 141895,
+        "hash": "aef43de27b8c28852f8deaa9a9b2ecae66ae17832a05d5275132455bd3537dc1",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/kubernetes/kubernetes/pull/141874",
+        "number": 141874,
+        "hash": "b857a5e41dfe06a82ce5d8fc66255cca39192451e1010f21fae072dc6785dac7",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/kubernetes/kubernetes/pull/141928",
+        "number": 141928,
+        "hash": "c8ccf08bec31aba8d1fca1c1d72e9e42b1675e94cf149b1f480231a58778acc0",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/kubernetes/kubernetes/pull/141866",
+        "number": 141866,
+        "hash": "ca79cb808b3cd1ba241f60313781f385b532122ad7c26bb829dde3a106a95427",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/kubernetes/kubernetes/pull/141896",
+        "number": 141896,
+        "hash": "ce57f6fa87c14c2492b045c8bcfc83cb891848a1cdc29781b8ba5c1eed015d94",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/kubernetes/kubernetes/pull/141832",
+        "number": 141832,
+        "hash": "cf7a2e2a6fb8e460a5a07cb8691c9f538415660e8ca4d0e6caefec546cd4bdef",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/kubernetes/kubernetes/pull/141800",
+        "number": 141800,
+        "hash": "ff5cd3fd141bad76b964c1b729f632128f8e10599472741a4157cd85da9830b2",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/kubernetes/kubernetes/pull/141867",
+        "number": 141867,
+        "hash": "ffe1a44393cb65095bf508cf6b8168a33ede3bd98709136782a742cbc3eecb74",
+        "excluded": false
+      }
+    ]
+  },
+  {
+    "repo": "gofiber/fiber",
+    "ranked": [
+      {
+        "url": "https://github.com/gofiber/fiber/pull/4670",
+        "number": 4670,
+        "hash": "06cc7933142bf76bef39138e687b9d255bca70421eade83b29c1188a0ad0e808",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/gofiber/fiber/pull/4664",
+        "number": 4664,
+        "hash": "161c7d527fbe48681866d6324ede5b2714288adb7a742aaac5f16df4cf582dcd",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/gofiber/fiber/pull/4674",
+        "number": 4674,
+        "hash": "175b347ce41c8bbd4d303cf095744379b6a178230600c9eca3d9a1c9b89456c3",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/gofiber/fiber/pull/4651",
+        "number": 4651,
+        "hash": "1ec71e5a90361b7417ba573fbd6568ed487d0755682d20114f522d7934ef6d9c",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/gofiber/fiber/pull/4639",
+        "number": 4639,
+        "hash": "2b43b3dc8d0c0ea66190096943a385bf6c9da85c48cc1712c5b30a605f0997d6",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/gofiber/fiber/pull/4661",
+        "number": 4661,
+        "hash": "398652d516d2f796b554769922353b086d9320f16e18208f5f7aff548a77b1e5",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/gofiber/fiber/pull/4655",
+        "number": 4655,
+        "hash": "4d6440e4e8f7acb56d55a64bc642120c9f767462eb6cb04e3b4cd401a901f271",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/gofiber/fiber/pull/4665",
+        "number": 4665,
+        "hash": "53d35ef497c7fb8b041e0e26e7a3eff05de72f08f7962ee0344aa17a9a3788e3",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/gofiber/fiber/pull/4653",
+        "number": 4653,
+        "hash": "554b00cfa14342ceb396f0aa09661d51d8c2459a537b4370133a4d91b9f39d75",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/gofiber/fiber/pull/4649",
+        "number": 4649,
+        "hash": "5f822f48f4f2affecf1a517228762d948487843beaea132610565c77c4abf69c",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/gofiber/fiber/pull/4672",
+        "number": 4672,
+        "hash": "6f5b221af8502b092d53786744e1e67985cff4723b8e71d643b43dd6036bae39",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/gofiber/fiber/pull/4667",
+        "number": 4667,
+        "hash": "74d334c772fff5477476eef11bc77aeb5f4f262826dad687c91c2d071bec7fe9",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/gofiber/fiber/pull/4663",
+        "number": 4663,
+        "hash": "7c6038ec1ed42beb296d1cc9662fe2ec48c8ee5959bc4092ff254e97c127bb2b",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/gofiber/fiber/pull/4668",
+        "number": 4668,
+        "hash": "86a3eb12960ba59e8351a4325c9a0ae82e9f960353ed8d88d1c0fbe57e55635e",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/gofiber/fiber/pull/4662",
+        "number": 4662,
+        "hash": "8c4b3588f14919e4fc2bbd5b81c62117888ddb685055c77b13581d5da6b50225",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/gofiber/fiber/pull/4637",
+        "number": 4637,
+        "hash": "8d8cf4471674893766283ec164733e4e069be68d1042832870fdd9dbd0c7e0c7",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/gofiber/fiber/pull/4671",
+        "number": 4671,
+        "hash": "8f17d6c2056e0e57351b15959feee8c8f349177755401bb0cea1729827abd774",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/gofiber/fiber/pull/4660",
+        "number": 4660,
+        "hash": "957dbce71f88ec2a0363c149418110f65039a28ed8641e88408a3a0095e06fd1",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/gofiber/fiber/pull/4647",
+        "number": 4647,
+        "hash": "9770ce78f18c8c4307f3a1ac2a03fa6b9f9590644fb8fbc43b1e90ebdfb7530e",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/gofiber/fiber/pull/4658",
+        "number": 4658,
+        "hash": "a34530dfb3e318a9af142610527ff008b312bc74913b5b6d4dede6c2c3fa8a75",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/gofiber/fiber/pull/4654",
+        "number": 4654,
+        "hash": "bac70962cc44451aa68948df3bab3b7ed2f66cf1942b1ff81eba811103dde3ae",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/gofiber/fiber/pull/4659",
+        "number": 4659,
+        "hash": "be0bb7e781c338926156f6d397ad3076cb2fe6ce00f6bd60676ef915ed289cf6",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/gofiber/fiber/pull/4666",
+        "number": 4666,
+        "hash": "bed88a65016b54f2243e989eca799d5535e0f01af5e62789538a354331a1b16c",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/gofiber/fiber/pull/4638",
+        "number": 4638,
+        "hash": "d7e4abbbfb3e79f8b494ecce445419c8bcf12175fd820289fa45a88cd8eaa191",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/gofiber/fiber/pull/4656",
+        "number": 4656,
+        "hash": "e698eb43e812bf507f971c7e3a65fe0135a88788fb3a3617fc8616f358201a42",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/gofiber/fiber/pull/4636",
+        "number": 4636,
+        "hash": "e99585c933d93eb362e7513266065656605e3ecd1ff829fd4d60b1d3e3f585dc",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/gofiber/fiber/pull/4650",
+        "number": 4650,
+        "hash": "ef08469f1194de8fabb72a5f5c0e58dbdc37798030964712c87484cb66414f3a",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/gofiber/fiber/pull/4652",
+        "number": 4652,
+        "hash": "f9a70ec00de4fa94c6e84e3d3b4540ab0f3955e958d86eb8d04fdd7834115c6f",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/gofiber/fiber/pull/4642",
+        "number": 4642,
+        "hash": "fa9dbe2fc6cbc47ebe145d2a65e417bb76f36d023f7f62699de832741a1dc83b",
+        "excluded": false
+      },
+      {
+        "url": "https://github.com/gofiber/fiber/pull/4645",
+        "number": 4645,
+        "hash": "fee980c4d7972acafeb45af4f02f4fffb26411ab6e5e993cc1067b41a4123674",
+        "excluded": false
+      }
+    ]
+  }
+]

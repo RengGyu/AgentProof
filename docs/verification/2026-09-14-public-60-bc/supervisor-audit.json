@@ -1,0 +1,247 @@
+{
+  "verifiedRowCount": 1022,
+  "method": "Independent UTF-16 non-whitespace position enumeration from original label text and returned bounded role intervals; validates every B/C row, not a new semantic judge.",
+  "extra": {
+    "B": {
+      "anySelectedNonRequirements": 222,
+      "promotedAnySelectedNonRequirements": 10,
+      "requirementSelection": {
+        "full": 89,
+        "not_selected": 2,
+        "partial": 1
+      },
+      "bothValidRequirementPreserved": 66,
+      "bothValidRequirementCount": 90
+    },
+    "C": {
+      "anySelectedNonRequirements": 222,
+      "promotedAnySelectedNonRequirements": 13,
+      "requirementSelection": {
+        "full": 89,
+        "not_selected": 2,
+        "partial": 1
+      },
+      "bothValidRequirementPreserved": 72,
+      "bothValidRequirementCount": 90
+    }
+  },
+  "failures": [
+    {
+      "caseId": "pallets-flask-5945",
+      "arm": "B",
+      "state": "invalid",
+      "reason": "role_ceiling_violation"
+    }
+  ],
+  "pairedChanges": [
+    {
+      "caseId": "pallets-flask-5917",
+      "labelId": "label-2",
+      "gold": "ambiguous",
+      "sourceKind": "pr_body",
+      "text": "`OPTIONS` is added correctly whenever `provide_automatic_options` is set.",
+      "B": "requirement",
+      "C": "non_requirement",
+      "Bpromoted": true,
+      "Cpromoted": false
+    },
+    {
+      "caseId": "pallets-flask-5917",
+      "labelId": "label-3",
+      "gold": "non_requirement",
+      "sourceKind": "pr_body",
+      "text": "Previously, it was only added if the argument was not passed and was not set as an attribute; it could only be disabled, not enabled.",
+      "B": "requirement",
+      "C": "non_requirement",
+      "Bpromoted": true,
+      "Cpromoted": false
+    },
+    {
+      "caseId": "pallets-flask-5945",
+      "labelId": "label-1",
+      "gold": "requirement",
+      "sourceKind": "pr_title",
+      "text": "add zizmor to scan workflows",
+      "B": "invalid",
+      "C": "requirement",
+      "Bpromoted": false,
+      "Cpromoted": true
+    },
+    {
+      "caseId": "pallets-flask-5945",
+      "labelId": "label-4",
+      "gold": "requirement",
+      "sourceKind": "pr_body",
+      "text": "- apply empty permissions with `permissions: {}`, although we have read only defaults set at the organization level\n- use concurrency group for each workflow\n- disable credentials for checkout\n- remove some template variables in favor of env vars",
+      "B": "invalid",
+      "C": "ambiguous",
+      "Bpromoted": false,
+      "Cpromoted": true
+    },
+    {
+      "caseId": "fastapi-fastapi-16205",
+      "labelId": "label-5",
+      "gold": "non_requirement",
+      "sourceKind": "pr_body",
+      "text": "In most cases, it's better to make PRs updating that file so that the LLM can do a better job generating the translations than suggesting changes in this PR.",
+      "B": "non_requirement",
+      "C": "requirement",
+      "Bpromoted": false,
+      "Cpromoted": true
+    },
+    {
+      "caseId": "fastapi-fastapi-16289",
+      "labelId": "label-2",
+      "gold": "requirement",
+      "sourceKind": "pr_body",
+      "text": "Bumps [starlette](https://github.com/Kludex/starlette) from 1.3.1 to 1.6.0.",
+      "B": "non_requirement",
+      "C": "requirement",
+      "Bpromoted": false,
+      "Cpromoted": true
+    },
+    {
+      "caseId": "sveltejs-svelte-18749",
+      "labelId": "label-4",
+      "gold": "non_requirement",
+      "sourceKind": "pr_body",
+      "text": "Fixes #18748",
+      "B": "non_requirement",
+      "C": "requirement",
+      "Bpromoted": false,
+      "Cpromoted": true
+    },
+    {
+      "caseId": "expressjs-express-7233",
+      "labelId": "label-3",
+      "gold": "requirement",
+      "sourceKind": "pr_body",
+      "text": "Separately, the API no longer attempts to `basename` inputs so I need to do that in the Express API instead.",
+      "B": "requirement",
+      "C": "ambiguous",
+      "Bpromoted": true,
+      "Cpromoted": false
+    },
+    {
+      "caseId": "expressjs-express-7390",
+      "labelId": "label-5",
+      "gold": "non_requirement",
+      "sourceKind": "pr_body",
+      "text": "Express's existing `^2.2.1` range technically already permits 2.3.0, but\ndeclaring `^2.3.0` makes the security intent explicit and ensures consumers\n(and scanners like Trivy) resolve to the patched release.",
+      "B": "requirement",
+      "C": "non_requirement",
+      "Bpromoted": true,
+      "Cpromoted": false
+    },
+    {
+      "caseId": "astral-sh-ruff-28443",
+      "labelId": "label-3",
+      "gold": "requirement",
+      "sourceKind": "pr_body",
+      "text": "Add `#[doc(hidden)]` to `lex` and make `Lexer::current_flags` and `Lexer::current_range` public with the same attribute.",
+      "B": "non_requirement",
+      "C": "requirement",
+      "Bpromoted": false,
+      "Cpromoted": true
+    },
+    {
+      "caseId": "rust-lang-rust-162532",
+      "labelId": "label-6",
+      "gold": "non_requirement",
+      "sourceKind": "pr_body",
+      "text": "[Create a similar rollup](https://bors.rust-lang.org/queue/rust?prs=162470,161734,161821,162453,162528)",
+      "B": "non_requirement",
+      "C": "requirement",
+      "Bpromoted": false,
+      "Cpromoted": true
+    },
+    {
+      "caseId": "denoland-deno-36723",
+      "labelId": "label-3",
+      "gold": "non_requirement",
+      "sourceKind": "pr_body",
+      "text": "The same port also dropped the arg's `value_parser`, so invalid values\nwere silently coerced to 'linked' rather than rejected. This restores\nboth:",
+      "B": "non_requirement",
+      "C": "requirement",
+      "Bpromoted": false,
+      "Cpromoted": true
+    },
+    {
+      "caseId": "denoland-deno-36723",
+      "labelId": "label-4",
+      "gold": "requirement",
+      "sourceKind": "pr_body",
+      "text": "the value must be attached with `=`, a bare `--sourcemap` means\n'linked', and values are validated against 'linked', 'inline' and\n'external'.",
+      "B": "non_requirement",
+      "C": "requirement",
+      "Bpromoted": false,
+      "Cpromoted": true
+    },
+    {
+      "caseId": "denoland-deno-36723",
+      "labelId": "label-5",
+      "gold": "non_requirement",
+      "sourceKind": "pr_body",
+      "text": "Every sibling optional-value flag in the parser\n(`--inline-imports`, `--coverage`, `--vendor` and the rest) was already\nported correctly, so `--sourcemap` was the only one that needed fixing.",
+      "B": "non_requirement",
+      "C": "requirement",
+      "Bpromoted": false,
+      "Cpromoted": true
+    },
+    {
+      "caseId": "kubernetes-kubernetes-141811",
+      "labelId": "label-9",
+      "gold": "ambiguous",
+      "sourceKind": "pr_body",
+      "text": "`+k8s:maxBytes` means the same thing on `string` and on `[]byte` — a byte count — so the tag keeps its meaning if a field changes between the two.",
+      "B": "non_requirement",
+      "C": "requirement",
+      "Bpromoted": false,
+      "Cpromoted": true
+    },
+    {
+      "caseId": "gofiber-fiber-4670",
+      "labelId": "label-2",
+      "gold": "requirement",
+      "sourceKind": "pr_body",
+      "text": "Bumps the golang-modules group with 1 update: [golang.org/x/sys](https://github.com/golang/sys).",
+      "B": "non_requirement",
+      "C": "requirement",
+      "Bpromoted": false,
+      "Cpromoted": true
+    },
+    {
+      "caseId": "gofiber-fiber-4670",
+      "labelId": "label-3",
+      "gold": "requirement",
+      "sourceKind": "pr_body",
+      "text": "Updates `golang.org/x/sys` from 0.47.0 to 0.48.0",
+      "B": "non_requirement",
+      "C": "requirement",
+      "Bpromoted": false,
+      "Cpromoted": true
+    },
+    {
+      "caseId": "gofiber-fiber-4651",
+      "labelId": "label-2",
+      "gold": "requirement",
+      "sourceKind": "pr_body",
+      "text": "Bumps the golang-modules group with 1 update: [golang.org/x/crypto](https://github.com/golang/crypto).",
+      "B": "non_requirement",
+      "C": "requirement",
+      "Bpromoted": false,
+      "Cpromoted": true
+    },
+    {
+      "caseId": "gofiber-fiber-4651",
+      "labelId": "label-3",
+      "gold": "requirement",
+      "sourceKind": "pr_body",
+      "text": "Updates `golang.org/x/crypto` from 0.55.0 to 0.56.0",
+      "B": "non_requirement",
+      "C": "requirement",
+      "Bpromoted": false,
+      "Cpromoted": true
+    }
+  ]
+}

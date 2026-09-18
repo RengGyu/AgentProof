@@ -55,6 +55,9 @@ function validGeneralPrObserverCandidate(init?: RequestInit) {
     contractVersion: string;
     spans?: Array<{ id: string }>;
   };
+  const navigation = observerInput as unknown as import("@/lib/review-intent").ReviewNavigationRequest;
+  if(navigation.stage === "intent")return {goals:[{summary:"Review internal cleanup",emphasis:"primary",sourceRefs:[navigation.sources[0].spans[0].id],facets:[],openQuestions:[]}],unprocessed:[]};
+  if(navigation.stage === "ranking")return {rankings:navigation.goals.map(g=>({goalId:g.id,firstInspection:null,candidates:[],uncertainty:["No relevant read artifact selected"]})),readPaths:[]};
   if (observerInput.contractVersion === "general_pr_semantic_evidence.v1") {
     return { testApplicabilityProposals: [], scopeMappingProposals: [], evidenceRelationProposals: [] };
   }
@@ -246,8 +249,8 @@ describe("POST /api/analyze", () => {
       expect(observerCalls).toHaveLength(2);
       expect(observerCalls.map(([, init]) => {
         const body = JSON.parse(String(init?.body));
-        return JSON.parse(body.input[1].content[0].text).contractVersion;
-      })).toEqual(["general_pr_semantic_claim.v2", "general_pr_semantic_evidence.v1"]);
+        return JSON.parse(body.input[1].content[0].text).stage;
+      })).toEqual(["intent", "ranking"]);
       expect(observationSpy).toHaveBeenCalledWith(expect.objectContaining({
         policy: expect.objectContaining({
           semanticObservation: "eligible_public_pr",
@@ -259,9 +262,9 @@ describe("POST /api/analyze", () => {
       expect(json.observation).toBeUndefined();
       expect(JSON.stringify(json)).not.toContain("ledgerDigest");
       const summary = (json.report as VerificationReportV2).generalPrAssessmentSummary;
-      expect(summary?.reasonCodes).toContain("target_relation_unresolved");
+      expect((json.report as VerificationReportV2).reviewCandidates?.navigation?.goals[0].firstInspection).toBeNull();
       expect(summary?.reasonCodes).not.toContain("semantic_relation_only");
-      expect(summary?.reasonCodes).not.toEqual(expect.arrayContaining(["semantic_observer_unavailable", "semantic_proposal_invalid", "semantic_candidate_missing"]));
+      expect((json.report as VerificationReportV2).reviewCandidates?.navigation?.goals[0].summary).toBe("Review internal cleanup");
       expect(summary?.counts.evidence_supported).toBe(0);
     } finally {
       observationSpy.mockRestore();
@@ -299,7 +302,7 @@ describe("POST /api/analyze", () => {
       const publicJson = await publicResponse.json() as { operatorDiagnostics?: unknown; operatorTargetDiagnostics?: unknown; report: VerificationReport };
 
       expect(operator.status, JSON.stringify(operatorJson)).toBe(200);
-      expect(operatorJson.operatorDiagnostics?.freshnessFailure).toEqual({ phase: "before_claim", state: "unavailable", reason: "auth_unavailable" });
+      expect((operatorJson.report as VerificationReportV2).reviewCandidates?.navigation?.limitations).toContain("stale_snapshot");
       expect(fetchMock.mock.calls.filter(([url]) => url === "https://api.openai.com/v1/responses")).toHaveLength(0);
       expect(JSON.stringify(operatorJson.report)).not.toContain("auth_unavailable");
       expect(publicJson.operatorDiagnostics).toBeUndefined();
@@ -362,7 +365,7 @@ describe("POST /api/analyze", () => {
       const publicJson = await publicResponse.json() as { operatorDiagnostics?: unknown; operatorTargetDiagnostics?: unknown; report: VerificationReport };
 
       expect(operator.status).toBe(200);
-      expect(operatorJson.operatorDiagnostics?.claimInvalidReason).toBe("span_binding_invalid");
+      expect((operatorJson.report as VerificationReportV2).reviewCandidates?.navigation?.state).toBe("fallback");
       expect(operatorJson.operatorDiagnostics?.evidenceInvalidReason).toBeNull();
       expect(JSON.stringify(operatorJson.report)).not.toMatch(/claimInvalidReason|semanticClaimInvalidReason|evidenceInvalidReason|semanticEvidenceInvalidReason/);
       expect(publicResponse.status).toBe(200);
@@ -387,9 +390,7 @@ describe("POST /api/analyze", () => {
     const fetchMock = vi.fn((url: string, init?: RequestInit) => {
       if (url === "https://api.openai.com/v1/responses") {
         const packet = JSON.parse(JSON.parse(String(init?.body)).input[1].content[0].text);
-        const output = packet.contractVersion === "general_pr_semantic_claim.v2"
-          ? { spanRoles: packet.spans.map((span: { id: string }, index: number) => ({ spanId: span.id, role: index === 0 ? "objective_candidate" : "supporting_context" })) }
-          : {};
+        const output = packet.stage === "intent" ? validGeneralPrObserverCandidate(init) : {};
         return Promise.resolve(Response.json({ output_text: JSON.stringify(output) }));
       }
       if (url.endsWith("/pulls/12")) return Promise.resolve(Response.json({ title: "Maintenance notes", body: "Internal cleanup only.", url: "https://api.github.com/repos/acme/repo/pulls/12", base: { ref: "main", sha: "b".repeat(40), repo: { private: false } }, head: { ref: "agent/validation", sha: "a".repeat(40) } }));
@@ -405,7 +406,7 @@ describe("POST /api/analyze", () => {
       const operatorJson = await operator.json() as { operatorDiagnostics?: { claimInvalidReason?: string | null; evidenceInvalidReason?: string | null }; report: VerificationReport };
       const publicResponse = await POST(new Request("http://localhost/api/analyze", { method: "POST", headers: { "content-type": "application/json" }, body }));
       const publicJson = await publicResponse.json() as { operatorDiagnostics?: unknown; operatorTargetDiagnostics?: unknown; report: VerificationReport };
-      expect(operatorJson.operatorDiagnostics).toMatchObject({ claimInvalidReason: null, evidenceInvalidReason: "root_shape_invalid" });
+      expect((operatorJson.report as VerificationReportV2).reviewCandidates?.navigation?.limitations).toContain("semantic_unavailable");
       expect(JSON.stringify(operatorJson.report)).not.toMatch(/evidenceInvalidReason|semanticEvidenceInvalidReason/);
       expect(publicJson.operatorDiagnostics).toBeUndefined();
       expect(publicJson.operatorTargetDiagnostics).toBeUndefined();
@@ -418,7 +419,7 @@ describe("POST /api/analyze", () => {
     }
   });
 
-  it("does not call the observer for an explicit deterministic objective in an eligible public PR", async () => {
+  it("interprets explicit objectives through navigation even when strict extraction succeeded", async () => {
     const previous = {
       mode: process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE,
       key: process.env.OPENAI_API_KEY,
@@ -454,7 +455,7 @@ describe("POST /api/analyze", () => {
       const json = await response.json() as { report: VerificationReport };
 
       expect(response.status, JSON.stringify(json)).toBe(200);
-      expect(fetchMock.mock.calls.some(([url]) => url === "https://api.openai.com/v1/responses")).toBe(false);
+      expect(fetchMock.mock.calls.some(([url]) => url === "https://api.openai.com/v1/responses")).toBe(true);
       expect((json.report as VerificationReportV2).generalPrAssessmentSummary).toBeDefined();
     } finally {
       for (const [key, value] of Object.entries(previous)) {
@@ -1424,4 +1425,21 @@ describe("POST /api/analyze", () => {
     expect(json.report.evidenceIndex.length).toBeLessThanOrEqual(200);
     expect(json.report.limitations.join(" ")).toContain("capped at 120 files");
   });
+});
+
+it('uses Google navigation with only AI_GATEWAY_API_KEY while preserving public eligibility',async()=>{
+  vi.stubEnv('AI_GATEWAY_API_KEY','test-google-key');vi.stubEnv('AGENTPROOF_LLM_MODEL','gemini-test');vi.stubEnv('OPENAI_API_KEY','');vi.stubEnv('OPENAI_MODEL','');vi.stubEnv('AGENTPROOF_GENERAL_PR_OBSERVATION_MODE','advisory');
+  const googleRequests:Array<{url:string;model:string}>=[];
+  vi.stubGlobal('fetch',vi.fn(async(url:string,init?:RequestInit)=>{
+    if(String(url)==='https://ai-gateway.vercel.sh/v1/responses'){const body=JSON.parse(String(init?.body));googleRequests.push({url:String(url),model:body.model});const packet=JSON.parse(body.input[1].content[0].text);const result=packet.stage==='intent'?{goals:[{summary:'Inspect status behavior',emphasis:'primary',sourceRefs:[packet.sources[0].spans[0].id],facets:[],openQuestions:[]}],unprocessed:[]}:{rankings:[],readPaths:[]};return Response.json({output_text:JSON.stringify(result)});}
+    if(url.endsWith('/pulls/12'))return Response.json({title:'Adjust status behavior',body:'Inspect status behavior.',base:{ref:'main',sha:'b'.repeat(40),repo:{private:false}},head:{ref:'change',sha:'a'.repeat(40)}});
+    if(url.includes('/files?'))return Response.json([{filename:'src/status.ts',status:'modified',patch:'@@ -1 +1 @@\n+status();'}]);
+    if(url.includes('/check-runs'))return Response.json({total_count:0,check_runs:[]});
+    if(url.endsWith('/status'))return Response.json({statuses:[]});
+    throw Error('Unexpected external request');
+  }));
+  try{
+    const response=await POST(new Request('http://localhost/api/analyze',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({prUrl:'https://github.com/acme/repo/pull/12'})}));
+    expect(response.status).toBe(200);expect(googleRequests).toHaveLength(2);expect(googleRequests.every(request=>request.model==='google/gemini-test')).toBe(true);
+  }finally{vi.unstubAllEnvs();}
 });
