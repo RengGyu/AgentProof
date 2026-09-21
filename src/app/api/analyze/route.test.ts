@@ -297,12 +297,13 @@ describe("POST /api/analyze", () => {
     const body = JSON.stringify({ prUrl: "https://github.com/acme/repo/pull/12" });
     try {
       const operator = await POST(new Request("http://localhost/api/analyze", { method: "POST", headers: { "content-type": "application/json", "x-agentproof-observation-diagnostics": "semantic-boundary-v1", "x-agentproof-ops-token": "ops-secret-value" }, body }));
-      const operatorJson = await operator.json() as { operatorDiagnostics?: { freshnessFailure?: unknown }; report: VerificationReport };
+      const operatorJson = await operator.json() as { operatorDiagnostics?: { freshnessFailure?: unknown }; operatorNavigationDiagnostics?: unknown[]; report: VerificationReport };
       const publicResponse = await POST(new Request("http://localhost/api/analyze", { method: "POST", headers: { "content-type": "application/json" }, body }));
       const publicJson = await publicResponse.json() as { operatorDiagnostics?: unknown; operatorTargetDiagnostics?: unknown; report: VerificationReport };
 
       expect(operator.status, JSON.stringify(operatorJson)).toBe(200);
-      expect((operatorJson.report as VerificationReportV2).reviewCandidates?.navigation?.limitations).toContain("stale_snapshot");
+      expect((operatorJson.report as VerificationReportV2).reviewCandidates?.navigation?.limitations).toContain("freshness_access_changed");
+      expect(operatorJson.operatorNavigationDiagnostics).toEqual([expect.objectContaining({stage:"preflight",providerCalled:false,lifecycle:expect.arrayContaining([expect.objectContaining({kind:"freshness",outcome:"access_changed",code:"github_auth_required"})])})]);
       expect(fetchMock.mock.calls.filter(([url]) => url === "https://api.openai.com/v1/responses")).toHaveLength(0);
       expect(JSON.stringify(operatorJson.report)).not.toContain("auth_unavailable");
       expect(publicJson.operatorDiagnostics).toBeUndefined();
@@ -1431,7 +1432,7 @@ it('uses Google navigation with only AI_GATEWAY_API_KEY while preserving public 
   vi.stubEnv('AI_GATEWAY_API_KEY','test-google-key');vi.stubEnv('AGENTPROOF_LLM_MODEL','gemini-test');vi.stubEnv('OPENAI_API_KEY','');vi.stubEnv('OPENAI_MODEL','');vi.stubEnv('AGENTPROOF_GENERAL_PR_OBSERVATION_MODE','advisory');
   const googleRequests:Array<{url:string;model:string}>=[];
   vi.stubGlobal('fetch',vi.fn(async(url:string,init?:RequestInit)=>{
-    if(String(url)==='https://ai-gateway.vercel.sh/v1/responses'){const body=JSON.parse(String(init?.body));googleRequests.push({url:String(url),model:body.model});const packet=JSON.parse(body.input[1].content[0].text);const result=packet.stage==='intent'?{goals:[{summary:'Inspect status behavior',emphasis:'primary',sourceRefs:[packet.sources[0].spans[0].id],facets:[],openQuestions:[]}],unprocessed:[]}:{rankings:[],readPaths:[]};return Response.json({output_text:JSON.stringify(result)});}
+    if(String(url).includes('generativelanguage.googleapis.com/')){const body=JSON.parse(String(init?.body));googleRequests.push({url:String(url),model:String(url).match(/models\/([^:]+):generateContent/)?.[1]??''});const packet=JSON.parse(body.contents[0].parts[0].text);const result=packet.stage==='intent'?{goals:[{summary:'Inspect status behavior',emphasis:'primary',sourceRefs:[packet.sources[0].spans[0].id],facets:[],openQuestions:[]}],unprocessed:[]}:{rankings:[],readPaths:[]};return Response.json({modelVersion:'gemini-test-version',usageMetadata:{promptTokenCount:100,candidatesTokenCount:30},candidates:[{content:{role:'model',parts:[{text:JSON.stringify(result)}]},finishReason:'STOP'}]});}
     if(url.endsWith('/pulls/12'))return Response.json({title:'Adjust status behavior',body:'Inspect status behavior.',base:{ref:'main',sha:'b'.repeat(40),repo:{private:false}},head:{ref:'change',sha:'a'.repeat(40)}});
     if(url.includes('/files?'))return Response.json([{filename:'src/status.ts',status:'modified',patch:'@@ -1 +1 @@\n+status();'}]);
     if(url.includes('/check-runs'))return Response.json({total_count:0,check_runs:[]});
@@ -1440,6 +1441,14 @@ it('uses Google navigation with only AI_GATEWAY_API_KEY while preserving public 
   }));
   try{
     const response=await POST(new Request('http://localhost/api/analyze',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({prUrl:'https://github.com/acme/repo/pull/12'})}));
-    expect(response.status).toBe(200);expect(googleRequests).toHaveLength(2);expect(googleRequests.every(request=>request.model==='google/gemini-test')).toBe(true);
+    expect(response.status).toBe(200);expect(googleRequests).toHaveLength(2);expect(googleRequests.every(request=>request.model==='gemini-test')).toBe(true);
+    expect((await response.json()).operatorNavigationDiagnostics).toBeUndefined();
+    vi.stubEnv('AGENTPROOF_OPS_TOKEN','test-operator');
+    const diagnostic=await POST(new Request('http://localhost/api/analyze',{method:'POST',headers:{'content-type':'application/json','x-agentproof-observation-diagnostics':'semantic-boundary-v1','x-agentproof-ops-token':'test-operator'},body:JSON.stringify({prUrl:'https://github.com/acme/repo/pull/12'})}));
+    expect(diagnostic.status).toBe(200);
+    const trace=(await diagnostic.json()).operatorNavigationDiagnostics;
+    expect(trace).toHaveLength(2);
+    expect(trace[0].transport.modelVersion).toBe('gemini-test-version');
+    expect(JSON.stringify(trace)).not.toContain('test-google-key');
   }finally{vi.unstubAllEnvs();}
 });

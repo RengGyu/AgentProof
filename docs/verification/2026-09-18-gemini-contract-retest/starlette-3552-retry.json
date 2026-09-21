@@ -1,0 +1,903 @@
+{
+  "report": {
+    "analysisId": "ap_mu6xwcv0_m52ckn",
+    "createdAt": "2026-09-18T12:33:34.237Z",
+    "source": {
+      "title": "Handle missing payload and non-UTF-8 bytes in WebSocketEndpoint.decode() for JSON",
+      "url": "https://github.com/Kludex/starlette/pull/3552",
+      "author": "bodapatisaikrishna",
+      "baseBranch": "main",
+      "headBranch": "fix-websocket-endpoint-json-decode",
+      "provenance": {
+        "version": 1,
+        "origin": "github_snapshot",
+        "headSha": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+        "baseSha": "03f12b7fcf0a3e21a8da648ca0900c79472e9efe",
+        "changedFileInventory": {
+          "version": 1,
+          "completeness": "complete",
+          "headSha": "fe83c02c765dcee66e447833acd9bc73adc2bb72"
+        },
+        "evidenceCapturedAt": "2026-09-18T12:33:34.232Z",
+        "inputFingerprint": {
+          "version": 1,
+          "algorithm": "sha256",
+          "value": "7857a9038f9a7fc25a74f68d3d483d4a4d28b48acdee522f0b475892a34cfe0b",
+          "coverage": "github_metadata"
+        }
+      }
+    },
+    "summary": {
+      "oneLine": "Some evidence is weak. Coverage 47%. Some requirements have only partial evidence.",
+      "confidence": 0.41,
+      "priority": "medium",
+      "evidenceCoverage": 47,
+      "topRisks": [
+        "Some requirements have only partial evidence."
+      ]
+    },
+    "requirements": [
+      {
+        "requirementId": "req_1",
+        "requirementText": "This ensures `bytes` is checked before decoding and catches `UnicodeDecodeError` to close with `WS_1003_UNSUPPORTED_DATA` and raise `RuntimeError(\"Malformed JSON data received.\")`, aligning binary JSON error handling with text JSON",
+        "status": "unclear",
+        "evidenceRefs": [
+          "ev_2"
+        ],
+        "gaps": [
+          "Implementation evidence exists, but no matching test, log, or check evidence verifies this criterion.",
+          "No deterministic test/build execution evidence was collected for this requirement."
+        ],
+        "reviewerNote": "Treat diff evidence as implementation evidence, not proof that behavior is verified.",
+        "confidence": 0.62,
+        "evidenceStatus": "partial",
+        "sourceAuthority": "pr_description",
+        "proofAxes": [
+          {
+            "subject": "execution",
+            "polarity": "present",
+            "state": "incomplete",
+            "evidenceRefs": [],
+            "axisId": "obs_req_1_execution_1",
+            "role": "observation"
+          },
+          {
+            "subject": "implementation",
+            "polarity": "present",
+            "state": "satisfied",
+            "evidenceRefs": [
+              "ev_2"
+            ],
+            "collectionBasis": "matching_artifact_evidence",
+            "axisId": "obs_req_1_implementation_1",
+            "role": "observation"
+          }
+        ]
+      }
+    ],
+    "claims": [
+      {
+        "id": "claim_1",
+        "text": "Verified with `scripts/test` (all 1253 tests passed with 100% coverage)",
+        "evidenceRefs": [
+          "ev_17",
+          "ev_18",
+          "ev_19"
+        ],
+        "supported": false
+      },
+      {
+        "id": "claim_2",
+        "text": "Verified `scripts/check` (ruff format",
+        "evidenceRefs": [
+          "ev_5"
+        ],
+        "supported": false
+      },
+      {
+        "id": "claim_3",
+        "text": "Verified ruff check all clean)",
+        "evidenceRefs": [
+          "ev_5",
+          "ev_6"
+        ],
+        "supported": false
+      }
+    ],
+    "scope": {
+      "suspected": false,
+      "outOfScopeFiles": [],
+      "reasons": [],
+      "evidenceRefs": [],
+      "provenance": []
+    },
+    "testing": {
+      "ciStatus": "passed",
+      "lintStatus": "unknown",
+      "typecheckStatus": "unknown",
+      "missingTests": []
+    },
+    "reviewPriority": [
+      {
+        "path": "starlette/endpoints.py",
+        "reason": "1 requirement(s) have only partial evidence.",
+        "priority": "medium",
+        "evidenceRefs": [
+          "ev_2"
+        ]
+      }
+    ],
+    "proofGraph": {
+      "version": 1,
+      "nodes": [
+        {
+          "requirementId": "req_1",
+          "requirementText": "This ensures `bytes` is checked before decoding and catches `UnicodeDecodeError` to close with `WS_1003_UNSUPPORTED_DATA` and raise `RuntimeError(\"Malformed JSON data received.\")`, aligning binary JSON error handling with text JSON",
+          "sourceRole": "core_requirement",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Summary",
+          "contextRoles": [],
+          "status": "partial",
+          "confidence": 0.62,
+          "implementationEvidenceRefs": [
+            "ev_2"
+          ],
+          "targetedTestEvidenceRefs": [],
+          "executionEvidenceRefs": [],
+          "gapSignals": [
+            {
+              "kind": "missing_execution",
+              "severity": "medium",
+              "message": "No deterministic test/build execution evidence was collected for this requirement.",
+              "evidenceRefs": [
+                "ev_2"
+              ]
+            }
+          ],
+          "firstFiles": [
+            "starlette/endpoints.py"
+          ]
+        }
+      ],
+      "context": [
+        {
+          "id": "ctx_1",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Summary",
+          "text": "When a `WebSocketEndpoint` uses `encoding = \"json\"`, `decode()` expects either a text frame containing JSON or a binary frame containing UTF-8 JSON bytes"
+        },
+        {
+          "id": "ctx_2",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Summary",
+          "text": "Previously, the `else` branch assumed `message[\"bytes\"]` was present and valid UTF-8 whenever `text` was absent or None"
+        },
+        {
+          "id": "ctx_3",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Summary",
+          "text": "This led to two failure modes that crashed the endpoint handler instead of closing cleanly:"
+        },
+        {
+          "id": "ctx_4",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Summary",
+          "text": "If a client sent an empty receive event (`text: None, bytes: None`), `message[\"bytes\"].decode(...)` raised `AttributeError` (or `KeyError` if absent)"
+        },
+        {
+          "id": "ctx_5",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Summary",
+          "text": "If a client sent non-UTF-8 binary data, `decode()` raised an unhandled `UnicodeDecodeError`"
+        },
+        {
+          "id": "ctx_6",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Summary",
+          "text": "In both cases, the unhandled exceptions bypassed the `WS_1003_UNSUPPORTED_DATA` closure and caused `dispatch()` to catch a general exception, close with `WS_1011_INTERNAL_ERROR`, and raise a server traceback"
+        },
+        {
+          "id": "ctx_7",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Summary",
+          "text": "This ensures `bytes` is checked before decoding and catches `UnicodeDecodeError` to close with `WS_1003_UNSUPPORTED_DATA` and raise `RuntimeError(\"Malformed JSON data received.\")`, aligning binary JSON error handling with text JSON"
+        },
+        {
+          "id": "ctx_8",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Summary",
+          "text": "<a href=\"https://cubic.dev/pr/Kludex/starlette/pull/3552?utm_source=github\" target=\"_blank\" rel=\"noopener noreferrer\" data-no-image-dialog=\"true\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://www.cubic.dev/buttons..."
+        }
+      ],
+      "summary": {
+        "requirementCount": 1,
+        "requirementsWithImplementation": 1,
+        "requirementsWithTargetedTests": 0,
+        "requirementsWithExecution": 0,
+        "requirementsWithGaps": 1,
+        "gapCount": 1
+      }
+    },
+    "reprompt": {
+      "targetAgent": "codex",
+      "prompt": "You are revising an AI-generated PR for AgentProof verification.\nDo not broaden the PR. Make only changes tied to the original task.\n1. Address requirement \"This ensures `bytes` is checked before decoding and catches `UnicodeDecodeError` to close with `WS_1003_UNSUPPORTED_DATA` and raise `RuntimeError(\"Malformed JSON data received.\")`, aligning binary JSON error handling with text JSON\" and provide evidence for the implementation.\n2. Return requirement-by-requirement proof for: \"This ensures `bytes` is checked before decoding and catches `UnicodeDecodeError` to close with `WS_1003_UNSUPPORTED_DATA` and raise `RuntimeError(\"Malformed JSON data received.\")`, aligning binary JSON error handling with text JSON\".\nReturn a concise summary with changed files, tests run, and remaining risks."
+    },
+    "evidenceIndex": [
+      {
+        "id": "ev_8",
+        "kind": "check",
+        "label": "Docs preview (Cloudflare)",
+        "locator": "https://github.com/Kludex/starlette/actions/runs/35055151952/job/104663670733",
+        "summary": "Status: unknown. Docs preview (Cloudflare)",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_4",
+        "kind": "check",
+        "label": "CodSpeed Performance Analysis",
+        "locator": "https://github.com/Kludex/starlette/runs/104665041485",
+        "summary": "Status: passed. CodSpeed Performance Analysis - <details>\n<summary>:warning: <b>Different runtime environments detected</b></summary>\n\n> Some benchmarks with significant performance changes were compared across different runtime environments,\n> which may affect the accuracy of the results.\n>\n> [Open the report in Cod\n...[truncated for privacy and token control]",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_5",
+        "kind": "check",
+        "label": "check",
+        "locator": "https://github.com/Kludex/starlette/actions/runs/35055151952/job/104663815334",
+        "summary": "Status: passed. check",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_6",
+        "kind": "check",
+        "label": "zizmor",
+        "locator": "https://github.com/Kludex/starlette/runs/104663695678",
+        "summary": "Status: passed. zizmor - [View all branch alerts](/Kludex/starlette/security/code-scanning?query=pr%3A3552+tool%3Azizmor+is%3Aopen).",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_7",
+        "kind": "check",
+        "label": "cubic · AI code reviewer",
+        "locator": "https://github.com/Kludex/starlette/runs/104663689352",
+        "summary": "Status: passed. cubic · AI code reviewer - AI review completed with 1 review. No issues found in 2 files.",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_9",
+        "kind": "check",
+        "label": "Python 3.10",
+        "locator": "https://github.com/Kludex/starlette/actions/runs/35055151952/job/104663670068",
+        "summary": "Status: passed. Python 3.10",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_10",
+        "kind": "check",
+        "label": "Python 3.15",
+        "locator": "https://github.com/Kludex/starlette/actions/runs/35055151952/job/104663670027",
+        "summary": "Status: passed. Python 3.15",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_11",
+        "kind": "check",
+        "label": "Python 3.12",
+        "locator": "https://github.com/Kludex/starlette/actions/runs/35055151952/job/104663669930",
+        "summary": "Status: passed. Python 3.12",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_12",
+        "kind": "check",
+        "label": "Python 3.13",
+        "locator": "https://github.com/Kludex/starlette/actions/runs/35055151952/job/104663669925",
+        "summary": "Status: passed. Python 3.13",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_13",
+        "kind": "check",
+        "label": "Python 3.14",
+        "locator": "https://github.com/Kludex/starlette/actions/runs/35055151952/job/104663669910",
+        "summary": "Status: passed. Python 3.14",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_14",
+        "kind": "check",
+        "label": "Run benchmarks",
+        "locator": "https://github.com/Kludex/starlette/actions/runs/35055151951/job/104663669875",
+        "summary": "Status: passed. Run benchmarks",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_15",
+        "kind": "check",
+        "label": "Python 3.11",
+        "locator": "https://github.com/Kludex/starlette/actions/runs/35055151952/job/104663669779",
+        "summary": "Status: passed. Python 3.11",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_16",
+        "kind": "check",
+        "label": "zizmor",
+        "locator": "https://github.com/Kludex/starlette/actions/runs/35055151950/job/104663668722",
+        "summary": "Status: passed. zizmor",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_17",
+        "kind": "log",
+        "label": "GitHub Actions job: Python 3.11",
+        "locator": "https://github.com/Kludex/starlette/actions/runs/35055151952/job/104663669779",
+        "summary": "Status: passed. GitHub Actions job: Python 3.11: GitHub Actions job Python 3.11: passed. Reported conclusion: success; execution output not collected. Steps: Run tests: passed",
+        "confidence": 0.75
+      },
+      {
+        "id": "ev_18",
+        "kind": "log",
+        "label": "GitHub Actions job: Python 3.14",
+        "locator": "https://github.com/Kludex/starlette/actions/runs/35055151952/job/104663669910",
+        "summary": "Status: passed. GitHub Actions job: Python 3.14: GitHub Actions job Python 3.14: passed. Reported conclusion: success; execution output not collected. Steps: Run tests: passed",
+        "confidence": 0.75
+      },
+      {
+        "id": "ev_19",
+        "kind": "log",
+        "label": "GitHub Actions job: Python 3.13",
+        "locator": "https://github.com/Kludex/starlette/actions/runs/35055151952/job/104663669925",
+        "summary": "Status: passed. GitHub Actions job: Python 3.13: GitHub Actions job Python 3.13: passed. Reported conclusion: success; execution output not collected. Steps: Run tests: passed",
+        "confidence": 0.75
+      },
+      {
+        "id": "ev_20",
+        "kind": "log",
+        "label": "GitHub Actions job: Python 3.12",
+        "locator": "https://github.com/Kludex/starlette/actions/runs/35055151952/job/104663669930",
+        "summary": "Status: passed. GitHub Actions job: Python 3.12: GitHub Actions job Python 3.12: passed. Reported conclusion: success; execution output not collected. Steps: Run tests: passed",
+        "confidence": 0.75
+      },
+      {
+        "id": "ev_21",
+        "kind": "log",
+        "label": "GitHub Actions job: Python 3.15",
+        "locator": "https://github.com/Kludex/starlette/actions/runs/35055151952/job/104663670027",
+        "summary": "Status: passed. GitHub Actions job: Python 3.15: GitHub Actions job Python 3.15: passed. Reported conclusion: success; execution output not collected. Steps: Run tests: passed",
+        "confidence": 0.75
+      },
+      {
+        "id": "ev_22",
+        "kind": "log",
+        "label": "GitHub Actions job: Python 3.10",
+        "locator": "https://github.com/Kludex/starlette/actions/runs/35055151952/job/104663670068",
+        "summary": "Status: passed. GitHub Actions job: Python 3.10: GitHub Actions job Python 3.10: passed. Reported conclusion: success; execution output not collected. Steps: Run tests: passed",
+        "confidence": 0.75
+      },
+      {
+        "id": "ev_2",
+        "kind": "diff",
+        "label": "starlette/endpoints.py",
+        "locator": "starlette/endpoints.py",
+        "codeLocation": {
+          "path": "starlette/endpoints.py",
+          "side": "head",
+          "revisionSha": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+          "line": 104
+        },
+        "summary": "modified starlette/endpoints.py (+8/-1). Patch excerpt: @@ -104,8 +104,15 @@ async def decode(self, websocket: WebSocket, message: Message) -> Any:\n         elif self.encoding == \"json\":\n             if message.get(\"text\") is not None:\n                 text = message[\"text\"]\n+\n...[middle truncated for privacy and token control]\n].decode(\"utf-8\")\n+                await websocket.close(code=status.WS_1003_UNSUPPORTED_DATA)\n+                raise RuntimeError(\"Malformed JSON data received.\")\n \n             try:\n                 return json.loads(text)",
+        "confidence": 0.85
+      },
+      {
+        "id": "ev_3",
+        "kind": "test",
+        "label": "tests/test_endpoints.py",
+        "locator": "tests/test_endpoints.py",
+        "codeLocation": {
+          "path": "tests/test_endpoints.py",
+          "side": "head",
+          "revisionSha": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+          "line": 141
+        },
+        "summary": "modified tests/test_endpoints.py (+50/-0). Test evidence file. Patch excerpt: @@ -141,6 +141,10 @@ async def on_receive(self, websocket: WebSocket, data: str) -> None:\n         data = websocket.receive_json(mode=\"binary\")\n         assert data == {\"message\": {\"hello\": \"world\"}}\n \n+    with pytest.rais\n...[middle truncated for privacy and token control]\nout_payload() -> None:\n+    class Echo(WebSocketEndpoint):\n+        encoding = \"json\"\n+\n+    sent: list[Message] = []\n+\n+    async def receive() -> Message:\n+        raise Asserti\n...[truncated for privacy and token control]",
+        "confidence": 0.85
+      },
+      {
+        "id": "ev_1",
+        "kind": "pr_description",
+        "label": "PR description",
+        "summary": "# Summary\n\nWhen a `WebSocketEndpoint` uses `encoding = \"json\"`, `decode()` expects either a text frame containing JSON or a binary frame containing UTF-8 JSON bytes. Previously, the `else` branch assumed `message[\"bytes\"]` was present and valid UTF-8 whenever `text` was absent or None.\n\nThis led to two failure modes that crashed the endpoint handler instead of closing cleanly:\n1. If a client sent an empty receive event (`text: None, bytes: None`), `message[\"bytes\"].decode(...)` raised `AttributeError` (or `KeyError` if absent).\n2. If a client sent non-UTF-8 binary data, `decode()` raised an unhandled `UnicodeDeco\n...[truncated for privacy and token control]",
+        "confidence": 0.7
+      }
+    ],
+    "limitations": [
+      "Public GitHub Actions metadata reported successful build/test jobs, but success remains unverified because execution output and raw log archives were not fetched or stored.",
+      "Public GitHub metadata reported successful test/build checks, but no execution output or raw logs were collected; success remains an unverified observation.",
+      "Raw CI logs were not fetched or stored.",
+      "No original task text was provided and no single valid linked issue was available; the PR description is retained only as unverified author context."
+    ],
+    "analysisContext": "unlinked_pr",
+    "reportSchemaVersion": "verification-report.v2",
+    "verificationContract": {
+      "version": 2,
+      "policy": "strict_typed_contract",
+      "state": "absent",
+      "source": null,
+      "gaps": [
+        {
+          "kind": "verification_contract_missing",
+          "message": "Approved verification contract is missing."
+        }
+      ],
+      "objectives": []
+    },
+    "reviewCandidates": {
+      "version": 1,
+      "intentGraph": {
+        "version": 1,
+        "source": {
+          "kind": "description",
+          "hash": "5c137b997205407f4995c3cb2f9c410040b0dfe79c2707eb0b8a4eca9ebaebb4",
+          "length": 1806,
+          "coordinates": "redacted_lf_utf16"
+        },
+        "repository": "Kludex/starlette",
+        "goals": [
+          {
+            "id": "intent_eb187fc0a039240f",
+            "requirementIds": [
+              "req_1"
+            ],
+            "sourceRefs": [
+              {
+                "start": 11,
+                "end": 286,
+                "hash": "02325a1867782e4d9b41d3e082853d546c11c46be04a6a66dbad5e64e5e9cbd3"
+              },
+              {
+                "start": 288,
+                "end": 379,
+                "hash": "4bd2b2606e8dd965d2a1b18e2966b16d1cb746be336badc29fc30325aabb75ed"
+              },
+              {
+                "start": 631,
+                "end": 839,
+                "hash": "31fc16d619db805686af583280ce10384519da1f286873c8fa9bba18333d184f"
+              },
+              {
+                "start": 841,
+                "end": 1073,
+                "hash": "394ae8c9cf2f7e1b11ea0309f70b14a833813adc9a63dc39d9b2a036e3c182ab"
+              },
+              {
+                "start": 1075,
+                "end": 1213,
+                "hash": "c8d10f936be2aa78cd13e627c0173889cd74db3d78de37d418fefbd33d4fc1c0"
+              },
+              {
+                "start": 1274,
+                "end": 1751,
+                "hash": "e4f996075843f76cdac8fa8a744db7fe6df9199530be31d9e8325c9df0f7d40a"
+              }
+            ],
+            "facets": [
+              {
+                "kind": "condition",
+                "sourceRef": {
+                  "start": 11,
+                  "end": 286,
+                  "hash": "02325a1867782e4d9b41d3e082853d546c11c46be04a6a66dbad5e64e5e9cbd3"
+                }
+              },
+              {
+                "kind": "condition",
+                "sourceRef": {
+                  "start": 380,
+                  "end": 533,
+                  "hash": "7db85e634fddd276bf91d7aaf11b856d261ffa5e98d5d0035ec07d6d6c53e962"
+                }
+              },
+              {
+                "kind": "condition",
+                "sourceRef": {
+                  "start": 383,
+                  "end": 533,
+                  "hash": "03fee2b8c777d029de244762e3361f096ab75aecb4af58c35ee312530f77d870"
+                }
+              },
+              {
+                "kind": "condition",
+                "sourceRef": {
+                  "start": 522,
+                  "end": 533,
+                  "hash": "bcb24d952b706877f9d13008f1d5a09ced5dd6c9e2426a4ed6b70a4cc687d64e"
+                }
+              },
+              {
+                "kind": "condition",
+                "sourceRef": {
+                  "start": 534,
+                  "end": 629,
+                  "hash": "7d5daea39e4e30179ba0af97de88774c71c5fe3620c2be5ba3e6563552813f2d"
+                }
+              },
+              {
+                "kind": "condition",
+                "sourceRef": {
+                  "start": 537,
+                  "end": 629,
+                  "hash": "69d110a3735f89df3a69718d9454817e26ef5e7217d38dca6e3fd6de42963e6b"
+                }
+              },
+              {
+                "kind": "artifact_hint",
+                "sourceRef": {
+                  "start": 1274,
+                  "end": 1751,
+                  "hash": "e4f996075843f76cdac8fa8a744db7fe6df9199530be31d9e8325c9df0f7d40a"
+                }
+              }
+            ]
+          }
+        ],
+        "chunks": [
+          {
+            "id": "chunk_4c9f2cecfd0d58538bdd89be",
+            "pool": "changed",
+            "path": "starlette/endpoints.py",
+            "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 1,
+            "hash": "a33d2482f800c647120232bfbdba1d532f71667f69dc40f182c09ff2ad0423d8",
+            "evidenceId": "ev_2"
+          },
+          {
+            "id": "chunk_fc4f057feb509342d92fc947",
+            "pool": "changed",
+            "path": "tests/test_endpoints.py",
+            "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 1,
+            "hash": "0f5db1d203abbf3ff9f7972a79ebdb7bf8f1eefef3bb3f99f9612961d62c9c67",
+            "evidenceId": "ev_3"
+          }
+        ],
+        "edges": [
+          {
+            "goalId": "intent_eb187fc0a039240f",
+            "chunkId": "chunk_4c9f2cecfd0d58538bdd89be",
+            "relation": "candidate",
+            "basis": [
+              "identifier",
+              "lexical"
+            ],
+            "score": 217
+          },
+          {
+            "goalId": "intent_eb187fc0a039240f",
+            "chunkId": "chunk_fc4f057feb509342d92fc947",
+            "relation": "candidate",
+            "basis": [
+              "identifier",
+              "lexical"
+            ],
+            "score": 217
+          }
+        ],
+        "capabilities": {
+          "wholeRepository": "unavailable",
+          "embeddings": "unavailable",
+          "symbolResolution": "unavailable",
+          "semantic": "existing_relations_only",
+          "snapshotChunks": 0,
+          "rejectedSnapshots": 0,
+          "truncated": false
+        }
+      },
+      "requirements": [
+        {
+          "requirementId": "req_1",
+          "sourceHash": "7c406806bc2dc80d443cf0304ab2befc4080f77dad84d7033f22e50cc5227dea",
+          "candidates": [
+            {
+              "evidenceId": "ev_2",
+              "basis": "source_identifier",
+              "score": 217,
+              "evidenceHash": "a33d2482f800c647120232bfbdba1d532f71667f69dc40f182c09ff2ad0423d8"
+            },
+            {
+              "evidenceId": "ev_3",
+              "basis": "source_identifier",
+              "score": 217,
+              "evidenceHash": "0f5db1d203abbf3ff9f7972a79ebdb7bf8f1eefef3bb3f99f9612961d62c9c67"
+            }
+          ]
+        }
+      ],
+      "retainedRelations": [
+        {
+          "requirementId": "req_1",
+          "evidenceId": "ev_2",
+          "relation": "observed"
+        }
+      ],
+      "navigation": {
+        "version": 1,
+        "model": "gemini-3.8-flash",
+        "state": "partial",
+        "repository": "Kludex/starlette",
+        "headSha": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+        "baseSha": "03f12b7fcf0a3e21a8da648ca0900c79472e9efe",
+        "sources": [
+          {
+            "id": "description",
+            "authority": "pr_author_claim",
+            "hash": "5c137b997205407f4995c3cb2f9c410040b0dfe79c2707eb0b8a4eca9ebaebb4",
+            "length": 1806,
+            "processedLength": 1804,
+            "url": "https://github.com/Kludex/starlette/pull/3552"
+          },
+          {
+            "id": "title",
+            "authority": "pr_author_claim",
+            "hash": "14fc982be7a8594740189d2f1286a9ade1162126d42b98eab761979d24ad12cd",
+            "length": 81,
+            "processedLength": 81,
+            "url": "https://github.com/Kludex/starlette/pull/3552"
+          }
+        ],
+        "goals": [
+          {
+            "id": "goal_1",
+            "summary": "Handle missing payload and non-UTF-8 bytes cleanly in WebSocketEndpoint.decode() when encoding is set to JSON",
+            "emphasis": "primary",
+            "authority": "pr_author_claim",
+            "sourceRefs": [
+              {
+                "sourceId": "title",
+                "start": 0,
+                "end": 81,
+                "hash": "14fc982be7a8594740189d2f1286a9ade1162126d42b98eab761979d24ad12cd"
+              },
+              {
+                "sourceId": "description",
+                "start": 11,
+                "end": 286,
+                "hash": "02325a1867782e4d9b41d3e082853d546c11c46be04a6a66dbad5e64e5e9cbd3"
+              },
+              {
+                "sourceId": "description",
+                "start": 841,
+                "end": 1073,
+                "hash": "394ae8c9cf2f7e1b11ea0309f70b14a833813adc9a63dc39d9b2a036e3c182ab"
+              }
+            ],
+            "facets": [
+              {
+                "kind": "context",
+                "summary": "When WebSocketEndpoint uses JSON encoding, decode() anticipates either a text frame with JSON or a binary frame with UTF-8 JSON bytes.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 11,
+                    "end": 286,
+                    "hash": "02325a1867782e4d9b41d3e082853d546c11c46be04a6a66dbad5e64e5e9cbd3"
+                  }
+                ]
+              },
+              {
+                "kind": "motivation",
+                "summary": "Previously, the fallback branch assumed message bytes were present and valid UTF-8, leading to unhandled AttributeError, KeyError, or UnicodeDecodeError that triggered a 1011 internal error instead of closing with 1003 unsupported data.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 11,
+                    "end": 286,
+                    "hash": "02325a1867782e4d9b41d3e082853d546c11c46be04a6a66dbad5e64e5e9cbd3"
+                  },
+                  {
+                    "sourceId": "description",
+                    "start": 288,
+                    "end": 629,
+                    "hash": "67d9ed2afe5172e7e94e5a36f1e750bb6c6b886aeda06a18a82191d67de66a87"
+                  },
+                  {
+                    "sourceId": "description",
+                    "start": 631,
+                    "end": 839,
+                    "hash": "31fc16d619db805686af583280ce10384519da1f286873c8fa9bba18333d184f"
+                  }
+                ]
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "Checks bytes prior to decoding and catches UnicodeDecodeError to close with code 1003 and raise a RuntimeError indicating malformed JSON data, matching text JSON error handling.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 841,
+                    "end": 1073,
+                    "hash": "394ae8c9cf2f7e1b11ea0309f70b14a833813adc9a63dc39d9b2a036e3c182ab"
+                  }
+                ]
+              },
+              {
+                "kind": "test_claim",
+                "summary": "Verified using test scripts with all 1253 tests passing at 100 percent coverage, and check scripts passing ruff and mypy cleanly.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 1075,
+                    "end": 1213,
+                    "hash": "c8d10f936be2aa78cd13e627c0173889cd74db3d78de37d418fefbd33d4fc1c0"
+                  }
+                ]
+              }
+            ],
+            "openQuestions": [],
+            "firstInspection": "read_ee9fcfc6fec832b5f204c159",
+            "candidates": [
+              {
+                "artifactId": "read_ee9fcfc6fec832b5f204c159",
+                "relevance": "relevant",
+                "whyInspect": "Contains the core changes in decode() handling missing payload branches and catching UnicodeDecodeError with status 1003.",
+                "reviewQuestion": "Does the handling of missing text/bytes keys and non-UTF-8 decoding catch all failure modes and properly trigger close with code 1003 before raising RuntimeError?",
+                "uncertainty": "Whether other encoding branches or downstream json.loads error handling have matching closure semantics."
+              },
+              {
+                "artifactId": "read_0976e38ec273d5e5fe287622",
+                "relevance": "relevant",
+                "whyInspect": "Covers unit test verifying that a message without text or bytes payload is rejected with WS_1003_UNSUPPORTED_DATA and RuntimeError.",
+                "reviewQuestion": "Does the test adequately verify that None payload values result in the expected 1003 close frame and exception?",
+                "uncertainty": "None"
+              }
+            ],
+            "uncertainty": []
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "read_ee9fcfc6fec832b5f204c159",
+            "path": "starlette/endpoints.py",
+            "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+            "side": "head",
+            "startLine": 104,
+            "endLine": 118,
+            "hash": "19585bda686fbac415bf632415fe814f2e6732a370aafdc22afb1db9747506d7",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_0ffbcf6dedffde1980a7b18f",
+            "path": "tests/test_endpoints.py",
+            "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+            "side": "head",
+            "startLine": 141,
+            "endLine": 150,
+            "hash": "5a4e376119cb5f12ed30bd0fb8dc095cfa253e672399999ca032e78949e3d997",
+            "kind": "test",
+            "origin": "diff"
+          },
+          {
+            "id": "read_633b6758e3d26952fdccd875",
+            "path": "tests/test_endpoints.py",
+            "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+            "side": "head",
+            "startLine": 242,
+            "endLine": 253,
+            "hash": "47de11ba993f5eaa269a1cf7bdb91fa2bde74b279f3adb1e41323496529fef75",
+            "kind": "test",
+            "origin": "diff"
+          },
+          {
+            "id": "read_d4c78537d746ba221c0638b1",
+            "path": "tests/test_endpoints.py",
+            "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+            "side": "head",
+            "startLine": 135,
+            "endLine": 156,
+            "hash": "3a4751d5fd9978bc75ac14109316a738a1a747f718da995c0bec073469d9a9e1",
+            "kind": "test",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_0976e38ec273d5e5fe287622",
+            "path": "tests/test_endpoints.py",
+            "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+            "side": "head",
+            "startLine": 222,
+            "endLine": 265,
+            "hash": "a3742c73ef69e70d1847cdf6096abf3ec4903daf2d38060f42e9cba93ee47790",
+            "kind": "test",
+            "origin": "snapshot"
+          }
+        ],
+        "unprocessed": [
+          "description:0",
+          "description:1217",
+          "description:0",
+          "description:1217"
+        ],
+        "limitations": [
+          "retrieval_python_indentation",
+          "retrieval_unverified_fallback",
+          "retrieval_budget_exceeded"
+        ],
+        "failures": [],
+        "rankingStatus": "ready",
+        "coverageStatus": "partial"
+      }
+    },
+    "generalPrAssessmentSummary": {
+      "version": 1,
+      "mode": "ordinary_pr",
+      "sourceState": "pr_author_claim",
+      "overallConclusion": "no_assessable_claims",
+      "counts": {
+        "evidence_supported": 0,
+        "evidence_partial": 0,
+        "not_demonstrated": 0,
+        "contradicted": 0,
+        "blocked": 0,
+        "not_assessable": 0
+      },
+      "reasonCodes": [
+        "author_claim_requires_confirmation",
+        "deterministic_candidate_missing",
+        "semantic_observer_unavailable"
+      ],
+      "observations": {
+        "version": 1,
+        "inventory": {
+          "state": "complete",
+          "changedArtifacts": 2,
+          "changedTestCandidates": 1
+        },
+        "links": {
+          "state": "unavailable",
+          "linkedObjectives": 0,
+          "supports": 0,
+          "tests": 0,
+          "implements": 0,
+          "contradicts": 0
+        },
+        "coverage": {
+          "source": null,
+          "evidence": null
+        }
+      }
+    },
+    "ordinaryRequirementOutcomes": {
+      "version": 1,
+      "scope": "selected_source_requirements",
+      "requirements": [
+        {
+          "requirementId": "req_1",
+          "authority": "author_claim",
+          "interpretation": "unavailable",
+          "criterion": null,
+          "reason": "source_interpretation_unavailable"
+        }
+      ]
+    }
+  }
+}

@@ -1,4 +1,5 @@
 import { resolveNavigationProvider } from "@/lib/gemini-navigation";
+import type { ReviewNavigationDiagnostics } from "@/lib/review-intent";
 import { NextResponse } from "next/server";
 import { demoScenarios } from "@/lib/sample-data";
 import { normalizeAnalyzeRequest } from "@/lib/analyze-request";
@@ -120,11 +121,15 @@ export async function POST(request: Request) {
     const navigationProvider = resolveNavigationProvider(process.env);
     const navigationEligible = policy.semanticObservation === "eligible_public_pr" &&
       generalPrObservationService.isGeneralPrSemanticObserverEligibleV2(input);
+    const navigationDiagnostics: ReviewNavigationDiagnostics[] = [];
     const observationOptions: RunGeneralPrObservationNowOptionsV2 = {
       policy,
       input,
       navigation: {
         model: navigationProvider.model,
+        ...(operatorDiagnosticsRequested && input.repositoryPrivate === false ? {
+          onDiagnostics: (event: ReviewNavigationDiagnostics) => navigationDiagnostics.push(event)
+        } : {}),
         ...(navigationEligible && publicPrUrl && navigationProvider.provider ? {
           provider: navigationProvider.provider,
           readArtifacts: (paths, headSha) => collectReviewArtifacts(publicPrUrl, body.githubToken, paths, headSha),
@@ -195,6 +200,7 @@ export async function POST(request: Request) {
       report: validation.report,
       ...(operatorDiagnosticsRequested ? {
         operatorDiagnostics: buildGeneralPrSemanticOperatorDiagnosticsV1(observed.bundle),
+        ...(input.repositoryPrivate === false ? { operatorNavigationDiagnostics: navigationDiagnostics } : {}),
         operatorTargetDiagnostics: diagnosticRun?.diagnostic
       } : {})
     }, 200, timing, evidenceTiming);

@@ -1,0 +1,11 @@
+{
+  "deployment": "https://agentproof-gr8dslzh4-renggyus-projects.vercel.app",
+  "elapsedMs": 2954,
+  "error": "GitHub PR fetch failed: GitHub API rate limit was reached until 2026-09-20T14:11:45.000Z. (HTTP 403).",
+  "hint": "Wait for the GitHub API rate limit to reset, then retry.",
+  "guidance": [
+    "Wait for the GitHub API rate limit to reset, then retry.",
+    "Use a fine-grained token to increase the available request budget."
+  ],
+  "category": "github_rate_limit"
+}

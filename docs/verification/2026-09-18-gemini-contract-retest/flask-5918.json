@@ -1,0 +1,2105 @@
+{
+  "deployment": "https://agentproof-2ioupab05-renggyus-projects.vercel.app",
+  "elapsedMs": 22573,
+  "report": {
+    "analysisId": "ap_mu6xugdb_sdjh6y",
+    "createdAt": "2026-09-18T12:32:05.471Z",
+    "source": {
+      "title": "automatic options as separate route",
+      "url": "https://github.com/pallets/flask/pull/5918",
+      "author": "davidism",
+      "baseBranch": "main",
+      "headBranch": "automatic-options",
+      "provenance": {
+        "version": 1,
+        "origin": "github_snapshot",
+        "headSha": "a82e942870b6472bb40017349cca772c242eb1ad",
+        "baseSha": "d8eaaba824655046958d1a97f11780de460c3271",
+        "changedFileInventory": {
+          "version": 1,
+          "completeness": "complete",
+          "headSha": "a82e942870b6472bb40017349cca772c242eb1ad"
+        },
+        "evidenceCapturedAt": "2026-09-18T12:32:05.322Z",
+        "inputFingerprint": {
+          "version": 1,
+          "algorithm": "sha256",
+          "value": "cce176e61c26e423dabbf5f92f3d086331a2802ced7eaac11c6cb216ab339cf7",
+          "coverage": "github_metadata"
+        }
+      }
+    },
+    "summary": {
+      "oneLine": "Some evidence is weak. Coverage 9%. Some requirements are too vague or weakly evidenced.",
+      "confidence": 0.2,
+      "priority": "medium",
+      "evidenceCoverage": 9,
+      "topRisks": [
+        "Some requirements are too vague or weakly evidenced.",
+        "Behavior changed without strong test evidence.",
+        "Potential scope creep in changed files."
+      ]
+    },
+    "requirements": [
+      {
+        "requirementId": "req_1",
+        "requirementText": "We should also consider deprecating the config",
+        "status": "unclear",
+        "evidenceRefs": [
+          "ev_1",
+          "ev_2"
+        ],
+        "gaps": [
+          "No changed-file evidence clearly maps to this criterion.",
+          "No implementation artifact evidence clearly maps to this requirement.",
+          "Requirement needs human interpretation before trusting the report."
+        ],
+        "reviewerNote": "Ask the coding agent to connect implementation changes to this requirement.",
+        "confidence": 0.38,
+        "proofAxes": [
+          {
+            "subject": "execution",
+            "polarity": "present",
+            "state": "incomplete",
+            "evidenceRefs": [],
+            "axisId": "obs_req_1_execution_1",
+            "role": "observation"
+          },
+          {
+            "subject": "implementation",
+            "polarity": "present",
+            "state": "violated",
+            "evidenceRefs": [],
+            "collectionBasis": "complete_changed_file_inventory",
+            "axisId": "obs_req_1_implementation_1",
+            "role": "observation"
+          }
+        ],
+        "evidenceStatus": "unclear"
+      }
+    ],
+    "claims": [
+      {
+        "id": "claim_1",
+        "text": "Implement `provide_automatic_options` as a regular part of the routing",
+        "evidenceRefs": [
+          "ev_3",
+          "ev_4",
+          "ev_5"
+        ],
+        "supported": false
+      },
+      {
+        "id": "claim_2",
+        "text": "Implement view dispatch",
+        "evidenceRefs": [
+          "ev_3",
+          "ev_5",
+          "ev_6"
+        ],
+        "supported": false
+      },
+      {
+        "id": "claim_3",
+        "text": "Implement rather than as a special check on every request",
+        "evidenceRefs": [],
+        "supported": false
+      },
+      {
+        "id": "claim_4",
+        "text": "Can be updated to do `except DuplicateRuleError` instead of `Exception` once Werkzeug 3.2 is out",
+        "evidenceRefs": [
+          "ev_3",
+          "ev_4",
+          "ev_5"
+        ],
+        "supported": false
+      },
+      {
+        "id": "claim_5",
+        "text": "Relies on the duplicate check to not add the internal route multiple times, for example if `@app.get` and `@app.post` register different view functions for the same URL",
+        "evidenceRefs": [
+          "ev_3",
+          "ev_4",
+          "ev_6"
+        ],
+        "supported": false
+      },
+      {
+        "id": "claim_6",
+        "text": "But nothing breaks if the rule is added multiple times, it's just messy",
+        "evidenceRefs": [
+          "ev_3",
+          "ev_4",
+          "ev_5"
+        ],
+        "supported": false
+      }
+    ],
+    "scope": {
+      "suspected": true,
+      "outOfScopeFiles": [
+        "src/flask/app.py",
+        "src/flask/cli.py",
+        "src/flask/sansio/app.py"
+      ],
+      "reasons": [
+        "src/flask/app.py does not clearly map to the stated criteria.",
+        "src/flask/cli.py does not clearly map to the stated criteria.",
+        "src/flask/sansio/app.py does not clearly map to the stated criteria."
+      ],
+      "evidenceRefs": [
+        "ev_3",
+        "ev_4",
+        "ev_5"
+      ],
+      "provenance": [
+        {
+          "evidenceRef": "ev_3",
+          "sourceType": "diff",
+          "locator": "src/flask/app.py",
+          "confidence": 0.85,
+          "evidenceText": "modified src/flask/app.py (+12/-13). Patch excerpt: @@ -5,7 +5,6 @@ import os import sys import typing as t -import weakref from datetime import timedelta from functools import update_wrapper from inspect import iscoroutinefunction @@ -3..."
+        },
+        {
+          "evidenceRef": "ev_4",
+          "sourceType": "diff",
+          "locator": "src/flask/cli.py",
+          "confidence": 0.85,
+          "evidenceText": "modified src/flask/cli.py (+9/-4). Patch excerpt: @@ -1072,10 +1072,15 @@ def routes_command(sort: str, all_methods: bool) -> None: rows = [] for rule in rules: - row = [ - rule.endpoint, - \", \".join(sorted((rule.methods or set()) - ...[..."
+        },
+        {
+          "evidenceRef": "ev_5",
+          "sourceType": "diff",
+          "locator": "src/flask/sansio/app.py",
+          "confidence": 0.85,
+          "evidenceText": "modified src/flask/sansio/app.py (+21/-11). Patch excerpt: @@ -612,23 +612,24 @@ def add_url_rule( ) -> None: if endpoint is None: endpoint = _endpoint_from_view_func(view_func) # type: ignore - options[\"endpoint\"] = endpoint + methods =..."
+        }
+      ]
+    },
+    "testing": {
+      "ciStatus": "unknown",
+      "lintStatus": "unknown",
+      "typecheckStatus": "unknown",
+      "missingTests": [
+        {
+          "path": "src/flask/app.py",
+          "why": "A related test file changed, but no passing test check or log was provided.",
+          "evidenceRefs": [
+            "ev_3",
+            "ev_6",
+            "ev_7"
+          ],
+          "provenance": [
+            {
+              "evidenceRef": "ev_3",
+              "sourceType": "diff",
+              "locator": "src/flask/app.py",
+              "confidence": 0.85,
+              "evidenceText": "modified src/flask/app.py (+12/-13). Patch excerpt: @@ -5,7 +5,6 @@ import os import sys import typing as t -import weakref from datetime import timedelta from functools import update_wrapper from inspect import iscoroutinefunction @@ -3..."
+            },
+            {
+              "evidenceRef": "ev_6",
+              "sourceType": "test",
+              "locator": "tests/test_basic.py",
+              "confidence": 0.85,
+              "evidenceText": "modified tests/test_basic.py (+7/-0). Test evidence file. Patch excerpt: @@ -53,6 +53,13 @@ def index_put(): assert sorted(rv.allow) == [\"GET\", \"HEAD\", \"OPTIONS\", \"POST\", \"PUT\"] +def test_options_view_args(app: flask.Flask, client: Flask..."
+            },
+            {
+              "evidenceRef": "ev_7",
+              "sourceType": "test",
+              "locator": "tests/test_cli.py",
+              "confidence": 0.85,
+              "evidenceText": "modified tests/test_cli.py (+7/-2). Test evidence file. Patch excerpt: @@ -482,12 +482,17 @@ def test_sort(self, app, invoke): [\"yyy_get_post\", \"static\", \"aaa_post\"], invoke([\"routes\", \"-s\", \"rule\"]).output, ) - match_order = [r.endpoint..."
+            }
+          ]
+        },
+        {
+          "path": "src/flask/cli.py",
+          "why": "A related test file changed, but no passing test check or log was provided.",
+          "evidenceRefs": [
+            "ev_4",
+            "ev_6",
+            "ev_7"
+          ],
+          "provenance": [
+            {
+              "evidenceRef": "ev_4",
+              "sourceType": "diff",
+              "locator": "src/flask/cli.py",
+              "confidence": 0.85,
+              "evidenceText": "modified src/flask/cli.py (+9/-4). Patch excerpt: @@ -1072,10 +1072,15 @@ def routes_command(sort: str, all_methods: bool) -> None: rows = [] for rule in rules: - row = [ - rule.endpoint, - \", \".join(sorted((rule.methods or set()) - ...[..."
+            },
+            {
+              "evidenceRef": "ev_6",
+              "sourceType": "test",
+              "locator": "tests/test_basic.py",
+              "confidence": 0.85,
+              "evidenceText": "modified tests/test_basic.py (+7/-0). Test evidence file. Patch excerpt: @@ -53,6 +53,13 @@ def index_put(): assert sorted(rv.allow) == [\"GET\", \"HEAD\", \"OPTIONS\", \"POST\", \"PUT\"] +def test_options_view_args(app: flask.Flask, client: Flask..."
+            },
+            {
+              "evidenceRef": "ev_7",
+              "sourceType": "test",
+              "locator": "tests/test_cli.py",
+              "confidence": 0.85,
+              "evidenceText": "modified tests/test_cli.py (+7/-2). Test evidence file. Patch excerpt: @@ -482,12 +482,17 @@ def test_sort(self, app, invoke): [\"yyy_get_post\", \"static\", \"aaa_post\"], invoke([\"routes\", \"-s\", \"rule\"]).output, ) - match_order = [r.endpoint..."
+            }
+          ]
+        },
+        {
+          "path": "src/flask/sansio/app.py",
+          "why": "A related test file changed, but no passing test check or log was provided.",
+          "evidenceRefs": [
+            "ev_5",
+            "ev_6",
+            "ev_7"
+          ],
+          "provenance": [
+            {
+              "evidenceRef": "ev_5",
+              "sourceType": "diff",
+              "locator": "src/flask/sansio/app.py",
+              "confidence": 0.85,
+              "evidenceText": "modified src/flask/sansio/app.py (+21/-11). Patch excerpt: @@ -612,23 +612,24 @@ def add_url_rule( ) -> None: if endpoint is None: endpoint = _endpoint_from_view_func(view_func) # type: ignore - options[\"endpoint\"] = endpoint + methods =..."
+            },
+            {
+              "evidenceRef": "ev_6",
+              "sourceType": "test",
+              "locator": "tests/test_basic.py",
+              "confidence": 0.85,
+              "evidenceText": "modified tests/test_basic.py (+7/-0). Test evidence file. Patch excerpt: @@ -53,6 +53,13 @@ def index_put(): assert sorted(rv.allow) == [\"GET\", \"HEAD\", \"OPTIONS\", \"POST\", \"PUT\"] +def test_options_view_args(app: flask.Flask, client: Flask..."
+            },
+            {
+              "evidenceRef": "ev_7",
+              "sourceType": "test",
+              "locator": "tests/test_cli.py",
+              "confidence": 0.85,
+              "evidenceText": "modified tests/test_cli.py (+7/-2). Test evidence file. Patch excerpt: @@ -482,12 +482,17 @@ def test_sort(self, app, invoke): [\"yyy_get_post\", \"static\", \"aaa_post\"], invoke([\"routes\", \"-s\", \"rule\"]).output, ) - match_order = [r.endpoint..."
+            }
+          ]
+        }
+      ]
+    },
+    "reviewPriority": [
+      {
+        "path": "src/flask/app.py",
+        "reason": "1 requirement(s) need human interpretation before trusting the report.",
+        "priority": "medium",
+        "evidenceRefs": [
+          "ev_1",
+          "ev_2",
+          "ev_3",
+          "ev_6",
+          "ev_7"
+        ]
+      },
+      {
+        "path": "src/flask/cli.py",
+        "reason": "Changed file does not clearly map to acceptance criteria.",
+        "priority": "medium",
+        "evidenceRefs": [
+          "ev_4",
+          "ev_6",
+          "ev_7"
+        ]
+      },
+      {
+        "path": "src/flask/sansio/app.py",
+        "reason": "Changed file does not clearly map to acceptance criteria.",
+        "priority": "medium",
+        "evidenceRefs": [
+          "ev_5",
+          "ev_6",
+          "ev_7"
+        ]
+      }
+    ],
+    "proofGraph": {
+      "version": 1,
+      "nodes": [
+        {
+          "requirementId": "req_1",
+          "requirementText": "We should also consider deprecating the config",
+          "sourceRole": "core_requirement",
+          "sourceQuality": "requirement_language",
+          "sourceSection": null,
+          "contextRoles": [],
+          "status": "unclear",
+          "confidence": 0.38,
+          "implementationEvidenceRefs": [],
+          "targetedTestEvidenceRefs": [],
+          "executionEvidenceRefs": [],
+          "gapSignals": [
+            {
+              "kind": "missing_implementation",
+              "severity": "medium",
+              "message": "No implementation artifact evidence clearly maps to this requirement.",
+              "evidenceRefs": [
+                "ev_1",
+                "ev_2"
+              ]
+            },
+            {
+              "kind": "ambiguous_requirement",
+              "severity": "medium",
+              "message": "Requirement needs human interpretation before trusting the report.",
+              "evidenceRefs": [
+                "ev_1",
+                "ev_2"
+              ]
+            }
+          ],
+          "firstFiles": []
+        }
+      ],
+      "context": [
+        {
+          "id": "ctx_1",
+          "source": "issue",
+          "role": "problem_context",
+          "sourceQuality": "linked_issue",
+          "sourceSection": "linked_issue_title",
+          "text": "`provide_automatic_options` is weird"
+        },
+        {
+          "id": "ctx_2",
+          "source": "issue",
+          "role": "external_reference",
+          "sourceQuality": "linked_issue",
+          "sourceSection": null,
+          "text": "While dealing with trying to detect duplicate routes in https://github.com/pallets/werkzeug/issues/3105, I ran into an issue with Flask, which adds `OPTIONS` to every single rule by default"
+        },
+        {
+          "id": "ctx_3",
+          "source": "issue",
+          "role": "problem_context",
+          "sourceQuality": "linked_issue",
+          "sourceSection": null,
+          "text": "I started looking into Flask's `provide_automatic_options` feature, and it's just weird"
+        },
+        {
+          "id": "ctx_4",
+          "source": "issue",
+          "role": "problem_context",
+          "sourceQuality": "linked_issue",
+          "sourceSection": null,
+          "text": "Why is there a `PROVIDE_AUTOMATIC_OPTIONS` config? What benefit is there to turning `OPTIONS` off at all, let alone configuring it for a given deployment"
+        },
+        {
+          "id": "ctx_5",
+          "source": "issue",
+          "role": "problem_context",
+          "sourceQuality": "linked_issue",
+          "sourceSection": null,
+          "text": "Flask adds `OPTIONS` to every route, then has a check that runs on dispatching _every_ request to see if the method was `OPTIONS` and `provide_automatic_options` was enabled for the rule"
+        },
+        {
+          "id": "ctx_6",
+          "source": "issue",
+          "role": "problem_context",
+          "sourceQuality": "linked_issue",
+          "sourceSection": null,
+          "text": "Performing this check for every request seems wasteful, as opposed to adding an actual rule and endpoint so that the routing that's already happening handles it"
+        },
+        {
+          "id": "ctx_7",
+          "source": "issue",
+          "role": "problem_context",
+          "sourceQuality": "linked_issue",
+          "sourceSection": null,
+          "text": "But adding a rule is also sort of bad, as it results in a bunch of duplicate rules since Flask has no way to know what other rules have already been added"
+        },
+        {
+          "id": "ctx_8",
+          "source": "issue",
+          "role": "problem_context",
+          "sourceQuality": "linked_issue",
+          "sourceSection": null,
+          "text": "This can be caught with Werkzeug 3.2, and doesn't cause problems in earlier versions, but it's still annoying"
+        },
+        {
+          "id": "ctx_9",
+          "source": "issue",
+          "role": "problem_context",
+          "sourceQuality": "linked_issue",
+          "sourceSection": null,
+          "text": "`provide_automatic_options` can be set as an attribute on the view function"
+        },
+        {
+          "id": "ctx_10",
+          "source": "issue",
+          "role": "problem_context",
+          "sourceQuality": "linked_issue",
+          "sourceSection": null,
+          "text": "There are some other attributes that are barely documented as well, such as `required_methods`"
+        },
+        {
+          "id": "ctx_11",
+          "source": "issue",
+          "role": "problem_context",
+          "sourceQuality": "linked_issue",
+          "sourceSection": null,
+          "text": "This is presumably mostly for `View` classes, but works on functions too, making type annotations unhelpful"
+        },
+        {
+          "id": "ctx_12",
+          "source": "issue",
+          "role": "problem_context",
+          "sourceQuality": "linked_issue",
+          "sourceSection": null,
+          "text": "If `PROVIDE_AUTOMATIC_OPTIONS` is disabled (not the default), the logic for the `provide_automatic_options` argument and attribute doesn't work correctly to _enable_ it, it only works for _disabling_"
+        },
+        {
+          "id": "ctx_13",
+          "source": "issue",
+          "role": "problem_context",
+          "sourceQuality": "linked_issue",
+          "sourceSection": null,
+          "text": "The tests for this were incomplete and had some issues"
+        },
+        {
+          "id": "ctx_14",
+          "source": "issue",
+          "role": "problem_context",
+          "sourceQuality": "linked_issue",
+          "sourceSection": null,
+          "text": "Some other tests were revealed to be adding duplicate rules as well"
+        },
+        {
+          "id": "ctx_15",
+          "source": "issue",
+          "role": "problem_context",
+          "sourceQuality": "linked_issue",
+          "sourceSection": null,
+          "text": "At a minimum I've fixed the enabling issue"
+        },
+        {
+          "id": "ctx_16",
+          "source": "issue",
+          "role": "problem_context",
+          "sourceQuality": "linked_issue",
+          "sourceSection": null,
+          "text": "I've also got a change that registers a route and view for options instead of using special dispatch logic"
+        },
+        {
+          "id": "ctx_17",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": null,
+          "text": "Implement `provide_automatic_options` as a regular part of the routing and view dispatch, rather than as a special check on every request"
+        },
+        {
+          "id": "ctx_18",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": null,
+          "text": "Can be updated to do `except DuplicateRuleError` instead of `Exception` once Werkzeug 3.2 is out"
+        },
+        {
+          "id": "ctx_19",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": null,
+          "text": "Relies on the duplicate check to not add the internal route multiple times, for example if `@app.get` and `@app.post` register different view functions for the same URL"
+        },
+        {
+          "id": "ctx_20",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": null,
+          "text": "But nothing breaks if the rule is added multiple times, it's just messy"
+        },
+        {
+          "id": "ctx_21",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": null,
+          "text": "Adjusts `flask routes` to no show the `_automatic_options` endpoint, as that would be really noisy"
+        },
+        {
+          "id": "ctx_22",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": null,
+          "text": "Also moves the static view out instead of using a lambda and weakref, to match how this new view is handled"
+        },
+        {
+          "id": "ctx_23",
+          "source": "pr_description",
+          "role": "external_reference",
+          "sourceQuality": "author_claim",
+          "sourceSection": null,
+          "text": "expands on #5917, fixes #5916"
+        }
+      ],
+      "summary": {
+        "requirementCount": 1,
+        "requirementsWithImplementation": 0,
+        "requirementsWithTargetedTests": 0,
+        "requirementsWithExecution": 0,
+        "requirementsWithGaps": 1,
+        "gapCount": 2
+      }
+    },
+    "reprompt": {
+      "targetAgent": "codex",
+      "prompt": "You are revising an AI-generated PR for AgentProof verification.\nDo not broaden the PR. Make only changes tied to the original task.\n1. Address requirement \"We should also consider deprecating the config\" and provide evidence for the implementation.\n2. Explain or revert out-of-scope changes in: src/flask/app.py, src/flask/cli.py, src/flask/sansio/app.py.\n3. Add or identify tests that cover: src/flask/app.py, src/flask/cli.py, src/flask/sansio/app.py.\n4. Return requirement-by-requirement proof for: \"We should also consider deprecating the config\".\nReturn a concise summary with changed files, tests run, and remaining risks."
+    },
+    "evidenceIndex": [
+      {
+        "id": "ev_8",
+        "kind": "check",
+        "label": "3.11",
+        "locator": "https://github.com/pallets/flask/actions/runs/31532481298/job/93915612017",
+        "summary": "Status: passed. 3.11",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_9",
+        "kind": "check",
+        "label": "3.10",
+        "locator": "https://github.com/pallets/flask/actions/runs/31532481298/job/93915611946",
+        "summary": "Status: passed. 3.10",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_10",
+        "kind": "check",
+        "label": "Mac",
+        "locator": "https://github.com/pallets/flask/actions/runs/31532481298/job/93915611938",
+        "summary": "Status: passed. Mac",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_11",
+        "kind": "check",
+        "label": "3.12",
+        "locator": "https://github.com/pallets/flask/actions/runs/31532481298/job/93915611925",
+        "summary": "Status: passed. 3.12",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_12",
+        "kind": "check",
+        "label": "3.13",
+        "locator": "https://github.com/pallets/flask/actions/runs/31532481298/job/93915611918",
+        "summary": "Status: passed. 3.13",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_13",
+        "kind": "check",
+        "label": "3.15",
+        "locator": "https://github.com/pallets/flask/actions/runs/31532481298/job/93915611905",
+        "summary": "Status: passed. 3.15",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_14",
+        "kind": "check",
+        "label": "3.14",
+        "locator": "https://github.com/pallets/flask/actions/runs/31532481298/job/93915611897",
+        "summary": "Status: passed. 3.14",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_15",
+        "kind": "check",
+        "label": "Minimum Versions",
+        "locator": "https://github.com/pallets/flask/actions/runs/31532481298/job/93915611879",
+        "summary": "Status: passed. Minimum Versions",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_16",
+        "kind": "check",
+        "label": "Windows",
+        "locator": "https://github.com/pallets/flask/actions/runs/31532481298/job/93915611826",
+        "summary": "Status: passed. Windows",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_17",
+        "kind": "check",
+        "label": "3.14t",
+        "locator": "https://github.com/pallets/flask/actions/runs/31532481298/job/93915611731",
+        "summary": "Status: passed. 3.14t",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_18",
+        "kind": "check",
+        "label": "typing",
+        "locator": "https://github.com/pallets/flask/actions/runs/31532481298/job/93915611719",
+        "summary": "Status: passed. typing",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_19",
+        "kind": "check",
+        "label": "Development Versions",
+        "locator": "https://github.com/pallets/flask/actions/runs/31532481298/job/93915611694",
+        "summary": "Status: passed. Development Versions",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_20",
+        "kind": "check",
+        "label": "PyPy",
+        "locator": "https://github.com/pallets/flask/actions/runs/31532481298/job/93915611669",
+        "summary": "Status: passed. PyPy",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_21",
+        "kind": "check",
+        "label": "main",
+        "locator": "https://github.com/pallets/flask/actions/runs/31532481198/job/93915611025",
+        "summary": "Status: passed. main",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_22",
+        "kind": "check",
+        "label": "docs/readthedocs.org:flask",
+        "locator": "https://flask--5918.org.readthedocs.build/en/5918/",
+        "summary": "Status: passed. docs/readthedocs.org:flask - Read the Docs build succeeded!",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_3",
+        "kind": "diff",
+        "label": "src/flask/app.py",
+        "locator": "src/flask/app.py",
+        "codeLocation": {
+          "path": "src/flask/app.py",
+          "side": "head",
+          "revisionSha": "a82e942870b6472bb40017349cca772c242eb1ad",
+          "line": 5
+        },
+        "summary": "modified src/flask/app.py (+12/-13). Patch excerpt: @@ -5,7 +5,6 @@\n import os\n import sys\n import typing as t\n-import weakref\n from datetime import timedelta\n from functools import update_wrapper\n from inspect import iscoroutinefunction\n@@ -353,16 +352,15 @@ def __init__(\n...[middle truncated for privacy and token control]\nref().send_static_file(**kw),  # type: ignore\n+                view_func=_static_view,\n             )\n \n+        self.view_functions[\"_automatic_options\"] = _options_view\n+\n     d\n...[truncated for privacy and token control]",
+        "confidence": 0.85
+      },
+      {
+        "id": "ev_4",
+        "kind": "diff",
+        "label": "src/flask/cli.py",
+        "locator": "src/flask/cli.py",
+        "codeLocation": {
+          "path": "src/flask/cli.py",
+          "side": "head",
+          "revisionSha": "a82e942870b6472bb40017349cca772c242eb1ad",
+          "line": 1072
+        },
+        "summary": "modified src/flask/cli.py (+9/-4). Patch excerpt: @@ -1072,10 +1072,15 @@ def routes_command(sort: str, all_methods: bool) -> None:\n     rows = []\n \n     for rule in rules:\n-        row = [\n-            rule.endpoint,\n-            \", \".join(sorted((rule.methods or set()) -\n...[middle truncated for privacy and token control]\ne):\n+            methods.add(\"OPTIONS\")\n+\n+        row = [rule.endpoint, \", \".join(sorted(methods - ignored_methods))]\n \n         if has_domain:\n             row.append((rule.host if host_matching else rule.subdomain) or \"\")",
+        "confidence": 0.85
+      },
+      {
+        "id": "ev_5",
+        "kind": "diff",
+        "label": "src/flask/sansio/app.py",
+        "locator": "src/flask/sansio/app.py",
+        "codeLocation": {
+          "path": "src/flask/sansio/app.py",
+          "side": "head",
+          "revisionSha": "a82e942870b6472bb40017349cca772c242eb1ad",
+          "line": 612
+        },
+        "summary": "modified src/flask/sansio/app.py (+21/-11). Patch excerpt: @@ -612,23 +612,24 @@ def add_url_rule(\n     ) -> None:\n         if endpoint is None:\n             endpoint = _endpoint_from_view_func(view_func)  # type: ignore\n-        options[\"endpoint\"] = endpoint\n+\n         methods =\n...[middle truncated for privacy and token control]\nPOST\"])'\n             )\n-        methods = {item.upper() for item in methods}\n \n+        methods = {item.upper() for item in methods}\n         # Methods that should always be adde\n...[truncated for privacy and token control]",
+        "confidence": 0.85
+      },
+      {
+        "id": "ev_6",
+        "kind": "test",
+        "label": "tests/test_basic.py",
+        "locator": "tests/test_basic.py",
+        "codeLocation": {
+          "path": "tests/test_basic.py",
+          "side": "head",
+          "revisionSha": "a82e942870b6472bb40017349cca772c242eb1ad",
+          "line": 53
+        },
+        "summary": "modified tests/test_basic.py (+7/-0). Test evidence file. Patch excerpt: @@ -53,6 +53,13 @@ def index_put():\n     assert sorted(rv.allow) == [\"GET\", \"HEAD\", \"OPTIONS\", \"POST\", \"PUT\"]\n \n \n+def test_options_view_args(app: flask.Flask, client: FlaskClient) -> None:\n+    \"\"\"The automatic options vie\n...[middle truncated for privacy and token control]\nassert rv.allow == {\"GET\", \"HEAD\", \"OPTIONS\"}\n+\n+\n @pytest.mark.parametrize(\"method\", [\"get\", \"query\", \"post\", \"put\", \"delete\", \"patch\"])\n def test_method_route(app, client, method):\n     method_route = getattr(app, method)",
+        "confidence": 0.85
+      },
+      {
+        "id": "ev_7",
+        "kind": "test",
+        "label": "tests/test_cli.py",
+        "locator": "tests/test_cli.py",
+        "codeLocation": {
+          "path": "tests/test_cli.py",
+          "side": "head",
+          "revisionSha": "a82e942870b6472bb40017349cca772c242eb1ad",
+          "line": 482
+        },
+        "summary": "modified tests/test_cli.py (+7/-2). Test evidence file. Patch excerpt: @@ -482,12 +482,17 @@ def test_sort(self, app, invoke):\n             [\"yyy_get_post\", \"static\", \"aaa_post\"],\n             invoke([\"routes\", \"-s\", \"rule\"]).output,\n         )\n-        match_order = [r.endpoint for r in app.u\n...[middle truncated for privacy and token control]\nD, OPTIONS, POST\" not in output\n+        assert \"HEAD\" not in output\n+        assert \"OPTIONS\" not in output\n \n         output = invoke([\"routes\", \"--all-methods\"]).output\n         assert \"GET, HEAD, OPTIONS, POST\" in output",
+        "confidence": 0.85
+      },
+      {
+        "id": "ev_1",
+        "kind": "task",
+        "label": "Linked issue",
+        "summary": "Linked issue pallets/flask#5916: `provide_automatic_options` is weird\n\nWhile dealing with trying to detect duplicate routes in https://github.com/pallets/werkzeug/issues/3105, I ran into an issue with Flask, which adds `OPTIONS` to every single rule by default.\n\nI started looking into Flask's `provide_automatic_options` feature, and it's just weird.\n\n- Why is there a `PROVIDE_AUTOMATIC_OPTIONS` config? What benefit is there to turning `OPTIONS` off at all, let alone configuring it for a given deployment.\n- Flask adds `OPTIONS` to every route, then has a check that runs on dispatching _every_ request to see if the\n...[truncated for privacy and token control]",
+        "confidence": 0.95
+      },
+      {
+        "id": "ev_2",
+        "kind": "pr_description",
+        "label": "PR description",
+        "summary": "Implement `provide_automatic_options` as a regular part of the routing and view dispatch, rather than as a special check on every request.\n\nCan be updated to do `except DuplicateRuleError` instead of `Exception` once Werkzeug 3.2 is out. Relies on the duplicate check to not add the internal route multiple times, for example if `@app.get` and `@app.post` register different view functions for the same URL. But nothing breaks if the rule is added multiple times, it's just messy.\n\nAdjusts `flask routes` to no show the `_automatic_options` endpoint, as that would be really noisy.\n\nAlso moves the static view out instea\n...[truncated for privacy and token control]",
+        "confidence": 0.7
+      }
+    ],
+    "limitations": [
+      "Public commit status metadata was available, but only non-execution statuses were found.",
+      "No public test/build workflow run, check, or raw CI log was available from the collected metadata. No verified execution evidence was established.",
+      "Raw CI logs were not fetched or stored.",
+      "Confidence is based only on issue, diff, and test-artifact evidence because no public test/build execution evidence was found.",
+      "At least one requirement needs human interpretation."
+    ],
+    "analysisContext": "linked_issue",
+    "reportSchemaVersion": "verification-report.v2",
+    "verificationContract": {
+      "version": 2,
+      "policy": "strict_typed_contract",
+      "state": "absent",
+      "source": null,
+      "gaps": [
+        {
+          "kind": "verification_contract_missing",
+          "message": "Approved verification contract is missing."
+        }
+      ],
+      "objectives": []
+    },
+    "reviewCandidates": {
+      "version": 1,
+      "intentGraph": {
+        "version": 1,
+        "source": {
+          "kind": "task",
+          "hash": "2a9e274f1f8fc755df3c99536298f8daddc18a21918d44e079c6614c49ba39aa",
+          "length": 1950,
+          "coordinates": "redacted_lf_utf16"
+        },
+        "repository": "pallets/flask",
+        "goals": [
+          {
+            "id": "intent_2096fadb7011dfff",
+            "requirementIds": [],
+            "sourceRefs": [
+              {
+                "start": 0,
+                "end": 69,
+                "hash": "ad6c649acd09cd8ce0c8b79abed084a868c95881079cc89689c1dec307aeadf4"
+              },
+              {
+                "start": 71,
+                "end": 261,
+                "hash": "2766250b3654520cd547672d7013fbb5b8bb6ab0e2e807b94c992df947d5b98b"
+              },
+              {
+                "start": 263,
+                "end": 351,
+                "hash": "af30dba32213342ff59df15345bcb516b3d59a6072bd7ff1720162638c01d115"
+              },
+              {
+                "start": 353,
+                "end": 509,
+                "hash": "10ea6995803148d297b91f35c46370d4f287c417438b07e75f0448688cde57ea"
+              },
+              {
+                "start": 510,
+                "end": 1134,
+                "hash": "7c9e2e1fa79750798b9973286b27e395899d6f006d51d8d2b0f6ab397780e5c7"
+              },
+              {
+                "start": 1135,
+                "end": 1418,
+                "hash": "b6b7872f6bc269d396c8412f8b1fec13a79054bc7f760212f5ab5dedae8df8ac"
+              },
+              {
+                "start": 1622,
+                "end": 1749,
+                "hash": "77f6b8aab4cbda367541bb29ac4407f102ae0fe1a02f3ec226b6b28237597303"
+              }
+            ],
+            "facets": [
+              {
+                "kind": "condition",
+                "sourceRef": {
+                  "start": 614,
+                  "end": 1134,
+                  "hash": "a6700882468b3ccddabc1c83a4edf1f93e61bc9dc4258c816a7fb954871a0dc3"
+                }
+              },
+              {
+                "kind": "condition",
+                "sourceRef": {
+                  "start": 1419,
+                  "end": 1621,
+                  "hash": "75c4bcebf5facd53fc0359a9481fc282a1eec287192888fb41d0479650e7575b"
+                }
+              },
+              {
+                "kind": "condition",
+                "sourceRef": {
+                  "start": 1421,
+                  "end": 1621,
+                  "hash": "e9149278c3f3193be1c71276a374754eedd43d4cfecb88eba474330ff870d19d"
+                }
+              }
+            ]
+          },
+          {
+            "id": "intent_17e10a8a3d889cb9",
+            "requirementIds": [
+              "req_1"
+            ],
+            "sourceRefs": [
+              {
+                "start": 1751,
+                "end": 1950,
+                "hash": "005025fdd0d62c123a6b387566db182a800612efaddb0abb5bb31d1e47e6e8b4"
+              }
+            ],
+            "facets": []
+          }
+        ],
+        "chunks": [
+          {
+            "id": "chunk_81fae45d83da2f5be309a2f2",
+            "pool": "changed",
+            "path": "src/flask/app.py",
+            "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 1,
+            "hash": "4d9ec7a87fbf4b05a835bb71ad49ceeadc95ae3dcf9e1c88fc984b43c9a14c16",
+            "evidenceId": "ev_3"
+          },
+          {
+            "id": "chunk_daf823ce089413a840c9114d",
+            "pool": "changed",
+            "path": "src/flask/cli.py",
+            "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 1,
+            "hash": "1d7b599f6a1bd99dbd1c703dbec099e2afb98088c56f58475b65d2048eff98e0",
+            "evidenceId": "ev_4"
+          },
+          {
+            "id": "chunk_437b690da9144b7eafac306e",
+            "pool": "changed",
+            "path": "src/flask/sansio/app.py",
+            "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 1,
+            "hash": "75404e9cd8d289862b8107bb3b0f4041951eb0b7288f2d57f54b6e141f061e68",
+            "evidenceId": "ev_5"
+          },
+          {
+            "id": "chunk_1452582c37052d8ed4a22662",
+            "pool": "changed",
+            "path": "tests/test_basic.py",
+            "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 1,
+            "hash": "cfbcd6e4352733f30acd9160ccecdc52fda1509935c01f19c62584a03b7e0c18",
+            "evidenceId": "ev_6"
+          },
+          {
+            "id": "chunk_4511fd6ae53d84015d03b428",
+            "pool": "changed",
+            "path": "tests/test_cli.py",
+            "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 1,
+            "hash": "c147d982591f911fe65bdb46723d4801b9fff5cf149769bcca5fc7cdf46d36b6",
+            "evidenceId": "ev_7"
+          }
+        ],
+        "edges": [
+          {
+            "goalId": "intent_2096fadb7011dfff",
+            "chunkId": "chunk_daf823ce089413a840c9114d",
+            "relation": "candidate",
+            "basis": [
+              "identifier",
+              "lexical"
+            ],
+            "score": 167
+          },
+          {
+            "goalId": "intent_2096fadb7011dfff",
+            "chunkId": "chunk_437b690da9144b7eafac306e",
+            "relation": "candidate",
+            "basis": [
+              "lexical"
+            ],
+            "score": 105
+          },
+          {
+            "goalId": "intent_2096fadb7011dfff",
+            "chunkId": "chunk_1452582c37052d8ed4a22662",
+            "relation": "candidate",
+            "basis": [
+              "lexical"
+            ],
+            "score": 69
+          },
+          {
+            "goalId": "intent_2096fadb7011dfff",
+            "chunkId": "chunk_4511fd6ae53d84015d03b428",
+            "relation": "candidate",
+            "basis": [
+              "lexical"
+            ],
+            "score": 51
+          },
+          {
+            "goalId": "intent_17e10a8a3d889cb9",
+            "chunkId": "chunk_437b690da9144b7eafac306e",
+            "relation": "candidate",
+            "basis": [
+              "lexical"
+            ],
+            "score": 49
+          }
+        ],
+        "capabilities": {
+          "wholeRepository": "unavailable",
+          "embeddings": "unavailable",
+          "symbolResolution": "unavailable",
+          "semantic": "existing_relations_only",
+          "snapshotChunks": 0,
+          "rejectedSnapshots": 0,
+          "truncated": false
+        }
+      },
+      "requirements": [
+        {
+          "requirementId": "req_1",
+          "sourceHash": "1d9fd5bd82f8de646481bde4c03c33931b11baedba14e5231499360009a0f165",
+          "candidates": [
+            {
+              "evidenceId": "ev_5",
+              "basis": "changed_tokens",
+              "score": 49,
+              "evidenceHash": "75404e9cd8d289862b8107bb3b0f4041951eb0b7288f2d57f54b6e141f061e68"
+            }
+          ]
+        }
+      ],
+      "retainedRelations": [],
+      "navigation": {
+        "version": 1,
+        "model": "gemini-3.8-flash",
+        "state": "partial",
+        "repository": "pallets/flask",
+        "headSha": "a82e942870b6472bb40017349cca772c242eb1ad",
+        "baseSha": "d8eaaba824655046958d1a97f11780de460c3271",
+        "sources": [
+          {
+            "id": "task",
+            "authority": "issue_source",
+            "hash": "2a9e274f1f8fc755df3c99536298f8daddc18a21918d44e079c6614c49ba39aa",
+            "length": 1950,
+            "processedLength": 1950,
+            "url": "https://github.com/pallets/flask/issues/5916"
+          },
+          {
+            "id": "description",
+            "authority": "pr_author_claim",
+            "hash": "2eca06898eff1f96ebc66df41db8ef195d8e0a535c76cd04714f2d60668da966",
+            "length": 723,
+            "processedLength": 723,
+            "url": "https://github.com/pallets/flask/pull/5918"
+          },
+          {
+            "id": "title",
+            "authority": "pr_author_claim",
+            "hash": "523ca4b9d35450294c993c6879fb9bcf5d4abccc657f780f25a510c2a568b6bc",
+            "length": 35,
+            "processedLength": 35,
+            "url": "https://github.com/pallets/flask/pull/5918"
+          }
+        ],
+        "goals": [
+          {
+            "id": "goal_1",
+            "summary": "Implement automatic OPTIONS handling as a distinct route and view dispatch rather than running custom checks on every request",
+            "emphasis": "primary",
+            "authority": "mixed_sources",
+            "sourceRefs": [
+              {
+                "sourceId": "title",
+                "start": 0,
+                "end": 35,
+                "hash": "523ca4b9d35450294c993c6879fb9bcf5d4abccc657f780f25a510c2a568b6bc"
+              },
+              {
+                "sourceId": "description",
+                "start": 0,
+                "end": 138,
+                "hash": "dc1d30f42bb92b8e59482400bea40920906acd1be3dc19ae64e139c7177b86af"
+              },
+              {
+                "sourceId": "task",
+                "start": 1751,
+                "end": 1950,
+                "hash": "005025fdd0d62c123a6b387566db182a800612efaddb0abb5bb31d1e47e6e8b4"
+              }
+            ],
+            "facets": [
+              {
+                "kind": "context",
+                "summary": "Flask previously added OPTIONS to every rule by default and checked on every request dispatch whether the method was OPTIONS and automatic options were enabled",
+                "sourceRefs": [
+                  {
+                    "sourceId": "task",
+                    "start": 71,
+                    "end": 261,
+                    "hash": "2766250b3654520cd547672d7013fbb5b8bb6ab0e2e807b94c992df947d5b98b"
+                  },
+                  {
+                    "sourceId": "task",
+                    "start": 353,
+                    "end": 1749,
+                    "hash": "59d1bec59161279016e70857c33a7ec6e3880e3dddebb2f37a26fc28d8a6b57c"
+                  }
+                ]
+              },
+              {
+                "kind": "motivation",
+                "summary": "Checking provide_automatic_options on every request dispatch is inefficient; handling via standard routing avoids this dispatch check",
+                "sourceRefs": [
+                  {
+                    "sourceId": "task",
+                    "start": 353,
+                    "end": 1749,
+                    "hash": "59d1bec59161279016e70857c33a7ec6e3880e3dddebb2f37a26fc28d8a6b57c"
+                  }
+                ]
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "Automatic options are registered as a regular route and view dispatch; catches exceptions to avoid registering duplicate internal routes for the same URL",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 0,
+                    "end": 138,
+                    "hash": "dc1d30f42bb92b8e59482400bea40920906acd1be3dc19ae64e139c7177b86af"
+                  },
+                  {
+                    "sourceId": "description",
+                    "start": 140,
+                    "end": 480,
+                    "hash": "c3c0d1663b74c978974ed3bf5235a5b38ab1dc8b8022d2af4ab38d24c032b0a5"
+                  },
+                  {
+                    "sourceId": "task",
+                    "start": 1751,
+                    "end": 1950,
+                    "hash": "005025fdd0d62c123a6b387566db182a800612efaddb0abb5bb31d1e47e6e8b4"
+                  }
+                ]
+              },
+              {
+                "kind": "condition",
+                "summary": "Future update could catch Werkzeug 3.2 DuplicateRuleError explicitly instead of general Exception once available",
+                "sourceRefs": [
+                  {
+                    "sourceId": "task",
+                    "start": 353,
+                    "end": 1749,
+                    "hash": "59d1bec59161279016e70857c33a7ec6e3880e3dddebb2f37a26fc28d8a6b57c"
+                  },
+                  {
+                    "sourceId": "description",
+                    "start": 140,
+                    "end": 480,
+                    "hash": "c3c0d1663b74c978974ed3bf5235a5b38ab1dc8b8022d2af4ab38d24c032b0a5"
+                  }
+                ]
+              }
+            ],
+            "openQuestions": [],
+            "firstInspection": "read_451066f7898fb140cccd0132",
+            "candidates": [
+              {
+                "artifactId": "read_451066f7898fb140cccd0132",
+                "relevance": "relevant",
+                "whyInspect": "Shows registering the dedicated options view function into view_functions during application initialization.",
+                "reviewQuestion": "How is the internal options view function defined and hooked into the application's view functions dictionary?",
+                "uncertainty": "The snippet truncates before the body of the options view definition is shown."
+              },
+              {
+                "artifactId": "read_8ebf8a2c65e5acbb78cb2389",
+                "relevance": "relevant",
+                "whyInspect": "Handles URL rule registration and method normalization where distinct routing for options is set up.",
+                "reviewQuestion": "How does rule registration determine whether to add a distinct automatic options route or catch duplicate rule errors?",
+                "uncertainty": "The method snippet cuts off right after method set normalization."
+              },
+              {
+                "artifactId": "read_0dba3e02354e5f2415c2f08c",
+                "relevance": "relevant",
+                "whyInspect": "Verifies that the automatic options view responds correctly with expected allowed headers when view arguments are present.",
+                "reviewQuestion": "Does the test adequately exercise the new options view dispatch behavior?",
+                "uncertainty": "Shows only a single basic test function."
+              }
+            ],
+            "uncertainty": [
+              "Implementation details of the duplicate rule exception handling are truncated in sansio/app.py."
+            ]
+          },
+          {
+            "id": "goal_2",
+            "summary": "Fix logic where provide_automatic_options failed to enable OPTIONS when PROVIDE_AUTOMATIC_OPTIONS configuration was disabled",
+            "emphasis": "supporting",
+            "authority": "issue_source",
+            "sourceRefs": [
+              {
+                "sourceId": "task",
+                "start": 353,
+                "end": 1749,
+                "hash": "59d1bec59161279016e70857c33a7ec6e3880e3dddebb2f37a26fc28d8a6b57c"
+              },
+              {
+                "sourceId": "task",
+                "start": 1751,
+                "end": 1950,
+                "hash": "005025fdd0d62c123a6b387566db182a800612efaddb0abb5bb31d1e47e6e8b4"
+              }
+            ],
+            "facets": [
+              {
+                "kind": "reproduction",
+                "summary": "When PROVIDE_AUTOMATIC_OPTIONS is disabled, provide_automatic_options argument and view attribute logic failed to re-enable OPTIONS, working only to disable",
+                "sourceRefs": [
+                  {
+                    "sourceId": "task",
+                    "start": 353,
+                    "end": 1749,
+                    "hash": "59d1bec59161279016e70857c33a7ec6e3880e3dddebb2f37a26fc28d8a6b57c"
+                  }
+                ]
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "Fixed the logic enabling automatic options when configuration was disabled",
+                "sourceRefs": [
+                  {
+                    "sourceId": "task",
+                    "start": 1751,
+                    "end": 1950,
+                    "hash": "005025fdd0d62c123a6b387566db182a800612efaddb0abb5bb31d1e47e6e8b4"
+                  }
+                ]
+              }
+            ],
+            "openQuestions": [],
+            "firstInspection": "read_8ebf8a2c65e5acbb78cb2389",
+            "candidates": [
+              {
+                "artifactId": "read_8ebf8a2c65e5acbb78cb2389",
+                "relevance": "relevant",
+                "whyInspect": "Inspects how provide_automatic_options configuration and per-view flags interact during URL rule addition.",
+                "reviewQuestion": "Where is the override logic implemented to allow route-level provide_automatic_options to take precedence when app config is disabled?",
+                "uncertainty": "The rule options parsing logic continues beyond the visible snippet."
+              },
+              {
+                "artifactId": "read_0dba3e02354e5f2415c2f08c",
+                "relevance": "possible",
+                "whyInspect": "Tests route behavior for options, though specific tests for disabled config override are not visible here.",
+                "reviewQuestion": "Are there test cases specifically verifying provide_automatic_options override when the configuration flag is set to false?",
+                "uncertainty": "The visible test cases do not demonstrate toggling the configuration flag."
+              }
+            ],
+            "uncertainty": [
+              "Full logic evaluating provide_automatic_options against configuration is truncated in sansio/app.py."
+            ]
+          },
+          {
+            "id": "goal_3",
+            "summary": "Hide the internal automatic options endpoint from the route listing CLI command",
+            "emphasis": "supporting",
+            "authority": "pr_author_claim",
+            "sourceRefs": [
+              {
+                "sourceId": "description",
+                "start": 482,
+                "end": 581,
+                "hash": "a9382ce06a8471ca28f028cdc72a1b515affd9a6f4fc41b31f28fae84371ca2f"
+              }
+            ],
+            "facets": [
+              {
+                "kind": "motivation",
+                "summary": "Displaying _automatic_options in the flask routes output creates excessive noise",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 482,
+                    "end": 581,
+                    "hash": "a9382ce06a8471ca28f028cdc72a1b515affd9a6f4fc41b31f28fae84371ca2f"
+                  }
+                ]
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "Adjusted flask routes command to omit displaying the _automatic_options endpoint",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 482,
+                    "end": 581,
+                    "hash": "a9382ce06a8471ca28f028cdc72a1b515affd9a6f4fc41b31f28fae84371ca2f"
+                  }
+                ]
+              }
+            ],
+            "openQuestions": [],
+            "firstInspection": "read_ce3297af394a8c3219563b8f",
+            "candidates": [
+              {
+                "artifactId": "read_ce3297af394a8c3219563b8f",
+                "relevance": "relevant",
+                "whyInspect": "Contains the CLI loop displaying routes and the check excluding the internal automatic options endpoint.",
+                "reviewQuestion": "Does the filter correctly prevent internal options routes from appearing while still displaying OPTIONS methods on user endpoints?",
+                "uncertainty": "None."
+              },
+              {
+                "artifactId": "read_e856985fc46e44a50548e253",
+                "relevance": "relevant",
+                "whyInspect": "Contains route command CLI tests that assert expected endpoints and match order without internal routes.",
+                "reviewQuestion": "Does test_routes assert that the internal options endpoint is excluded from output across CLI invocations?",
+                "uncertainty": "None."
+              }
+            ],
+            "uncertainty": []
+          },
+          {
+            "id": "goal_4",
+            "summary": "Refactor static view handling to align with automatic options view pattern",
+            "emphasis": "supporting",
+            "authority": "pr_author_claim",
+            "sourceRefs": [
+              {
+                "sourceId": "description",
+                "start": 583,
+                "end": 691,
+                "hash": "9cace0693a3584b1515136d7165c7eca9a0d1cb1f8c7aa745899809ac1b79b7f"
+              }
+            ],
+            "facets": [
+              {
+                "kind": "implementation_claim",
+                "summary": "Extracted static view definition rather than relying on a lambda and weakref",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 583,
+                    "end": 691,
+                    "hash": "9cace0693a3584b1515136d7165c7eca9a0d1cb1f8c7aa745899809ac1b79b7f"
+                  }
+                ]
+              }
+            ],
+            "openQuestions": [],
+            "firstInspection": "read_451066f7898fb140cccd0132",
+            "candidates": [
+              {
+                "artifactId": "read_451066f7898fb140cccd0132",
+                "relevance": "relevant",
+                "whyInspect": "Shows static URL rule registration using a dedicated static view rather than an inline lambda or weakref.",
+                "reviewQuestion": "How was static view registration refactored, and is it structured identically to the options view pattern?",
+                "uncertainty": "The definition of the static view helper itself is not displayed in this snippet."
+              }
+            ],
+            "uncertainty": [
+              "The declaration and implementation of the static view helper function are outside the visible snippet."
+            ]
+          },
+          {
+            "id": "goal_5",
+            "summary": "Consider deprecating the PROVIDE_AUTOMATIC_OPTIONS configuration option",
+            "emphasis": "optional",
+            "authority": "issue_source",
+            "sourceRefs": [
+              {
+                "sourceId": "task",
+                "start": 353,
+                "end": 1749,
+                "hash": "59d1bec59161279016e70857c33a7ec6e3880e3dddebb2f37a26fc28d8a6b57c"
+              },
+              {
+                "sourceId": "task",
+                "start": 1751,
+                "end": 1950,
+                "hash": "005025fdd0d62c123a6b387566db182a800612efaddb0abb5bb31d1e47e6e8b4"
+              }
+            ],
+            "facets": [
+              {
+                "kind": "context",
+                "summary": "Author questions the necessity and benefit of having PROVIDE_AUTOMATIC_OPTIONS as a deployment-level configuration",
+                "sourceRefs": [
+                  {
+                    "sourceId": "task",
+                    "start": 353,
+                    "end": 1749,
+                    "hash": "59d1bec59161279016e70857c33a7ec6e3880e3dddebb2f37a26fc28d8a6b57c"
+                  },
+                  {
+                    "sourceId": "task",
+                    "start": 1751,
+                    "end": 1950,
+                    "hash": "005025fdd0d62c123a6b387566db182a800612efaddb0abb5bb31d1e47e6e8b4"
+                  }
+                ]
+              }
+            ],
+            "openQuestions": [
+              "Should the PROVIDE_AUTOMATIC_OPTIONS config be deprecated?"
+            ],
+            "firstInspection": "read_8ebf8a2c65e5acbb78cb2389",
+            "candidates": [
+              {
+                "artifactId": "read_8ebf8a2c65e5acbb78cb2389",
+                "relevance": "possible",
+                "whyInspect": "Location where config options related to provide_automatic_options would be accessed or marked with deprecation warnings.",
+                "reviewQuestion": "Was any deprecation warning or notice added for PROVIDE_AUTOMATIC_OPTIONS, or was it retained unchanged?",
+                "uncertainty": "Config access logic is truncated in the snippet."
+              }
+            ],
+            "uncertainty": [
+              "It is unclear from diffs whether deprecation was formally applied or left as an open discussion point."
+            ]
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "read_adf262923085380af3f48992",
+            "path": "src/flask/app.py",
+            "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+            "side": "head",
+            "startLine": 5,
+            "endLine": 10,
+            "hash": "a0967a5e50a7eb4395b0bd43db67185c2770557e4030676b73f982523c5868c7",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_451066f7898fb140cccd0132",
+            "path": "src/flask/app.py",
+            "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+            "side": "head",
+            "startLine": 352,
+            "endLine": 364,
+            "hash": "ac47bebb5f63ff67fb090c111a8477b95e1b0b002856613ad4d3e9a026e3ff57",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_ce3297af394a8c3219563b8f",
+            "path": "src/flask/cli.py",
+            "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+            "side": "head",
+            "startLine": 1072,
+            "endLine": 1086,
+            "hash": "335079fe1fdc4eedb386121d241400b75ab5181166b09fbad9284618dae5dad9",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_8ebf8a2c65e5acbb78cb2389",
+            "path": "src/flask/sansio/app.py",
+            "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+            "side": "head",
+            "startLine": 612,
+            "endLine": 631,
+            "hash": "06c74b88469263f06880afe6202c5752d67228aa0a1a1ecd6531ceecba37df89",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_0dba3e02354e5f2415c2f08c",
+            "path": "tests/test_basic.py",
+            "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+            "side": "head",
+            "startLine": 53,
+            "endLine": 65,
+            "hash": "066d539646d13091b79b2e91e93a7519a559c0566353a3bf790158d3efac27fe",
+            "kind": "test",
+            "origin": "diff"
+          },
+          {
+            "id": "read_e856985fc46e44a50548e253",
+            "path": "tests/test_cli.py",
+            "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+            "side": "head",
+            "startLine": 482,
+            "endLine": 498,
+            "hash": "014361369a8df4e9edf2d12d11cb6ef91d21581c6138619edde78aad4e79e14d",
+            "kind": "test",
+            "origin": "diff"
+          }
+        ],
+        "unprocessed": [
+          "task:0",
+          "task:263",
+          "description:693",
+          "task:0",
+          "task:263",
+          "description:693"
+        ],
+        "limitations": [],
+        "failures": [],
+        "rankingStatus": "ready",
+        "coverageStatus": "partial"
+      }
+    },
+    "generalPrAssessmentSummary": {
+      "version": 1,
+      "mode": "ordinary_pr",
+      "sourceState": "linked_issue",
+      "overallConclusion": "no_assessable_claims",
+      "counts": {
+        "evidence_supported": 0,
+        "evidence_partial": 0,
+        "not_demonstrated": 0,
+        "contradicted": 0,
+        "blocked": 0,
+        "not_assessable": 0
+      },
+      "reasonCodes": [
+        "deterministic_candidate_missing",
+        "semantic_observer_unavailable"
+      ],
+      "observations": {
+        "version": 1,
+        "inventory": {
+          "state": "complete",
+          "changedArtifacts": 5,
+          "changedTestCandidates": 2
+        },
+        "links": {
+          "state": "unavailable",
+          "linkedObjectives": 0,
+          "supports": 0,
+          "tests": 0,
+          "implements": 0,
+          "contradicts": 0
+        },
+        "coverage": {
+          "source": null,
+          "evidence": null
+        }
+      }
+    },
+    "ordinaryRequirementOutcomes": {
+      "version": 1,
+      "scope": "selected_source_requirements",
+      "requirements": [
+        {
+          "requirementId": "req_1",
+          "authority": "authoritative",
+          "interpretation": "unavailable",
+          "criterion": null,
+          "reason": "source_interpretation_unavailable"
+        }
+      ]
+    }
+  },
+  "operatorDiagnostics": {
+    "claimState": "not_run",
+    "evidenceState": "not_run",
+    "sourceCoverage": null,
+    "evidenceCoverage": null,
+    "providerCallCount": 0,
+    "selectedCountBuckets": {
+      "sourceSpans": "0",
+      "evidenceCandidates": "0"
+    },
+    "claimInvalidReason": null,
+    "evidenceInvalidReason": null,
+    "freshnessFailure": null,
+    "semanticPackageFailureReasons": [],
+    "omittedReasonCounts": {
+      "spanBudget": 0,
+      "evidenceBudget": 0,
+      "inputByteBudget": 0,
+      "unsafeDescriptor": 0,
+      "noDeterministicSignal": 0
+    }
+  },
+  "operatorNavigationDiagnostics": [
+    {
+      "version": 1,
+      "stage": "intent",
+      "limits": {
+        "artifactBytes": 48000,
+        "artifactCount": 16
+      },
+      "resultLimitations": [],
+      "requestHash": "e537cd4173d7ec8d3c461b697034af197624b29ed0c515ed9c7acd3a45c8547b",
+      "artifactBytes": 2,
+      "artifacts": [],
+      "sources": [
+        {
+          "id": "task",
+          "hash": "2a9e274f1f8fc755df3c99536298f8daddc18a21918d44e079c6614c49ba39aa",
+          "spans": [
+            {
+              "start": 0,
+              "end": 69,
+              "hash": "ad6c649acd09cd8ce0c8b79abed084a868c95881079cc89689c1dec307aeadf4"
+            },
+            {
+              "start": 71,
+              "end": 261,
+              "hash": "2766250b3654520cd547672d7013fbb5b8bb6ab0e2e807b94c992df947d5b98b"
+            },
+            {
+              "start": 263,
+              "end": 351,
+              "hash": "af30dba32213342ff59df15345bcb516b3d59a6072bd7ff1720162638c01d115"
+            },
+            {
+              "start": 353,
+              "end": 1749,
+              "hash": "59d1bec59161279016e70857c33a7ec6e3880e3dddebb2f37a26fc28d8a6b57c"
+            },
+            {
+              "start": 1751,
+              "end": 1950,
+              "hash": "005025fdd0d62c123a6b387566db182a800612efaddb0abb5bb31d1e47e6e8b4"
+            }
+          ]
+        },
+        {
+          "id": "description",
+          "hash": "2eca06898eff1f96ebc66df41db8ef195d8e0a535c76cd04714f2d60668da966",
+          "spans": [
+            {
+              "start": 0,
+              "end": 138,
+              "hash": "dc1d30f42bb92b8e59482400bea40920906acd1be3dc19ae64e139c7177b86af"
+            },
+            {
+              "start": 140,
+              "end": 480,
+              "hash": "c3c0d1663b74c978974ed3bf5235a5b38ab1dc8b8022d2af4ab38d24c032b0a5"
+            },
+            {
+              "start": 482,
+              "end": 581,
+              "hash": "a9382ce06a8471ca28f028cdc72a1b515affd9a6f4fc41b31f28fae84371ca2f"
+            },
+            {
+              "start": 583,
+              "end": 691,
+              "hash": "9cace0693a3584b1515136d7165c7eca9a0d1cb1f8c7aa745899809ac1b79b7f"
+            },
+            {
+              "start": 693,
+              "end": 723,
+              "hash": "3d66e6a50244721f97b6d3b4857d984050d9856cec03434a428fb369c1e5636a"
+            }
+          ]
+        },
+        {
+          "id": "title",
+          "hash": "523ca4b9d35450294c993c6879fb9bcf5d4abccc657f780f25a510c2a568b6bc",
+          "spans": [
+            {
+              "start": 0,
+              "end": 35,
+              "hash": "523ca4b9d35450294c993c6879fb9bcf5d4abccc657f780f25a510c2a568b6bc"
+            }
+          ]
+        }
+      ],
+      "goals": [],
+      "limitations": [],
+      "decisions": [],
+      "transport": {
+        "provider": "google",
+        "modelVersion": "gemini-3.8-flash",
+        "inputTokens": 1515,
+        "outputTokens": 1002,
+        "thoughtTokens": null,
+        "finishReasons": [
+          "STOP"
+        ],
+        "latencyMs": 3218,
+        "outputBytes": 3876,
+        "outputHash": "ceba4485b03ae7db020a57a75ba16a6e61509a996c8f4f34b268f06bbe4090cc"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "ranking",
+      "limits": {
+        "artifactBytes": 48000,
+        "artifactCount": 16
+      },
+      "resultLimitations": [],
+      "requestHash": "0b621e641dadc17eadf3750da5a236f78f48ae7dbfd1ebb97f356f78f0639fb5",
+      "artifactBytes": 5105,
+      "artifacts": [
+        {
+          "id": "read_adf262923085380af3f48992",
+          "path": "src/flask/app.py",
+          "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+          "side": "head",
+          "startLine": 5,
+          "endLine": 10,
+          "hash": "a0967a5e50a7eb4395b0bd43db67185c2770557e4030676b73f982523c5868c7",
+          "kind": "code",
+          "origin": "diff",
+          "goalIds": [
+            "goal_1",
+            "goal_2",
+            "goal_3",
+            "goal_4",
+            "goal_5"
+          ]
+        },
+        {
+          "id": "read_451066f7898fb140cccd0132",
+          "path": "src/flask/app.py",
+          "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+          "side": "head",
+          "startLine": 352,
+          "endLine": 364,
+          "hash": "ac47bebb5f63ff67fb090c111a8477b95e1b0b002856613ad4d3e9a026e3ff57",
+          "kind": "code",
+          "origin": "diff",
+          "goalIds": [
+            "goal_1",
+            "goal_2",
+            "goal_3",
+            "goal_4",
+            "goal_5"
+          ]
+        },
+        {
+          "id": "read_ce3297af394a8c3219563b8f",
+          "path": "src/flask/cli.py",
+          "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+          "side": "head",
+          "startLine": 1072,
+          "endLine": 1086,
+          "hash": "335079fe1fdc4eedb386121d241400b75ab5181166b09fbad9284618dae5dad9",
+          "kind": "code",
+          "origin": "diff",
+          "goalIds": [
+            "goal_1",
+            "goal_2",
+            "goal_3",
+            "goal_4",
+            "goal_5"
+          ]
+        },
+        {
+          "id": "read_8ebf8a2c65e5acbb78cb2389",
+          "path": "src/flask/sansio/app.py",
+          "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+          "side": "head",
+          "startLine": 612,
+          "endLine": 631,
+          "hash": "06c74b88469263f06880afe6202c5752d67228aa0a1a1ecd6531ceecba37df89",
+          "kind": "code",
+          "origin": "diff",
+          "goalIds": [
+            "goal_1",
+            "goal_2",
+            "goal_3",
+            "goal_4",
+            "goal_5"
+          ]
+        },
+        {
+          "id": "read_0dba3e02354e5f2415c2f08c",
+          "path": "tests/test_basic.py",
+          "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+          "side": "head",
+          "startLine": 53,
+          "endLine": 65,
+          "hash": "066d539646d13091b79b2e91e93a7519a559c0566353a3bf790158d3efac27fe",
+          "kind": "test",
+          "origin": "diff",
+          "goalIds": [
+            "goal_1",
+            "goal_2",
+            "goal_3",
+            "goal_4",
+            "goal_5"
+          ]
+        },
+        {
+          "id": "read_e856985fc46e44a50548e253",
+          "path": "tests/test_cli.py",
+          "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+          "side": "head",
+          "startLine": 482,
+          "endLine": 498,
+          "hash": "014361369a8df4e9edf2d12d11cb6ef91d21581c6138619edde78aad4e79e14d",
+          "kind": "test",
+          "origin": "diff",
+          "goalIds": [
+            "goal_1",
+            "goal_2",
+            "goal_3",
+            "goal_4",
+            "goal_5"
+          ]
+        }
+      ],
+      "sources": [],
+      "goals": [
+        {
+          "id": "goal_1",
+          "summaryHash": "9f2a0ce7b39b058909e70b548fe5d7c694fc0d6a0d48a742b020615a16c15157",
+          "sourceRefs": [
+            {
+              "sourceId": "title",
+              "start": 0,
+              "end": 35,
+              "hash": "523ca4b9d35450294c993c6879fb9bcf5d4abccc657f780f25a510c2a568b6bc"
+            },
+            {
+              "sourceId": "description",
+              "start": 0,
+              "end": 138,
+              "hash": "dc1d30f42bb92b8e59482400bea40920906acd1be3dc19ae64e139c7177b86af"
+            },
+            {
+              "sourceId": "task",
+              "start": 1751,
+              "end": 1950,
+              "hash": "005025fdd0d62c123a6b387566db182a800612efaddb0abb5bb31d1e47e6e8b4"
+            }
+          ],
+          "facets": [
+            {
+              "summaryHash": "a780622f156e061b2b469a4727051a9a56a74ba29f3e94cf0c86f51954db2ebe",
+              "sourceRefs": [
+                {
+                  "sourceId": "task",
+                  "start": 71,
+                  "end": 261,
+                  "hash": "2766250b3654520cd547672d7013fbb5b8bb6ab0e2e807b94c992df947d5b98b"
+                },
+                {
+                  "sourceId": "task",
+                  "start": 353,
+                  "end": 1749,
+                  "hash": "59d1bec59161279016e70857c33a7ec6e3880e3dddebb2f37a26fc28d8a6b57c"
+                }
+              ]
+            },
+            {
+              "summaryHash": "0cc557747b0ec79053d6b5b6900a61b8cbf25b64deee4eb4a5de0244c961a946",
+              "sourceRefs": [
+                {
+                  "sourceId": "task",
+                  "start": 353,
+                  "end": 1749,
+                  "hash": "59d1bec59161279016e70857c33a7ec6e3880e3dddebb2f37a26fc28d8a6b57c"
+                }
+              ]
+            },
+            {
+              "summaryHash": "585dbf9719289ca9ed458b13d34f2e75f02d4927c8bd60ecdbd7afea1820c2a2",
+              "sourceRefs": [
+                {
+                  "sourceId": "description",
+                  "start": 0,
+                  "end": 138,
+                  "hash": "dc1d30f42bb92b8e59482400bea40920906acd1be3dc19ae64e139c7177b86af"
+                },
+                {
+                  "sourceId": "description",
+                  "start": 140,
+                  "end": 480,
+                  "hash": "c3c0d1663b74c978974ed3bf5235a5b38ab1dc8b8022d2af4ab38d24c032b0a5"
+                },
+                {
+                  "sourceId": "task",
+                  "start": 1751,
+                  "end": 1950,
+                  "hash": "005025fdd0d62c123a6b387566db182a800612efaddb0abb5bb31d1e47e6e8b4"
+                }
+              ]
+            },
+            {
+              "summaryHash": "81f3c1788fe978ac3859e4abf087f644f63551366be91f564c2fcc3d0fc843cd",
+              "sourceRefs": [
+                {
+                  "sourceId": "task",
+                  "start": 353,
+                  "end": 1749,
+                  "hash": "59d1bec59161279016e70857c33a7ec6e3880e3dddebb2f37a26fc28d8a6b57c"
+                },
+                {
+                  "sourceId": "description",
+                  "start": 140,
+                  "end": 480,
+                  "hash": "c3c0d1663b74c978974ed3bf5235a5b38ab1dc8b8022d2af4ab38d24c032b0a5"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "goal_2",
+          "summaryHash": "5df2ae3ac8669277d2abe91ac87b9294109e2ba4e8f65d22b872833bcdf4593a",
+          "sourceRefs": [
+            {
+              "sourceId": "task",
+              "start": 353,
+              "end": 1749,
+              "hash": "59d1bec59161279016e70857c33a7ec6e3880e3dddebb2f37a26fc28d8a6b57c"
+            },
+            {
+              "sourceId": "task",
+              "start": 1751,
+              "end": 1950,
+              "hash": "005025fdd0d62c123a6b387566db182a800612efaddb0abb5bb31d1e47e6e8b4"
+            }
+          ],
+          "facets": [
+            {
+              "summaryHash": "46bc73836f88fa5b2a6aabce437d6711b9362bee5d80e7857086b1eddd9ad502",
+              "sourceRefs": [
+                {
+                  "sourceId": "task",
+                  "start": 353,
+                  "end": 1749,
+                  "hash": "59d1bec59161279016e70857c33a7ec6e3880e3dddebb2f37a26fc28d8a6b57c"
+                }
+              ]
+            },
+            {
+              "summaryHash": "ac17646bbd4f0da6788eaee002014d07f11466c83a823bb5d8acf25254cca85d",
+              "sourceRefs": [
+                {
+                  "sourceId": "task",
+                  "start": 1751,
+                  "end": 1950,
+                  "hash": "005025fdd0d62c123a6b387566db182a800612efaddb0abb5bb31d1e47e6e8b4"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "goal_3",
+          "summaryHash": "f3f4cf654101fabdcd2864bd4c7ebdc0a230ef5bd1a7d797432d806f56a085c2",
+          "sourceRefs": [
+            {
+              "sourceId": "description",
+              "start": 482,
+              "end": 581,
+              "hash": "a9382ce06a8471ca28f028cdc72a1b515affd9a6f4fc41b31f28fae84371ca2f"
+            }
+          ],
+          "facets": [
+            {
+              "summaryHash": "02ab704854d5711f0381b52ddb9fda05882a2e1ebfe82083495d2a4ac7ef3677",
+              "sourceRefs": [
+                {
+                  "sourceId": "description",
+                  "start": 482,
+                  "end": 581,
+                  "hash": "a9382ce06a8471ca28f028cdc72a1b515affd9a6f4fc41b31f28fae84371ca2f"
+                }
+              ]
+            },
+            {
+              "summaryHash": "fd68a3dcf828566ef1c32637ffd8fb61dd3b3506f5b7004f73551742dac1fa2f",
+              "sourceRefs": [
+                {
+                  "sourceId": "description",
+                  "start": 482,
+                  "end": 581,
+                  "hash": "a9382ce06a8471ca28f028cdc72a1b515affd9a6f4fc41b31f28fae84371ca2f"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "goal_4",
+          "summaryHash": "a015ebfb8ae02a3a9e289c7f00e0a90d0f3aee1d3d858319361f21d4c492f45d",
+          "sourceRefs": [
+            {
+              "sourceId": "description",
+              "start": 583,
+              "end": 691,
+              "hash": "9cace0693a3584b1515136d7165c7eca9a0d1cb1f8c7aa745899809ac1b79b7f"
+            }
+          ],
+          "facets": [
+            {
+              "summaryHash": "2f2a0244e82f53a4507d9e0d8a09af916a39537e54c66182c1b23f2332e86b1d",
+              "sourceRefs": [
+                {
+                  "sourceId": "description",
+                  "start": 583,
+                  "end": 691,
+                  "hash": "9cace0693a3584b1515136d7165c7eca9a0d1cb1f8c7aa745899809ac1b79b7f"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "goal_5",
+          "summaryHash": "3d072ebd119234826a267eb46c382ef84014244e76119450f7cf133a6d5cbb76",
+          "sourceRefs": [
+            {
+              "sourceId": "task",
+              "start": 353,
+              "end": 1749,
+              "hash": "59d1bec59161279016e70857c33a7ec6e3880e3dddebb2f37a26fc28d8a6b57c"
+            },
+            {
+              "sourceId": "task",
+              "start": 1751,
+              "end": 1950,
+              "hash": "005025fdd0d62c123a6b387566db182a800612efaddb0abb5bb31d1e47e6e8b4"
+            }
+          ],
+          "facets": [
+            {
+              "summaryHash": "201b57a04da019e74ba6f576a994fe4782bc12daf3195581cc681ad90352249a",
+              "sourceRefs": [
+                {
+                  "sourceId": "task",
+                  "start": 353,
+                  "end": 1749,
+                  "hash": "59d1bec59161279016e70857c33a7ec6e3880e3dddebb2f37a26fc28d8a6b57c"
+                },
+                {
+                  "sourceId": "task",
+                  "start": 1751,
+                  "end": 1950,
+                  "hash": "005025fdd0d62c123a6b387566db182a800612efaddb0abb5bb31d1e47e6e8b4"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "limitations": [],
+      "decisions": [
+        {
+          "goalId": "goal_1",
+          "artifactId": "read_451066f7898fb140cccd0132",
+          "reason": "accepted"
+        },
+        {
+          "goalId": "goal_1",
+          "artifactId": "read_8ebf8a2c65e5acbb78cb2389",
+          "reason": "accepted"
+        },
+        {
+          "goalId": "goal_1",
+          "artifactId": "read_0dba3e02354e5f2415c2f08c",
+          "reason": "accepted"
+        },
+        {
+          "goalId": "goal_2",
+          "artifactId": "read_8ebf8a2c65e5acbb78cb2389",
+          "reason": "accepted"
+        },
+        {
+          "goalId": "goal_2",
+          "artifactId": "read_0dba3e02354e5f2415c2f08c",
+          "reason": "accepted"
+        },
+        {
+          "goalId": "goal_3",
+          "artifactId": "read_ce3297af394a8c3219563b8f",
+          "reason": "accepted"
+        },
+        {
+          "goalId": "goal_3",
+          "artifactId": "read_e856985fc46e44a50548e253",
+          "reason": "accepted"
+        },
+        {
+          "goalId": "goal_4",
+          "artifactId": "read_451066f7898fb140cccd0132",
+          "reason": "accepted"
+        },
+        {
+          "goalId": "goal_5",
+          "artifactId": "read_8ebf8a2c65e5acbb78cb2389",
+          "reason": "accepted"
+        }
+      ],
+      "transport": {
+        "provider": "google",
+        "modelVersion": "gemini-3.8-flash",
+        "inputTokens": 4836,
+        "outputTokens": 1457,
+        "thoughtTokens": 2024,
+        "finishReasons": [
+          "STOP"
+        ],
+        "latencyMs": 11507,
+        "outputBytes": 5520,
+        "outputHash": "494da364278d264a56f8614fa01dd4bd2e600dee61ed4e0150e6327044e26208"
+      }
+    }
+  ],
+  "operatorTargetDiagnostics": {
+    "version": 1,
+    "targetCount": 0,
+    "omittedTargetCount": 0,
+    "rejectedProviderProposalCount": 0,
+    "projectionOmissionCounts": {
+      "targetLimit": 0,
+      "sourceRefLimit": 0,
+      "changeClusterRefLimit": 0,
+      "evidenceRefLimit": 0,
+      "proposalLimit": 0
+    },
+    "targets": [],
+    "ordinaryDocumentation": {
+      "state": "capability_disabled",
+      "admittedObjectiveCount": 0,
+      "planCount": 0,
+      "rejectionCounts": {
+        "multiSpan": 0,
+        "sourceIneligible": 0,
+        "unsupportedWording": 0,
+        "unsafePath": 0,
+        "redactedLiteral": 0,
+        "planLimit": 0
+      },
+      "predicateCounts": {
+        "supported": 0,
+        "contradicted": 0,
+        "unavailable": 0
+      }
+    }
+  }
+}

@@ -1,0 +1,806 @@
+{
+  "deployment": "https://agentproof-2ioupab05-renggyus-projects.vercel.app",
+  "results": [
+    {
+      "id": "flask-5918",
+      "elapsedMs": 22573,
+      "error": null,
+      "model": "gemini-3.8-flash",
+      "sameRevision": true,
+      "head": "a82e942870b6472bb40017349cca772c242eb1ad",
+      "base": "d8eaaba824655046958d1a97f11780de460c3271",
+      "state": "partial",
+      "rankingStatus": "ready",
+      "goals": [
+        {
+          "summary": "Implement automatic OPTIONS handling as a distinct route and view dispatch rather than running custom checks on every request",
+          "emphasis": "primary",
+          "facets": [
+            {
+              "kind": "context",
+              "summary": "Flask previously added OPTIONS to every rule by default and checked on every request dispatch whether the method was OPTIONS and automatic options were enabled",
+              "sourceRefs": [
+                {
+                  "sourceId": "task",
+                  "start": 71,
+                  "end": 261,
+                  "hash": "2766250b3654520cd547672d7013fbb5b8bb6ab0e2e807b94c992df947d5b98b"
+                },
+                {
+                  "sourceId": "task",
+                  "start": 353,
+                  "end": 1749,
+                  "hash": "59d1bec59161279016e70857c33a7ec6e3880e3dddebb2f37a26fc28d8a6b57c"
+                }
+              ]
+            },
+            {
+              "kind": "motivation",
+              "summary": "Checking provide_automatic_options on every request dispatch is inefficient; handling via standard routing avoids this dispatch check",
+              "sourceRefs": [
+                {
+                  "sourceId": "task",
+                  "start": 353,
+                  "end": 1749,
+                  "hash": "59d1bec59161279016e70857c33a7ec6e3880e3dddebb2f37a26fc28d8a6b57c"
+                }
+              ]
+            },
+            {
+              "kind": "implementation_claim",
+              "summary": "Automatic options are registered as a regular route and view dispatch; catches exceptions to avoid registering duplicate internal routes for the same URL",
+              "sourceRefs": [
+                {
+                  "sourceId": "description",
+                  "start": 0,
+                  "end": 138,
+                  "hash": "dc1d30f42bb92b8e59482400bea40920906acd1be3dc19ae64e139c7177b86af"
+                },
+                {
+                  "sourceId": "description",
+                  "start": 140,
+                  "end": 480,
+                  "hash": "c3c0d1663b74c978974ed3bf5235a5b38ab1dc8b8022d2af4ab38d24c032b0a5"
+                },
+                {
+                  "sourceId": "task",
+                  "start": 1751,
+                  "end": 1950,
+                  "hash": "005025fdd0d62c123a6b387566db182a800612efaddb0abb5bb31d1e47e6e8b4"
+                }
+              ]
+            },
+            {
+              "kind": "condition",
+              "summary": "Future update could catch Werkzeug 3.2 DuplicateRuleError explicitly instead of general Exception once available",
+              "sourceRefs": [
+                {
+                  "sourceId": "task",
+                  "start": 353,
+                  "end": 1749,
+                  "hash": "59d1bec59161279016e70857c33a7ec6e3880e3dddebb2f37a26fc28d8a6b57c"
+                },
+                {
+                  "sourceId": "description",
+                  "start": 140,
+                  "end": 480,
+                  "hash": "c3c0d1663b74c978974ed3bf5235a5b38ab1dc8b8022d2af4ab38d24c032b0a5"
+                }
+              ]
+            }
+          ],
+          "first": {
+            "id": "read_451066f7898fb140cccd0132",
+            "path": "src/flask/app.py",
+            "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+            "side": "head",
+            "startLine": 352,
+            "endLine": 364,
+            "hash": "ac47bebb5f63ff67fb090c111a8477b95e1b0b002856613ad4d3e9a026e3ff57",
+            "kind": "code",
+            "origin": "diff"
+          },
+          "candidates": [
+            {
+              "artifactId": "read_451066f7898fb140cccd0132",
+              "relevance": "relevant",
+              "whyInspect": "Shows registering the dedicated options view function into view_functions during application initialization.",
+              "reviewQuestion": "How is the internal options view function defined and hooked into the application's view functions dictionary?",
+              "uncertainty": "The snippet truncates before the body of the options view definition is shown.",
+              "artifact": {
+                "id": "read_451066f7898fb140cccd0132",
+                "path": "src/flask/app.py",
+                "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+                "side": "head",
+                "startLine": 352,
+                "endLine": 364,
+                "hash": "ac47bebb5f63ff67fb090c111a8477b95e1b0b002856613ad4d3e9a026e3ff57",
+                "kind": "code",
+                "origin": "diff"
+              }
+            },
+            {
+              "artifactId": "read_8ebf8a2c65e5acbb78cb2389",
+              "relevance": "relevant",
+              "whyInspect": "Handles URL rule registration and method normalization where distinct routing for options is set up.",
+              "reviewQuestion": "How does rule registration determine whether to add a distinct automatic options route or catch duplicate rule errors?",
+              "uncertainty": "The method snippet cuts off right after method set normalization.",
+              "artifact": {
+                "id": "read_8ebf8a2c65e5acbb78cb2389",
+                "path": "src/flask/sansio/app.py",
+                "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+                "side": "head",
+                "startLine": 612,
+                "endLine": 631,
+                "hash": "06c74b88469263f06880afe6202c5752d67228aa0a1a1ecd6531ceecba37df89",
+                "kind": "code",
+                "origin": "diff"
+              }
+            },
+            {
+              "artifactId": "read_0dba3e02354e5f2415c2f08c",
+              "relevance": "relevant",
+              "whyInspect": "Verifies that the automatic options view responds correctly with expected allowed headers when view arguments are present.",
+              "reviewQuestion": "Does the test adequately exercise the new options view dispatch behavior?",
+              "uncertainty": "Shows only a single basic test function.",
+              "artifact": {
+                "id": "read_0dba3e02354e5f2415c2f08c",
+                "path": "tests/test_basic.py",
+                "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+                "side": "head",
+                "startLine": 53,
+                "endLine": 65,
+                "hash": "066d539646d13091b79b2e91e93a7519a559c0566353a3bf790158d3efac27fe",
+                "kind": "test",
+                "origin": "diff"
+              }
+            }
+          ]
+        },
+        {
+          "summary": "Fix logic where provide_automatic_options failed to enable OPTIONS when PROVIDE_AUTOMATIC_OPTIONS configuration was disabled",
+          "emphasis": "supporting",
+          "facets": [
+            {
+              "kind": "reproduction",
+              "summary": "When PROVIDE_AUTOMATIC_OPTIONS is disabled, provide_automatic_options argument and view attribute logic failed to re-enable OPTIONS, working only to disable",
+              "sourceRefs": [
+                {
+                  "sourceId": "task",
+                  "start": 353,
+                  "end": 1749,
+                  "hash": "59d1bec59161279016e70857c33a7ec6e3880e3dddebb2f37a26fc28d8a6b57c"
+                }
+              ]
+            },
+            {
+              "kind": "implementation_claim",
+              "summary": "Fixed the logic enabling automatic options when configuration was disabled",
+              "sourceRefs": [
+                {
+                  "sourceId": "task",
+                  "start": 1751,
+                  "end": 1950,
+                  "hash": "005025fdd0d62c123a6b387566db182a800612efaddb0abb5bb31d1e47e6e8b4"
+                }
+              ]
+            }
+          ],
+          "first": {
+            "id": "read_8ebf8a2c65e5acbb78cb2389",
+            "path": "src/flask/sansio/app.py",
+            "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+            "side": "head",
+            "startLine": 612,
+            "endLine": 631,
+            "hash": "06c74b88469263f06880afe6202c5752d67228aa0a1a1ecd6531ceecba37df89",
+            "kind": "code",
+            "origin": "diff"
+          },
+          "candidates": [
+            {
+              "artifactId": "read_8ebf8a2c65e5acbb78cb2389",
+              "relevance": "relevant",
+              "whyInspect": "Inspects how provide_automatic_options configuration and per-view flags interact during URL rule addition.",
+              "reviewQuestion": "Where is the override logic implemented to allow route-level provide_automatic_options to take precedence when app config is disabled?",
+              "uncertainty": "The rule options parsing logic continues beyond the visible snippet.",
+              "artifact": {
+                "id": "read_8ebf8a2c65e5acbb78cb2389",
+                "path": "src/flask/sansio/app.py",
+                "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+                "side": "head",
+                "startLine": 612,
+                "endLine": 631,
+                "hash": "06c74b88469263f06880afe6202c5752d67228aa0a1a1ecd6531ceecba37df89",
+                "kind": "code",
+                "origin": "diff"
+              }
+            },
+            {
+              "artifactId": "read_0dba3e02354e5f2415c2f08c",
+              "relevance": "possible",
+              "whyInspect": "Tests route behavior for options, though specific tests for disabled config override are not visible here.",
+              "reviewQuestion": "Are there test cases specifically verifying provide_automatic_options override when the configuration flag is set to false?",
+              "uncertainty": "The visible test cases do not demonstrate toggling the configuration flag.",
+              "artifact": {
+                "id": "read_0dba3e02354e5f2415c2f08c",
+                "path": "tests/test_basic.py",
+                "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+                "side": "head",
+                "startLine": 53,
+                "endLine": 65,
+                "hash": "066d539646d13091b79b2e91e93a7519a559c0566353a3bf790158d3efac27fe",
+                "kind": "test",
+                "origin": "diff"
+              }
+            }
+          ]
+        },
+        {
+          "summary": "Hide the internal automatic options endpoint from the route listing CLI command",
+          "emphasis": "supporting",
+          "facets": [
+            {
+              "kind": "motivation",
+              "summary": "Displaying _automatic_options in the flask routes output creates excessive noise",
+              "sourceRefs": [
+                {
+                  "sourceId": "description",
+                  "start": 482,
+                  "end": 581,
+                  "hash": "a9382ce06a8471ca28f028cdc72a1b515affd9a6f4fc41b31f28fae84371ca2f"
+                }
+              ]
+            },
+            {
+              "kind": "implementation_claim",
+              "summary": "Adjusted flask routes command to omit displaying the _automatic_options endpoint",
+              "sourceRefs": [
+                {
+                  "sourceId": "description",
+                  "start": 482,
+                  "end": 581,
+                  "hash": "a9382ce06a8471ca28f028cdc72a1b515affd9a6f4fc41b31f28fae84371ca2f"
+                }
+              ]
+            }
+          ],
+          "first": {
+            "id": "read_ce3297af394a8c3219563b8f",
+            "path": "src/flask/cli.py",
+            "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+            "side": "head",
+            "startLine": 1072,
+            "endLine": 1086,
+            "hash": "335079fe1fdc4eedb386121d241400b75ab5181166b09fbad9284618dae5dad9",
+            "kind": "code",
+            "origin": "diff"
+          },
+          "candidates": [
+            {
+              "artifactId": "read_ce3297af394a8c3219563b8f",
+              "relevance": "relevant",
+              "whyInspect": "Contains the CLI loop displaying routes and the check excluding the internal automatic options endpoint.",
+              "reviewQuestion": "Does the filter correctly prevent internal options routes from appearing while still displaying OPTIONS methods on user endpoints?",
+              "uncertainty": "None.",
+              "artifact": {
+                "id": "read_ce3297af394a8c3219563b8f",
+                "path": "src/flask/cli.py",
+                "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+                "side": "head",
+                "startLine": 1072,
+                "endLine": 1086,
+                "hash": "335079fe1fdc4eedb386121d241400b75ab5181166b09fbad9284618dae5dad9",
+                "kind": "code",
+                "origin": "diff"
+              }
+            },
+            {
+              "artifactId": "read_e856985fc46e44a50548e253",
+              "relevance": "relevant",
+              "whyInspect": "Contains route command CLI tests that assert expected endpoints and match order without internal routes.",
+              "reviewQuestion": "Does test_routes assert that the internal options endpoint is excluded from output across CLI invocations?",
+              "uncertainty": "None.",
+              "artifact": {
+                "id": "read_e856985fc46e44a50548e253",
+                "path": "tests/test_cli.py",
+                "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+                "side": "head",
+                "startLine": 482,
+                "endLine": 498,
+                "hash": "014361369a8df4e9edf2d12d11cb6ef91d21581c6138619edde78aad4e79e14d",
+                "kind": "test",
+                "origin": "diff"
+              }
+            }
+          ]
+        },
+        {
+          "summary": "Refactor static view handling to align with automatic options view pattern",
+          "emphasis": "supporting",
+          "facets": [
+            {
+              "kind": "implementation_claim",
+              "summary": "Extracted static view definition rather than relying on a lambda and weakref",
+              "sourceRefs": [
+                {
+                  "sourceId": "description",
+                  "start": 583,
+                  "end": 691,
+                  "hash": "9cace0693a3584b1515136d7165c7eca9a0d1cb1f8c7aa745899809ac1b79b7f"
+                }
+              ]
+            }
+          ],
+          "first": {
+            "id": "read_451066f7898fb140cccd0132",
+            "path": "src/flask/app.py",
+            "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+            "side": "head",
+            "startLine": 352,
+            "endLine": 364,
+            "hash": "ac47bebb5f63ff67fb090c111a8477b95e1b0b002856613ad4d3e9a026e3ff57",
+            "kind": "code",
+            "origin": "diff"
+          },
+          "candidates": [
+            {
+              "artifactId": "read_451066f7898fb140cccd0132",
+              "relevance": "relevant",
+              "whyInspect": "Shows static URL rule registration using a dedicated static view rather than an inline lambda or weakref.",
+              "reviewQuestion": "How was static view registration refactored, and is it structured identically to the options view pattern?",
+              "uncertainty": "The definition of the static view helper itself is not displayed in this snippet.",
+              "artifact": {
+                "id": "read_451066f7898fb140cccd0132",
+                "path": "src/flask/app.py",
+                "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+                "side": "head",
+                "startLine": 352,
+                "endLine": 364,
+                "hash": "ac47bebb5f63ff67fb090c111a8477b95e1b0b002856613ad4d3e9a026e3ff57",
+                "kind": "code",
+                "origin": "diff"
+              }
+            }
+          ]
+        },
+        {
+          "summary": "Consider deprecating the PROVIDE_AUTOMATIC_OPTIONS configuration option",
+          "emphasis": "optional",
+          "facets": [
+            {
+              "kind": "context",
+              "summary": "Author questions the necessity and benefit of having PROVIDE_AUTOMATIC_OPTIONS as a deployment-level configuration",
+              "sourceRefs": [
+                {
+                  "sourceId": "task",
+                  "start": 353,
+                  "end": 1749,
+                  "hash": "59d1bec59161279016e70857c33a7ec6e3880e3dddebb2f37a26fc28d8a6b57c"
+                },
+                {
+                  "sourceId": "task",
+                  "start": 1751,
+                  "end": 1950,
+                  "hash": "005025fdd0d62c123a6b387566db182a800612efaddb0abb5bb31d1e47e6e8b4"
+                }
+              ]
+            }
+          ],
+          "first": {
+            "id": "read_8ebf8a2c65e5acbb78cb2389",
+            "path": "src/flask/sansio/app.py",
+            "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+            "side": "head",
+            "startLine": 612,
+            "endLine": 631,
+            "hash": "06c74b88469263f06880afe6202c5752d67228aa0a1a1ecd6531ceecba37df89",
+            "kind": "code",
+            "origin": "diff"
+          },
+          "candidates": [
+            {
+              "artifactId": "read_8ebf8a2c65e5acbb78cb2389",
+              "relevance": "possible",
+              "whyInspect": "Location where config options related to provide_automatic_options would be accessed or marked with deprecation warnings.",
+              "reviewQuestion": "Was any deprecation warning or notice added for PROVIDE_AUTOMATIC_OPTIONS, or was it retained unchanged?",
+              "uncertainty": "Config access logic is truncated in the snippet.",
+              "artifact": {
+                "id": "read_8ebf8a2c65e5acbb78cb2389",
+                "path": "src/flask/sansio/app.py",
+                "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+                "side": "head",
+                "startLine": 612,
+                "endLine": 631,
+                "hash": "06c74b88469263f06880afe6202c5752d67228aa0a1a1ecd6531ceecba37df89",
+                "kind": "code",
+                "origin": "diff"
+              }
+            }
+          ]
+        }
+      ],
+      "failures": [],
+      "limitations": [],
+      "events": [
+        {
+          "stage": "intent",
+          "artifactBytes": 2,
+          "artifactCount": 0,
+          "transport": {
+            "provider": "google",
+            "modelVersion": "gemini-3.8-flash",
+            "inputTokens": 1515,
+            "outputTokens": 1002,
+            "thoughtTokens": null,
+            "finishReasons": [
+              "STOP"
+            ],
+            "latencyMs": 3218,
+            "outputBytes": 3876,
+            "outputHash": "ceba4485b03ae7db020a57a75ba16a6e61509a996c8f4f34b268f06bbe4090cc"
+          },
+          "decisions": []
+        },
+        {
+          "stage": "ranking",
+          "artifactBytes": 5105,
+          "artifactCount": 6,
+          "transport": {
+            "provider": "google",
+            "modelVersion": "gemini-3.8-flash",
+            "inputTokens": 4836,
+            "outputTokens": 1457,
+            "thoughtTokens": 2024,
+            "finishReasons": [
+              "STOP"
+            ],
+            "latencyMs": 11507,
+            "outputBytes": 5520,
+            "outputHash": "494da364278d264a56f8614fa01dd4bd2e600dee61ed4e0150e6327044e26208"
+          },
+          "decisions": [
+            {
+              "goalId": "goal_1",
+              "artifactId": "read_451066f7898fb140cccd0132",
+              "reason": "accepted"
+            },
+            {
+              "goalId": "goal_1",
+              "artifactId": "read_8ebf8a2c65e5acbb78cb2389",
+              "reason": "accepted"
+            },
+            {
+              "goalId": "goal_1",
+              "artifactId": "read_0dba3e02354e5f2415c2f08c",
+              "reason": "accepted"
+            },
+            {
+              "goalId": "goal_2",
+              "artifactId": "read_8ebf8a2c65e5acbb78cb2389",
+              "reason": "accepted"
+            },
+            {
+              "goalId": "goal_2",
+              "artifactId": "read_0dba3e02354e5f2415c2f08c",
+              "reason": "accepted"
+            },
+            {
+              "goalId": "goal_3",
+              "artifactId": "read_ce3297af394a8c3219563b8f",
+              "reason": "accepted"
+            },
+            {
+              "goalId": "goal_3",
+              "artifactId": "read_e856985fc46e44a50548e253",
+              "reason": "accepted"
+            },
+            {
+              "goalId": "goal_4",
+              "artifactId": "read_451066f7898fb140cccd0132",
+              "reason": "accepted"
+            },
+            {
+              "goalId": "goal_5",
+              "artifactId": "read_8ebf8a2c65e5acbb78cb2389",
+              "reason": "accepted"
+            }
+          ]
+        }
+      ],
+      "baseline": {
+        "state": "partial",
+        "rankingStatus": "ready",
+        "coverageStatus": "partial",
+        "goalCount": 5,
+        "artifactCount": 8,
+        "firstPath": "src/flask/sansio/app.py",
+        "top3Paths": [
+          "src/flask/sansio/app.py",
+          "src/flask/app.py",
+          "src/flask/cli.py"
+        ],
+        "firstAt1": true,
+        "firstAt3": true,
+        "requiredConceptHits": [
+          {
+            "concept": "automatic OPTIONS",
+            "found": true
+          },
+          {
+            "concept": "routing",
+            "found": false
+          }
+        ],
+        "goals": [
+          {
+            "id": "goal_1",
+            "summary": "Handle automatic OPTIONS through a normal registered route and view dispatch path instead of a special check on every request.",
+            "emphasis": "primary",
+            "facets": [
+              {
+                "kind": "motivation",
+                "summary": "The issue reports that checking every dispatched request for OPTIONS is wasteful and that the current feature is confusing."
+              },
+              {
+                "kind": "condition",
+                "summary": "The change concerns automatic OPTIONS handling for routes where it is enabled."
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "The PR author says the implementation registers an internal automatic-options route and view, and relies on duplicate detection to avoid repeated registration where possible."
+              },
+              {
+                "kind": "context",
+                "summary": "The issue notes that adding routes can create duplicate rules, especially when multiple decorators register the same URL, and that this is considered messy even where it does not break behavior."
+              }
+            ],
+            "firstPath": "src/flask/sansio/app.py",
+            "candidatePaths": [
+              "src/flask/sansio/app.py",
+              "src/flask/app.py",
+              "src/flask/cli.py"
+            ]
+          },
+          {
+            "id": "goal_2",
+            "summary": "Ensure per-rule or view-level automatic-options settings can enable OPTIONS handling even when the global configuration is disabled.",
+            "emphasis": "primary",
+            "facets": [
+              {
+                "kind": "condition",
+                "summary": "The enabling behavior matters specifically when PROVIDE_AUTOMATIC_OPTIONS is disabled globally."
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "The issue author reports that the enabling issue has been fixed."
+              },
+              {
+                "kind": "test_claim",
+                "summary": "The issue reports that existing tests for this behavior were incomplete and had problems."
+              }
+            ],
+            "firstPath": "src/flask/sansio/app.py",
+            "candidatePaths": [
+              "src/flask/sansio/app.py",
+              "tests/test_basic.py",
+              "src/flask/app.py"
+            ]
+          },
+          {
+            "id": "goal_4",
+            "summary": "Keep the internal automatic-options endpoint out of flask routes output.",
+            "emphasis": "supporting",
+            "facets": [
+              {
+                "kind": "implementation_claim",
+                "summary": "The PR author says the routes command was adjusted to omit the internal endpoint because displaying it would be noisy."
+              }
+            ],
+            "firstPath": "src/flask/cli.py",
+            "candidatePaths": [
+              "src/flask/cli.py",
+              "src/flask/app.py"
+            ]
+          },
+          {
+            "id": "goal_5",
+            "summary": "Use a regular named static view rather than a lambda and weak reference for the new handling path.",
+            "emphasis": "supporting",
+            "facets": [
+              {
+                "kind": "implementation_claim",
+                "summary": "The PR author reports moving the static view out to match how the new automatic-options view is handled."
+              }
+            ],
+            "firstPath": "src/flask/app.py",
+            "candidatePaths": [
+              "src/flask/app.py",
+              "src/flask/sansio/app.py",
+              "tests/test_basic.py"
+            ]
+          },
+          {
+            "id": "goal_3",
+            "summary": "Consider whether the global automatic-options configuration should be deprecated.",
+            "emphasis": "optional",
+            "facets": [
+              {
+                "kind": "motivation",
+                "summary": "The issue questions the benefit of disabling automatic OPTIONS handling or configuring it per deployment."
+              }
+            ],
+            "firstPath": "src/flask/sansio/app.py",
+            "candidatePaths": [
+              "src/flask/sansio/app.py",
+              "tests/test_basic.py",
+              "src/flask/app.py"
+            ]
+          }
+        ],
+        "failures": [
+          {
+            "stage": "refinement",
+            "category": "invalid_json_or_shape",
+            "reason": "unknown_artifact_ref"
+          }
+        ],
+        "limitations": [
+          "retrieval_budget_exceeded",
+          "retrieval_language_unsupported",
+          "retrieval_scan_budget_exceeded",
+          "retrieval_unverified_fallback",
+          "invalid_reference"
+        ],
+        "unprocessedCount": 3
+      }
+    },
+    {
+      "id": "starlette-3552",
+      "elapsedMs": 5816,
+      "error": null,
+      "model": "gemini-3.8-flash",
+      "sameRevision": true,
+      "head": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+      "base": "03f12b7fcf0a3e21a8da648ca0900c79472e9efe",
+      "state": "fallback",
+      "rankingStatus": "unavailable",
+      "goals": [],
+      "failures": [],
+      "limitations": [
+        "stale_snapshot"
+      ],
+      "events": [],
+      "baseline": {
+        "state": "partial",
+        "rankingStatus": "ready",
+        "coverageStatus": "partial",
+        "goalCount": 4,
+        "artifactCount": 8,
+        "firstPath": "starlette/endpoints.py",
+        "top3Paths": [
+          "starlette/endpoints.py",
+          "tests/test_endpoints.py"
+        ],
+        "firstAt1": true,
+        "firstAt3": true,
+        "requiredConceptHits": [
+          {
+            "concept": "WebSocketEndpoint",
+            "found": true
+          },
+          {
+            "concept": "JSON decode",
+            "found": false
+          }
+        ],
+        "goals": [
+          {
+            "id": "goal_1",
+            "summary": "Make JSON-mode WebSocketEndpoint.decode() handle receive events with no text and no bytes without crashing through an unexpected exception path.",
+            "emphasis": "primary",
+            "facets": [
+              {
+                "kind": "condition",
+                "summary": "Applies when WebSocketEndpoint uses JSON encoding and the receive event has no text payload; the described cases include bytes being null or absent."
+              },
+              {
+                "kind": "motivation",
+                "summary": "The prior behavior could raise AttributeError or KeyError and cause the endpoint handler to fail instead of closing cleanly."
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "The author reports that the change checks for bytes before attempting to decode it."
+              }
+            ],
+            "firstPath": "starlette/endpoints.py",
+            "candidatePaths": [
+              "starlette/endpoints.py",
+              "tests/test_endpoints.py"
+            ]
+          },
+          {
+            "id": "goal_2",
+            "summary": "Handle non-UTF-8 binary payloads in JSON mode as unsupported WebSocket data rather than allowing UnicodeDecodeError to escape.",
+            "emphasis": "primary",
+            "facets": [
+              {
+                "kind": "condition",
+                "summary": "Applies when a binary frame contains bytes that are not valid UTF-8 JSON input."
+              },
+              {
+                "kind": "motivation",
+                "summary": "The prior unhandled UnicodeDecodeError could trigger an internal-error close and server traceback instead of the unsupported-data behavior."
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "The author reports catching UnicodeDecodeError during binary decoding."
+              }
+            ],
+            "firstPath": "starlette/endpoints.py",
+            "candidatePaths": [
+              "starlette/endpoints.py",
+              "tests/test_endpoints.py"
+            ]
+          },
+          {
+            "id": "goal_3",
+            "summary": "Use the unsupported-data handling path for malformed JSON input, including the missing-payload and invalid-UTF-8 cases, with the stated error behavior.",
+            "emphasis": "primary",
+            "facets": [
+              {
+                "kind": "acceptance",
+                "summary": "The stated target behavior is to close with WS_1003_UNSUPPORTED_DATA and raise RuntimeError with the message indicating malformed JSON data was received."
+              },
+              {
+                "kind": "context",
+                "summary": "The intended binary JSON behavior is described as matching text JSON error handling."
+              },
+              {
+                "kind": "constraint",
+                "summary": "These cases should not be converted into the general dispatch path that closes with WS_1011_INTERNAL_ERROR."
+              }
+            ],
+            "firstPath": "starlette/endpoints.py",
+            "candidatePaths": [
+              "starlette/endpoints.py",
+              "tests/test_endpoints.py"
+            ]
+          },
+          {
+            "id": "goal_4",
+            "summary": "Preserve the reported validation of the change across the project test and check commands.",
+            "emphasis": "supporting",
+            "facets": [
+              {
+                "kind": "test_claim",
+                "summary": "The author reports that all 1253 tests passed with 100% coverage and that formatting, type checking, and lint checks were clean."
+              }
+            ],
+            "firstPath": "tests/test_endpoints.py",
+            "candidatePaths": [
+              "tests/test_endpoints.py",
+              "pyproject.toml"
+            ]
+          }
+        ],
+        "failures": [
+          {
+            "stage": "ranking",
+            "category": "invalid_json_or_shape",
+            "reason": "unknown_artifact_ref"
+          }
+        ],
+        "limitations": [
+          "invalid_reference",
+          "retrieval_language_unsupported",
+          "retrieval_scan_budget_exceeded",
+          "retrieval_unverified_fallback",
+          "retrieval_budget_exceeded",
+          "requested_path_unread"
+        ],
+        "unprocessedCount": 4
+      }
+    }
+  ]
+}

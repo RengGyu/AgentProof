@@ -1,0 +1,1466 @@
+{
+  "deployment": "https://agentproof-gr8dslzh4-renggyus-projects.vercel.app",
+  "elapsedMs": 12898,
+  "report": {
+    "analysisId": "ap_mu7k58sp_beznv5",
+    "createdAt": "2026-09-18T22:56:20.425Z",
+    "source": {
+      "title": "Handle missing payload and non-UTF-8 bytes in WebSocketEndpoint.decode() for JSON",
+      "url": "https://github.com/Kludex/starlette/pull/3552",
+      "author": "bodapatisaikrishna",
+      "baseBranch": "main",
+      "headBranch": "fix-websocket-endpoint-json-decode",
+      "provenance": {
+        "version": 1,
+        "origin": "github_snapshot",
+        "headSha": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+        "baseSha": "03f12b7fcf0a3e21a8da648ca0900c79472e9efe",
+        "changedFileInventory": {
+          "version": 1,
+          "completeness": "complete",
+          "headSha": "fe83c02c765dcee66e447833acd9bc73adc2bb72"
+        },
+        "evidenceCapturedAt": "2026-09-18T22:56:20.397Z",
+        "inputFingerprint": {
+          "version": 1,
+          "algorithm": "sha256",
+          "value": "7857a9038f9a7fc25a74f68d3d483d4a4d28b48acdee522f0b475892a34cfe0b",
+          "coverage": "github_metadata"
+        }
+      }
+    },
+    "summary": {
+      "oneLine": "Some evidence is weak. Coverage 47%. Some requirements have only partial evidence.",
+      "confidence": 0.41,
+      "priority": "medium",
+      "evidenceCoverage": 47,
+      "topRisks": [
+        "Some requirements have only partial evidence."
+      ]
+    },
+    "requirements": [
+      {
+        "requirementId": "req_1",
+        "requirementText": "This ensures `bytes` is checked before decoding and catches `UnicodeDecodeError` to close with `WS_1003_UNSUPPORTED_DATA` and raise `RuntimeError(\"Malformed JSON data received.\")`, aligning binary JSON error handling with text JSON",
+        "status": "unclear",
+        "evidenceRefs": [
+          "ev_2"
+        ],
+        "gaps": [
+          "Implementation evidence exists, but no matching test, log, or check evidence verifies this criterion.",
+          "No deterministic test/build execution evidence was collected for this requirement."
+        ],
+        "reviewerNote": "Treat diff evidence as implementation evidence, not proof that behavior is verified.",
+        "confidence": 0.62,
+        "evidenceStatus": "partial",
+        "sourceAuthority": "pr_description",
+        "proofAxes": [
+          {
+            "subject": "execution",
+            "polarity": "present",
+            "state": "incomplete",
+            "evidenceRefs": [],
+            "axisId": "obs_req_1_execution_1",
+            "role": "observation"
+          },
+          {
+            "subject": "implementation",
+            "polarity": "present",
+            "state": "satisfied",
+            "evidenceRefs": [
+              "ev_2"
+            ],
+            "collectionBasis": "matching_artifact_evidence",
+            "axisId": "obs_req_1_implementation_1",
+            "role": "observation"
+          }
+        ]
+      }
+    ],
+    "claims": [
+      {
+        "id": "claim_1",
+        "text": "Verified with `scripts/test` (all 1253 tests passed with 100% coverage)",
+        "evidenceRefs": [
+          "ev_17",
+          "ev_18",
+          "ev_19"
+        ],
+        "supported": false
+      },
+      {
+        "id": "claim_2",
+        "text": "Verified `scripts/check` (ruff format",
+        "evidenceRefs": [
+          "ev_5"
+        ],
+        "supported": false
+      },
+      {
+        "id": "claim_3",
+        "text": "Verified ruff check all clean)",
+        "evidenceRefs": [
+          "ev_5",
+          "ev_6"
+        ],
+        "supported": false
+      }
+    ],
+    "scope": {
+      "suspected": false,
+      "outOfScopeFiles": [],
+      "reasons": [],
+      "evidenceRefs": [],
+      "provenance": []
+    },
+    "testing": {
+      "ciStatus": "passed",
+      "lintStatus": "unknown",
+      "typecheckStatus": "unknown",
+      "missingTests": []
+    },
+    "reviewPriority": [
+      {
+        "path": "starlette/endpoints.py",
+        "reason": "1 requirement(s) have only partial evidence.",
+        "priority": "medium",
+        "evidenceRefs": [
+          "ev_2"
+        ]
+      }
+    ],
+    "proofGraph": {
+      "version": 1,
+      "nodes": [
+        {
+          "requirementId": "req_1",
+          "requirementText": "This ensures `bytes` is checked before decoding and catches `UnicodeDecodeError` to close with `WS_1003_UNSUPPORTED_DATA` and raise `RuntimeError(\"Malformed JSON data received.\")`, aligning binary JSON error handling with text JSON",
+          "sourceRole": "core_requirement",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Summary",
+          "contextRoles": [],
+          "status": "partial",
+          "confidence": 0.62,
+          "implementationEvidenceRefs": [
+            "ev_2"
+          ],
+          "targetedTestEvidenceRefs": [],
+          "executionEvidenceRefs": [],
+          "gapSignals": [
+            {
+              "kind": "missing_execution",
+              "severity": "medium",
+              "message": "No deterministic test/build execution evidence was collected for this requirement.",
+              "evidenceRefs": [
+                "ev_2"
+              ]
+            }
+          ],
+          "firstFiles": [
+            "starlette/endpoints.py"
+          ]
+        }
+      ],
+      "context": [
+        {
+          "id": "ctx_1",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Summary",
+          "text": "When a `WebSocketEndpoint` uses `encoding = \"json\"`, `decode()` expects either a text frame containing JSON or a binary frame containing UTF-8 JSON bytes"
+        },
+        {
+          "id": "ctx_2",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Summary",
+          "text": "Previously, the `else` branch assumed `message[\"bytes\"]` was present and valid UTF-8 whenever `text` was absent or None"
+        },
+        {
+          "id": "ctx_3",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Summary",
+          "text": "This led to two failure modes that crashed the endpoint handler instead of closing cleanly:"
+        },
+        {
+          "id": "ctx_4",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Summary",
+          "text": "If a client sent an empty receive event (`text: None, bytes: None`), `message[\"bytes\"].decode(...)` raised `AttributeError` (or `KeyError` if absent)"
+        },
+        {
+          "id": "ctx_5",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Summary",
+          "text": "If a client sent non-UTF-8 binary data, `decode()` raised an unhandled `UnicodeDecodeError`"
+        },
+        {
+          "id": "ctx_6",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Summary",
+          "text": "In both cases, the unhandled exceptions bypassed the `WS_1003_UNSUPPORTED_DATA` closure and caused `dispatch()` to catch a general exception, close with `WS_1011_INTERNAL_ERROR`, and raise a server traceback"
+        },
+        {
+          "id": "ctx_7",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Summary",
+          "text": "This ensures `bytes` is checked before decoding and catches `UnicodeDecodeError` to close with `WS_1003_UNSUPPORTED_DATA` and raise `RuntimeError(\"Malformed JSON data received.\")`, aligning binary JSON error handling with text JSON"
+        },
+        {
+          "id": "ctx_8",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Summary",
+          "text": "<a href=\"https://cubic.dev/pr/Kludex/starlette/pull/3552?utm_source=github\" target=\"_blank\" rel=\"noopener noreferrer\" data-no-image-dialog=\"true\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://www.cubic.dev/buttons..."
+        }
+      ],
+      "summary": {
+        "requirementCount": 1,
+        "requirementsWithImplementation": 1,
+        "requirementsWithTargetedTests": 0,
+        "requirementsWithExecution": 0,
+        "requirementsWithGaps": 1,
+        "gapCount": 1
+      }
+    },
+    "reprompt": {
+      "targetAgent": "codex",
+      "prompt": "You are revising an AI-generated PR for AgentProof verification.\nDo not broaden the PR. Make only changes tied to the original task.\n1. Address requirement \"This ensures `bytes` is checked before decoding and catches `UnicodeDecodeError` to close with `WS_1003_UNSUPPORTED_DATA` and raise `RuntimeError(\"Malformed JSON data received.\")`, aligning binary JSON error handling with text JSON\" and provide evidence for the implementation.\n2. Return requirement-by-requirement proof for: \"This ensures `bytes` is checked before decoding and catches `UnicodeDecodeError` to close with `WS_1003_UNSUPPORTED_DATA` and raise `RuntimeError(\"Malformed JSON data received.\")`, aligning binary JSON error handling with text JSON\".\nReturn a concise summary with changed files, tests run, and remaining risks."
+    },
+    "evidenceIndex": [
+      {
+        "id": "ev_8",
+        "kind": "check",
+        "label": "Docs preview (Cloudflare)",
+        "locator": "https://github.com/Kludex/starlette/actions/runs/35055151952/job/104663670733",
+        "summary": "Status: unknown. Docs preview (Cloudflare)",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_4",
+        "kind": "check",
+        "label": "CodSpeed Performance Analysis",
+        "locator": "https://github.com/Kludex/starlette/runs/104665041485",
+        "summary": "Status: passed. CodSpeed Performance Analysis - <details>\n<summary>:warning: <b>Different runtime environments detected</b></summary>\n\n> Some benchmarks with significant performance changes were compared across different runtime environments,\n> which may affect the accuracy of the results.\n>\n> [Open the report in Cod\n...[truncated for privacy and token control]",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_5",
+        "kind": "check",
+        "label": "check",
+        "locator": "https://github.com/Kludex/starlette/actions/runs/35055151952/job/104663815334",
+        "summary": "Status: passed. check",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_6",
+        "kind": "check",
+        "label": "zizmor",
+        "locator": "https://github.com/Kludex/starlette/runs/104663695678",
+        "summary": "Status: passed. zizmor - [View all branch alerts](/Kludex/starlette/security/code-scanning?query=pr%3A3552+tool%3Azizmor+is%3Aopen).",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_7",
+        "kind": "check",
+        "label": "cubic · AI code reviewer",
+        "locator": "https://github.com/Kludex/starlette/runs/104663689352",
+        "summary": "Status: passed. cubic · AI code reviewer - AI review completed with 1 review. No issues found in 2 files.",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_9",
+        "kind": "check",
+        "label": "Python 3.10",
+        "locator": "https://github.com/Kludex/starlette/actions/runs/35055151952/job/104663670068",
+        "summary": "Status: passed. Python 3.10",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_10",
+        "kind": "check",
+        "label": "Python 3.15",
+        "locator": "https://github.com/Kludex/starlette/actions/runs/35055151952/job/104663670027",
+        "summary": "Status: passed. Python 3.15",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_11",
+        "kind": "check",
+        "label": "Python 3.12",
+        "locator": "https://github.com/Kludex/starlette/actions/runs/35055151952/job/104663669930",
+        "summary": "Status: passed. Python 3.12",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_12",
+        "kind": "check",
+        "label": "Python 3.13",
+        "locator": "https://github.com/Kludex/starlette/actions/runs/35055151952/job/104663669925",
+        "summary": "Status: passed. Python 3.13",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_13",
+        "kind": "check",
+        "label": "Python 3.14",
+        "locator": "https://github.com/Kludex/starlette/actions/runs/35055151952/job/104663669910",
+        "summary": "Status: passed. Python 3.14",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_14",
+        "kind": "check",
+        "label": "Run benchmarks",
+        "locator": "https://github.com/Kludex/starlette/actions/runs/35055151951/job/104663669875",
+        "summary": "Status: passed. Run benchmarks",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_15",
+        "kind": "check",
+        "label": "Python 3.11",
+        "locator": "https://github.com/Kludex/starlette/actions/runs/35055151952/job/104663669779",
+        "summary": "Status: passed. Python 3.11",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_16",
+        "kind": "check",
+        "label": "zizmor",
+        "locator": "https://github.com/Kludex/starlette/actions/runs/35055151950/job/104663668722",
+        "summary": "Status: passed. zizmor",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_17",
+        "kind": "log",
+        "label": "GitHub Actions job: Python 3.11",
+        "locator": "https://github.com/Kludex/starlette/actions/runs/35055151952/job/104663669779",
+        "summary": "Status: passed. GitHub Actions job: Python 3.11: GitHub Actions job Python 3.11: passed. Reported conclusion: success; execution output not collected. Steps: Run tests: passed",
+        "confidence": 0.75
+      },
+      {
+        "id": "ev_18",
+        "kind": "log",
+        "label": "GitHub Actions job: Python 3.14",
+        "locator": "https://github.com/Kludex/starlette/actions/runs/35055151952/job/104663669910",
+        "summary": "Status: passed. GitHub Actions job: Python 3.14: GitHub Actions job Python 3.14: passed. Reported conclusion: success; execution output not collected. Steps: Run tests: passed",
+        "confidence": 0.75
+      },
+      {
+        "id": "ev_19",
+        "kind": "log",
+        "label": "GitHub Actions job: Python 3.13",
+        "locator": "https://github.com/Kludex/starlette/actions/runs/35055151952/job/104663669925",
+        "summary": "Status: passed. GitHub Actions job: Python 3.13: GitHub Actions job Python 3.13: passed. Reported conclusion: success; execution output not collected. Steps: Run tests: passed",
+        "confidence": 0.75
+      },
+      {
+        "id": "ev_20",
+        "kind": "log",
+        "label": "GitHub Actions job: Python 3.12",
+        "locator": "https://github.com/Kludex/starlette/actions/runs/35055151952/job/104663669930",
+        "summary": "Status: passed. GitHub Actions job: Python 3.12: GitHub Actions job Python 3.12: passed. Reported conclusion: success; execution output not collected. Steps: Run tests: passed",
+        "confidence": 0.75
+      },
+      {
+        "id": "ev_21",
+        "kind": "log",
+        "label": "GitHub Actions job: Python 3.15",
+        "locator": "https://github.com/Kludex/starlette/actions/runs/35055151952/job/104663670027",
+        "summary": "Status: passed. GitHub Actions job: Python 3.15: GitHub Actions job Python 3.15: passed. Reported conclusion: success; execution output not collected. Steps: Run tests: passed",
+        "confidence": 0.75
+      },
+      {
+        "id": "ev_22",
+        "kind": "log",
+        "label": "GitHub Actions job: Python 3.10",
+        "locator": "https://github.com/Kludex/starlette/actions/runs/35055151952/job/104663670068",
+        "summary": "Status: passed. GitHub Actions job: Python 3.10: GitHub Actions job Python 3.10: passed. Reported conclusion: success; execution output not collected. Steps: Run tests: passed",
+        "confidence": 0.75
+      },
+      {
+        "id": "ev_2",
+        "kind": "diff",
+        "label": "starlette/endpoints.py",
+        "locator": "starlette/endpoints.py",
+        "codeLocation": {
+          "path": "starlette/endpoints.py",
+          "side": "head",
+          "revisionSha": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+          "line": 104
+        },
+        "summary": "modified starlette/endpoints.py (+8/-1). Patch excerpt: @@ -104,8 +104,15 @@ async def decode(self, websocket: WebSocket, message: Message) -> Any:\n         elif self.encoding == \"json\":\n             if message.get(\"text\") is not None:\n                 text = message[\"text\"]\n+\n...[middle truncated for privacy and token control]\n].decode(\"utf-8\")\n+                await websocket.close(code=status.WS_1003_UNSUPPORTED_DATA)\n+                raise RuntimeError(\"Malformed JSON data received.\")\n \n             try:\n                 return json.loads(text)",
+        "confidence": 0.85
+      },
+      {
+        "id": "ev_3",
+        "kind": "test",
+        "label": "tests/test_endpoints.py",
+        "locator": "tests/test_endpoints.py",
+        "codeLocation": {
+          "path": "tests/test_endpoints.py",
+          "side": "head",
+          "revisionSha": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+          "line": 141
+        },
+        "summary": "modified tests/test_endpoints.py (+50/-0). Test evidence file. Patch excerpt: @@ -141,6 +141,10 @@ async def on_receive(self, websocket: WebSocket, data: str) -> None:\n         data = websocket.receive_json(mode=\"binary\")\n         assert data == {\"message\": {\"hello\": \"world\"}}\n \n+    with pytest.rais\n...[middle truncated for privacy and token control]\nout_payload() -> None:\n+    class Echo(WebSocketEndpoint):\n+        encoding = \"json\"\n+\n+    sent: list[Message] = []\n+\n+    async def receive() -> Message:\n+        raise Asserti\n...[truncated for privacy and token control]",
+        "confidence": 0.85
+      },
+      {
+        "id": "ev_1",
+        "kind": "pr_description",
+        "label": "PR description",
+        "summary": "# Summary\n\nWhen a `WebSocketEndpoint` uses `encoding = \"json\"`, `decode()` expects either a text frame containing JSON or a binary frame containing UTF-8 JSON bytes. Previously, the `else` branch assumed `message[\"bytes\"]` was present and valid UTF-8 whenever `text` was absent or None.\n\nThis led to two failure modes that crashed the endpoint handler instead of closing cleanly:\n1. If a client sent an empty receive event (`text: None, bytes: None`), `message[\"bytes\"].decode(...)` raised `AttributeError` (or `KeyError` if absent).\n2. If a client sent non-UTF-8 binary data, `decode()` raised an unhandled `UnicodeDeco\n...[truncated for privacy and token control]",
+        "confidence": 0.7
+      }
+    ],
+    "limitations": [
+      "Public GitHub Actions metadata reported successful build/test jobs, but success remains unverified because execution output and raw log archives were not fetched or stored.",
+      "Public GitHub metadata reported successful test/build checks, but no execution output or raw logs were collected; success remains an unverified observation.",
+      "Raw CI logs were not fetched or stored.",
+      "No original task text was provided and no single valid linked issue was available; the PR description is retained only as unverified author context."
+    ],
+    "analysisContext": "unlinked_pr",
+    "reportSchemaVersion": "verification-report.v2",
+    "verificationContract": {
+      "version": 2,
+      "policy": "strict_typed_contract",
+      "state": "absent",
+      "source": null,
+      "gaps": [
+        {
+          "kind": "verification_contract_missing",
+          "message": "Approved verification contract is missing."
+        }
+      ],
+      "objectives": []
+    },
+    "reviewCandidates": {
+      "version": 1,
+      "intentGraph": {
+        "version": 1,
+        "source": {
+          "kind": "description",
+          "hash": "5c137b997205407f4995c3cb2f9c410040b0dfe79c2707eb0b8a4eca9ebaebb4",
+          "length": 1806,
+          "coordinates": "redacted_lf_utf16"
+        },
+        "repository": "Kludex/starlette",
+        "goals": [
+          {
+            "id": "intent_eb187fc0a039240f",
+            "requirementIds": [
+              "req_1"
+            ],
+            "sourceRefs": [
+              {
+                "start": 11,
+                "end": 286,
+                "hash": "02325a1867782e4d9b41d3e082853d546c11c46be04a6a66dbad5e64e5e9cbd3"
+              },
+              {
+                "start": 288,
+                "end": 379,
+                "hash": "4bd2b2606e8dd965d2a1b18e2966b16d1cb746be336badc29fc30325aabb75ed"
+              },
+              {
+                "start": 631,
+                "end": 839,
+                "hash": "31fc16d619db805686af583280ce10384519da1f286873c8fa9bba18333d184f"
+              },
+              {
+                "start": 841,
+                "end": 1073,
+                "hash": "394ae8c9cf2f7e1b11ea0309f70b14a833813adc9a63dc39d9b2a036e3c182ab"
+              },
+              {
+                "start": 1075,
+                "end": 1213,
+                "hash": "c8d10f936be2aa78cd13e627c0173889cd74db3d78de37d418fefbd33d4fc1c0"
+              },
+              {
+                "start": 1274,
+                "end": 1751,
+                "hash": "e4f996075843f76cdac8fa8a744db7fe6df9199530be31d9e8325c9df0f7d40a"
+              }
+            ],
+            "facets": [
+              {
+                "kind": "condition",
+                "sourceRef": {
+                  "start": 11,
+                  "end": 286,
+                  "hash": "02325a1867782e4d9b41d3e082853d546c11c46be04a6a66dbad5e64e5e9cbd3"
+                }
+              },
+              {
+                "kind": "condition",
+                "sourceRef": {
+                  "start": 380,
+                  "end": 533,
+                  "hash": "7db85e634fddd276bf91d7aaf11b856d261ffa5e98d5d0035ec07d6d6c53e962"
+                }
+              },
+              {
+                "kind": "condition",
+                "sourceRef": {
+                  "start": 383,
+                  "end": 533,
+                  "hash": "03fee2b8c777d029de244762e3361f096ab75aecb4af58c35ee312530f77d870"
+                }
+              },
+              {
+                "kind": "condition",
+                "sourceRef": {
+                  "start": 522,
+                  "end": 533,
+                  "hash": "bcb24d952b706877f9d13008f1d5a09ced5dd6c9e2426a4ed6b70a4cc687d64e"
+                }
+              },
+              {
+                "kind": "condition",
+                "sourceRef": {
+                  "start": 534,
+                  "end": 629,
+                  "hash": "7d5daea39e4e30179ba0af97de88774c71c5fe3620c2be5ba3e6563552813f2d"
+                }
+              },
+              {
+                "kind": "condition",
+                "sourceRef": {
+                  "start": 537,
+                  "end": 629,
+                  "hash": "69d110a3735f89df3a69718d9454817e26ef5e7217d38dca6e3fd6de42963e6b"
+                }
+              },
+              {
+                "kind": "artifact_hint",
+                "sourceRef": {
+                  "start": 1274,
+                  "end": 1751,
+                  "hash": "e4f996075843f76cdac8fa8a744db7fe6df9199530be31d9e8325c9df0f7d40a"
+                }
+              }
+            ]
+          }
+        ],
+        "chunks": [
+          {
+            "id": "chunk_4c9f2cecfd0d58538bdd89be",
+            "pool": "changed",
+            "path": "starlette/endpoints.py",
+            "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 1,
+            "hash": "a33d2482f800c647120232bfbdba1d532f71667f69dc40f182c09ff2ad0423d8",
+            "evidenceId": "ev_2"
+          },
+          {
+            "id": "chunk_fc4f057feb509342d92fc947",
+            "pool": "changed",
+            "path": "tests/test_endpoints.py",
+            "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 1,
+            "hash": "0f5db1d203abbf3ff9f7972a79ebdb7bf8f1eefef3bb3f99f9612961d62c9c67",
+            "evidenceId": "ev_3"
+          }
+        ],
+        "edges": [
+          {
+            "goalId": "intent_eb187fc0a039240f",
+            "chunkId": "chunk_4c9f2cecfd0d58538bdd89be",
+            "relation": "candidate",
+            "basis": [
+              "identifier",
+              "lexical"
+            ],
+            "score": 217
+          },
+          {
+            "goalId": "intent_eb187fc0a039240f",
+            "chunkId": "chunk_fc4f057feb509342d92fc947",
+            "relation": "candidate",
+            "basis": [
+              "identifier",
+              "lexical"
+            ],
+            "score": 217
+          }
+        ],
+        "capabilities": {
+          "wholeRepository": "unavailable",
+          "embeddings": "unavailable",
+          "symbolResolution": "unavailable",
+          "semantic": "existing_relations_only",
+          "snapshotChunks": 0,
+          "rejectedSnapshots": 0,
+          "truncated": false
+        }
+      },
+      "requirements": [
+        {
+          "requirementId": "req_1",
+          "sourceHash": "7c406806bc2dc80d443cf0304ab2befc4080f77dad84d7033f22e50cc5227dea",
+          "candidates": [
+            {
+              "evidenceId": "ev_2",
+              "basis": "source_identifier",
+              "score": 217,
+              "evidenceHash": "a33d2482f800c647120232bfbdba1d532f71667f69dc40f182c09ff2ad0423d8"
+            },
+            {
+              "evidenceId": "ev_3",
+              "basis": "source_identifier",
+              "score": 217,
+              "evidenceHash": "0f5db1d203abbf3ff9f7972a79ebdb7bf8f1eefef3bb3f99f9612961d62c9c67"
+            }
+          ]
+        }
+      ],
+      "retainedRelations": [
+        {
+          "requirementId": "req_1",
+          "evidenceId": "ev_2",
+          "relation": "observed"
+        }
+      ],
+      "navigation": {
+        "version": 1,
+        "model": "gemini-3.8-flash",
+        "state": "partial",
+        "repository": "Kludex/starlette",
+        "headSha": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+        "baseSha": "03f12b7fcf0a3e21a8da648ca0900c79472e9efe",
+        "sources": [
+          {
+            "id": "description",
+            "authority": "pr_author_claim",
+            "hash": "5c137b997205407f4995c3cb2f9c410040b0dfe79c2707eb0b8a4eca9ebaebb4",
+            "length": 1806,
+            "processedLength": 1804,
+            "url": "https://github.com/Kludex/starlette/pull/3552"
+          },
+          {
+            "id": "title",
+            "authority": "pr_author_claim",
+            "hash": "14fc982be7a8594740189d2f1286a9ade1162126d42b98eab761979d24ad12cd",
+            "length": 81,
+            "processedLength": 81,
+            "url": "https://github.com/Kludex/starlette/pull/3552"
+          }
+        ],
+        "goals": [
+          {
+            "id": "goal_1",
+            "summary": "Handle missing payloads and non-UTF-8 bytes cleanly in WebSocketEndpoint.decode() when configured for JSON encoding.",
+            "emphasis": "primary",
+            "authority": "pr_author_claim",
+            "sourceRefs": [
+              {
+                "sourceId": "title",
+                "start": 0,
+                "end": 81,
+                "hash": "14fc982be7a8594740189d2f1286a9ade1162126d42b98eab761979d24ad12cd"
+              },
+              {
+                "sourceId": "description",
+                "start": 841,
+                "end": 1073,
+                "hash": "394ae8c9cf2f7e1b11ea0309f70b14a833813adc9a63dc39d9b2a036e3c182ab"
+              }
+            ],
+            "facets": [
+              {
+                "kind": "context",
+                "summary": "When WebSocketEndpoint uses JSON encoding, decode() accepts either text frames with JSON or binary frames with UTF-8 JSON bytes.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 11,
+                    "end": 286,
+                    "hash": "02325a1867782e4d9b41d3e082853d546c11c46be04a6a66dbad5e64e5e9cbd3"
+                  }
+                ]
+              },
+              {
+                "kind": "motivation",
+                "summary": "Missing bytes payload or non-UTF-8 bytes previously raised unhandled AttributeError, KeyError, or UnicodeDecodeError, bypassing WS_1003_UNSUPPORTED_DATA closure and causing WS_1011_INTERNAL_ERROR server tracebacks.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 11,
+                    "end": 286,
+                    "hash": "02325a1867782e4d9b41d3e082853d546c11c46be04a6a66dbad5e64e5e9cbd3"
+                  },
+                  {
+                    "sourceId": "description",
+                    "start": 288,
+                    "end": 629,
+                    "hash": "67d9ed2afe5172e7e94e5a36f1e750bb6c6b886aeda06a18a82191d67de66a87"
+                  },
+                  {
+                    "sourceId": "description",
+                    "start": 631,
+                    "end": 839,
+                    "hash": "31fc16d619db805686af583280ce10384519da1f286873c8fa9bba18333d184f"
+                  }
+                ]
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "Checks bytes before decoding, catches UnicodeDecodeError to close with WS_1003_UNSUPPORTED_DATA, and raises RuntimeError indicating malformed JSON data, mirroring text JSON handling.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 841,
+                    "end": 1073,
+                    "hash": "394ae8c9cf2f7e1b11ea0309f70b14a833813adc9a63dc39d9b2a036e3c182ab"
+                  }
+                ]
+              },
+              {
+                "kind": "test_claim",
+                "summary": "Verified by running test and check scripts, passing all tests with full coverage and clean formatting/typing checks.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 1075,
+                    "end": 1213,
+                    "hash": "c8d10f936be2aa78cd13e627c0173889cd74db3d78de37d418fefbd33d4fc1c0"
+                  }
+                ]
+              }
+            ],
+            "openQuestions": [],
+            "firstInspection": "read_ee9fcfc6fec832b5f204c159",
+            "candidates": [
+              {
+                "artifactId": "read_ee9fcfc6fec832b5f204c159",
+                "relevance": "relevant",
+                "whyInspect": "Contains the core decoding logic handling text and binary frames for JSON encoding, including Unicode decoding failure checks and fallback error handling.",
+                "reviewQuestion": "Does decode() cleanly catch UnicodeDecodeError and missing payload branches to close with WS_1003_UNSUPPORTED_DATA and raise RuntimeError?",
+                "uncertainty": "Surrounding context of decode() and json.loads error handling is truncated."
+              },
+              {
+                "artifactId": "read_9b1167319f2d3b470ea06b96",
+                "relevance": "relevant",
+                "whyInspect": "Direct unit test verifying that invalid UTF-8 byte payloads in JSON mode cause a close frame with status 1003 and raise a RuntimeError.",
+                "reviewQuestion": "Does the unit test adequately verify closure code and raised exception for invalid UTF-8 byte frames?",
+                "uncertainty": "None."
+              },
+              {
+                "artifactId": "read_0976e38ec273d5e5fe287622",
+                "relevance": "relevant",
+                "whyInspect": "Direct unit test verifying that messages lacking both text and bytes payloads trigger status 1003 closure and raise RuntimeError.",
+                "reviewQuestion": "Does this test confirm both missing payload keys and None values in ASGI receive messages for JSON mode?",
+                "uncertainty": "None."
+              },
+              {
+                "artifactId": "read_f58bcc9c01d1dd699b331d66",
+                "relevance": "relevant",
+                "whyInspect": "Integration test using TestClient verifying binary JSON handling and invalid byte error raising during websocket communication.",
+                "reviewQuestion": "Does the client-level test confirm expected error propagation when receiving malformed binary JSON?",
+                "uncertainty": "None."
+              },
+              {
+                "artifactId": "read_67305f13ffd201f91381a5ea",
+                "relevance": "possible",
+                "whyInspect": "Contextual test for standard JSON message receiving in WebSocketEndpoint.",
+                "reviewQuestion": "Does existing text JSON handling maintain parity with the newly handled binary and missing payload cases?",
+                "uncertainty": "None."
+              },
+              {
+                "artifactId": "read_e07b2490f3d7dfe44270959a",
+                "relevance": "possible",
+                "whyInspect": "Shows analogous missing-payload handling and close-frame assertion for text-encoded endpoints.",
+                "reviewQuestion": "Does the error handling pattern in JSON decoding remain consistent with the text decoding pattern?",
+                "uncertainty": "None."
+              }
+            ],
+            "uncertainty": []
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "read_ee9fcfc6fec832b5f204c159",
+            "path": "starlette/endpoints.py",
+            "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+            "side": "head",
+            "startLine": 104,
+            "endLine": 118,
+            "hash": "19585bda686fbac415bf632415fe814f2e6732a370aafdc22afb1db9747506d7",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_b1acdbbbaf7c28e12a126d2a",
+            "path": "tests/test_endpoints.py",
+            "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+            "side": "head",
+            "startLine": 61,
+            "endLine": 75,
+            "hash": "0501d9f682206372fa11bbcb29e13056ec3ff600783bc69d55d44e98379fe57f",
+            "kind": "test",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_38f058211748674567342c12",
+            "path": "tests/test_endpoints.py",
+            "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+            "side": "head",
+            "startLine": 89,
+            "endLine": 106,
+            "hash": "fc4149b5841784b6ad53d35d9621a463bddcc0efd850d5381c640b40292bb352",
+            "kind": "test",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_67305f13ffd201f91381a5ea",
+            "path": "tests/test_endpoints.py",
+            "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+            "side": "head",
+            "startLine": 109,
+            "endLine": 126,
+            "hash": "2ebfaf160fd8c458820778d4cb735006287dc7b0ac13f53a1abcd58d217aa588",
+            "kind": "test",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_f58bcc9c01d1dd699b331d66",
+            "path": "tests/test_endpoints.py",
+            "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+            "side": "head",
+            "startLine": 129,
+            "endLine": 166,
+            "hash": "b2af05ce7ba03064d3af45ae27d71ed2210167c8bb5beede4845cfe5dc27319d",
+            "kind": "test",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_c21aa4b28ccb1d5121045bf8",
+            "path": "tests/test_endpoints.py",
+            "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+            "side": "head",
+            "startLine": 169,
+            "endLine": 180,
+            "hash": "648242d265daebeaaac1d4a3e895669f8322b6af1f82874901dedbfd801503b5",
+            "kind": "test",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_6cda536c2d32ab71cac2db60",
+            "path": "tests/test_endpoints.py",
+            "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+            "side": "head",
+            "startLine": 183,
+            "endLine": 194,
+            "hash": "46a2e708baeeecbe2ec3be067f1d3848976de0a9061ec62aa00cdeea3d4babae",
+            "kind": "test",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_e07b2490f3d7dfe44270959a",
+            "path": "tests/test_endpoints.py",
+            "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+            "side": "head",
+            "startLine": 197,
+            "endLine": 219,
+            "hash": "21e603ab15f570171b4e9194b63e1162b333fa048f6aa6b45abc7edc36266d36",
+            "kind": "test",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_0976e38ec273d5e5fe287622",
+            "path": "tests/test_endpoints.py",
+            "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+            "side": "head",
+            "startLine": 222,
+            "endLine": 265,
+            "hash": "a3742c73ef69e70d1847cdf6096abf3ec4903daf2d38060f42e9cba93ee47790",
+            "kind": "test",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_9b1167319f2d3b470ea06b96",
+            "path": "tests/test_endpoints.py",
+            "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+            "side": "head",
+            "startLine": 268,
+            "endLine": 288,
+            "hash": "e8b8a643740eb40d439c9e86c2accaaf5bc6aa04c740897d55358ed557789fbd",
+            "kind": "test",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_35f160596f8e7212168142fd",
+            "path": "tests/test_endpoints.py",
+            "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+            "side": "head",
+            "startLine": 291,
+            "endLine": 301,
+            "hash": "d3f379a1dd51229d611ae2b4f10f931741d49413ac2507dd7ea36e0731482294",
+            "kind": "test",
+            "origin": "snapshot"
+          }
+        ],
+        "unprocessed": [
+          "description:0",
+          "description:1217",
+          "description:0",
+          "description:1217"
+        ],
+        "limitations": [
+          "diff_context_incomplete",
+          "retrieval_python_indentation",
+          "retrieval_unverified_fallback",
+          "retrieval_budget_exceeded"
+        ],
+        "failures": [],
+        "rankingStatus": "ready",
+        "coverageStatus": "partial"
+      }
+    },
+    "generalPrAssessmentSummary": {
+      "version": 1,
+      "mode": "ordinary_pr",
+      "sourceState": "pr_author_claim",
+      "overallConclusion": "no_assessable_claims",
+      "counts": {
+        "evidence_supported": 0,
+        "evidence_partial": 0,
+        "not_demonstrated": 0,
+        "contradicted": 0,
+        "blocked": 0,
+        "not_assessable": 0
+      },
+      "reasonCodes": [
+        "author_claim_requires_confirmation",
+        "deterministic_candidate_missing",
+        "semantic_observer_unavailable"
+      ],
+      "observations": {
+        "version": 1,
+        "inventory": {
+          "state": "complete",
+          "changedArtifacts": 2,
+          "changedTestCandidates": 1
+        },
+        "links": {
+          "state": "unavailable",
+          "linkedObjectives": 0,
+          "supports": 0,
+          "tests": 0,
+          "implements": 0,
+          "contradicts": 0
+        },
+        "coverage": {
+          "source": null,
+          "evidence": null
+        }
+      }
+    },
+    "ordinaryRequirementOutcomes": {
+      "version": 1,
+      "scope": "selected_source_requirements",
+      "requirements": [
+        {
+          "requirementId": "req_1",
+          "authority": "author_claim",
+          "interpretation": "unavailable",
+          "criterion": null,
+          "reason": "source_interpretation_unavailable"
+        }
+      ]
+    }
+  },
+  "operatorDiagnostics": {
+    "claimState": "not_run",
+    "evidenceState": "not_run",
+    "sourceCoverage": null,
+    "evidenceCoverage": null,
+    "providerCallCount": 0,
+    "selectedCountBuckets": {
+      "sourceSpans": "0",
+      "evidenceCandidates": "0"
+    },
+    "claimInvalidReason": null,
+    "evidenceInvalidReason": null,
+    "freshnessFailure": null,
+    "semanticPackageFailureReasons": [],
+    "omittedReasonCounts": {
+      "spanBudget": 0,
+      "evidenceBudget": 0,
+      "inputByteBudget": 0,
+      "unsafeDescriptor": 0,
+      "noDeterministicSignal": 0
+    }
+  },
+  "operatorNavigationDiagnostics": [
+    {
+      "version": 1,
+      "stage": "intent",
+      "providerCalled": true,
+      "limits": {
+        "artifactBytes": 48000,
+        "artifactCount": 16
+      },
+      "resultLimitations": [
+        "diff_context_incomplete",
+        "retrieval_python_indentation",
+        "retrieval_unverified_fallback",
+        "retrieval_budget_exceeded"
+      ],
+      "requestHash": "7a39d6691e56ad0b62559c98ec13c9ac18cfb2f52e11a00d3bed99f22c1ad06f",
+      "artifactBytes": 2,
+      "artifacts": [],
+      "sources": [
+        {
+          "id": "description",
+          "hash": "5c137b997205407f4995c3cb2f9c410040b0dfe79c2707eb0b8a4eca9ebaebb4",
+          "spans": [
+            {
+              "start": 0,
+              "end": 9,
+              "hash": "d472979042ac41639fc5e45fc55464aaeefa9ec20e264099ebb7ebed728e9487"
+            },
+            {
+              "start": 11,
+              "end": 286,
+              "hash": "02325a1867782e4d9b41d3e082853d546c11c46be04a6a66dbad5e64e5e9cbd3"
+            },
+            {
+              "start": 288,
+              "end": 629,
+              "hash": "67d9ed2afe5172e7e94e5a36f1e750bb6c6b886aeda06a18a82191d67de66a87"
+            },
+            {
+              "start": 631,
+              "end": 839,
+              "hash": "31fc16d619db805686af583280ce10384519da1f286873c8fa9bba18333d184f"
+            },
+            {
+              "start": 841,
+              "end": 1073,
+              "hash": "394ae8c9cf2f7e1b11ea0309f70b14a833813adc9a63dc39d9b2a036e3c182ab"
+            },
+            {
+              "start": 1075,
+              "end": 1213,
+              "hash": "c8d10f936be2aa78cd13e627c0173889cd74db3d78de37d418fefbd33d4fc1c0"
+            },
+            {
+              "start": 1217,
+              "end": 1804,
+              "hash": "946e753b0db72d9e16cc08eb392977388b1754b6cf780554353720a826406ffd"
+            }
+          ]
+        },
+        {
+          "id": "title",
+          "hash": "14fc982be7a8594740189d2f1286a9ade1162126d42b98eab761979d24ad12cd",
+          "spans": [
+            {
+              "start": 0,
+              "end": 81,
+              "hash": "14fc982be7a8594740189d2f1286a9ade1162126d42b98eab761979d24ad12cd"
+            }
+          ]
+        }
+      ],
+      "goals": [],
+      "limitations": [
+        "diff_context_incomplete"
+      ],
+      "decisions": [],
+      "transport": {
+        "provider": "google",
+        "modelVersion": "gemini-3.8-flash",
+        "inputTokens": 1233,
+        "outputTokens": 404,
+        "thoughtTokens": null,
+        "finishReasons": [
+          "STOP"
+        ],
+        "latencyMs": 1591,
+        "outputBytes": 1542,
+        "outputHash": "e59914905d6e788ceee98985a57dc4544882218c0da195075730b47dcfcfb76c"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "ranking",
+      "providerCalled": true,
+      "limits": {
+        "artifactBytes": 48000,
+        "artifactCount": 16
+      },
+      "resultLimitations": [
+        "diff_context_incomplete",
+        "retrieval_python_indentation",
+        "retrieval_unverified_fallback",
+        "retrieval_budget_exceeded"
+      ],
+      "requestHash": "ac102cd23885ebbe65c596046924b68af7085b565f9366d4476a39db4c37a6f3",
+      "artifactBytes": 13507,
+      "artifacts": [
+        {
+          "id": "read_ee9fcfc6fec832b5f204c159",
+          "path": "starlette/endpoints.py",
+          "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+          "side": "head",
+          "startLine": 104,
+          "endLine": 118,
+          "hash": "19585bda686fbac415bf632415fe814f2e6732a370aafdc22afb1db9747506d7",
+          "kind": "code",
+          "origin": "diff",
+          "goalIds": [
+            "goal_1"
+          ]
+        },
+        {
+          "id": "read_b1acdbbbaf7c28e12a126d2a",
+          "path": "tests/test_endpoints.py",
+          "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+          "side": "head",
+          "startLine": 61,
+          "endLine": 75,
+          "hash": "0501d9f682206372fa11bbcb29e13056ec3ff600783bc69d55d44e98379fe57f",
+          "kind": "test",
+          "origin": "snapshot",
+          "goalIds": [
+            "goal_1"
+          ]
+        },
+        {
+          "id": "read_38f058211748674567342c12",
+          "path": "tests/test_endpoints.py",
+          "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+          "side": "head",
+          "startLine": 89,
+          "endLine": 106,
+          "hash": "fc4149b5841784b6ad53d35d9621a463bddcc0efd850d5381c640b40292bb352",
+          "kind": "test",
+          "origin": "snapshot",
+          "goalIds": [
+            "goal_1"
+          ]
+        },
+        {
+          "id": "read_67305f13ffd201f91381a5ea",
+          "path": "tests/test_endpoints.py",
+          "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+          "side": "head",
+          "startLine": 109,
+          "endLine": 126,
+          "hash": "2ebfaf160fd8c458820778d4cb735006287dc7b0ac13f53a1abcd58d217aa588",
+          "kind": "test",
+          "origin": "snapshot",
+          "goalIds": [
+            "goal_1"
+          ]
+        },
+        {
+          "id": "read_f58bcc9c01d1dd699b331d66",
+          "path": "tests/test_endpoints.py",
+          "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+          "side": "head",
+          "startLine": 129,
+          "endLine": 166,
+          "hash": "b2af05ce7ba03064d3af45ae27d71ed2210167c8bb5beede4845cfe5dc27319d",
+          "kind": "test",
+          "origin": "snapshot",
+          "goalIds": [
+            "goal_1"
+          ]
+        },
+        {
+          "id": "read_c21aa4b28ccb1d5121045bf8",
+          "path": "tests/test_endpoints.py",
+          "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+          "side": "head",
+          "startLine": 169,
+          "endLine": 180,
+          "hash": "648242d265daebeaaac1d4a3e895669f8322b6af1f82874901dedbfd801503b5",
+          "kind": "test",
+          "origin": "snapshot",
+          "goalIds": [
+            "goal_1"
+          ]
+        },
+        {
+          "id": "read_6cda536c2d32ab71cac2db60",
+          "path": "tests/test_endpoints.py",
+          "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+          "side": "head",
+          "startLine": 183,
+          "endLine": 194,
+          "hash": "46a2e708baeeecbe2ec3be067f1d3848976de0a9061ec62aa00cdeea3d4babae",
+          "kind": "test",
+          "origin": "snapshot",
+          "goalIds": [
+            "goal_1"
+          ]
+        },
+        {
+          "id": "read_e07b2490f3d7dfe44270959a",
+          "path": "tests/test_endpoints.py",
+          "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+          "side": "head",
+          "startLine": 197,
+          "endLine": 219,
+          "hash": "21e603ab15f570171b4e9194b63e1162b333fa048f6aa6b45abc7edc36266d36",
+          "kind": "test",
+          "origin": "snapshot",
+          "goalIds": [
+            "goal_1"
+          ]
+        },
+        {
+          "id": "read_0976e38ec273d5e5fe287622",
+          "path": "tests/test_endpoints.py",
+          "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+          "side": "head",
+          "startLine": 222,
+          "endLine": 265,
+          "hash": "a3742c73ef69e70d1847cdf6096abf3ec4903daf2d38060f42e9cba93ee47790",
+          "kind": "test",
+          "origin": "snapshot",
+          "goalIds": [
+            "goal_1"
+          ]
+        },
+        {
+          "id": "read_9b1167319f2d3b470ea06b96",
+          "path": "tests/test_endpoints.py",
+          "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+          "side": "head",
+          "startLine": 268,
+          "endLine": 288,
+          "hash": "e8b8a643740eb40d439c9e86c2accaaf5bc6aa04c740897d55358ed557789fbd",
+          "kind": "test",
+          "origin": "snapshot",
+          "goalIds": [
+            "goal_1"
+          ]
+        },
+        {
+          "id": "read_35f160596f8e7212168142fd",
+          "path": "tests/test_endpoints.py",
+          "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+          "side": "head",
+          "startLine": 291,
+          "endLine": 301,
+          "hash": "d3f379a1dd51229d611ae2b4f10f931741d49413ac2507dd7ea36e0731482294",
+          "kind": "test",
+          "origin": "snapshot",
+          "goalIds": [
+            "goal_1"
+          ]
+        }
+      ],
+      "sources": [],
+      "goals": [
+        {
+          "id": "goal_1",
+          "summaryHash": "26d386938b0b11b3e0d47271b10563fb630889642921f628f8df33051e40b391",
+          "sourceRefs": [
+            {
+              "sourceId": "title",
+              "start": 0,
+              "end": 81,
+              "hash": "14fc982be7a8594740189d2f1286a9ade1162126d42b98eab761979d24ad12cd"
+            },
+            {
+              "sourceId": "description",
+              "start": 841,
+              "end": 1073,
+              "hash": "394ae8c9cf2f7e1b11ea0309f70b14a833813adc9a63dc39d9b2a036e3c182ab"
+            }
+          ],
+          "facets": [
+            {
+              "summaryHash": "5cfd8db55c0c37d7969e5d1b5d05dbe34282ddc75534e18454dc3706360b9b79",
+              "sourceRefs": [
+                {
+                  "sourceId": "description",
+                  "start": 11,
+                  "end": 286,
+                  "hash": "02325a1867782e4d9b41d3e082853d546c11c46be04a6a66dbad5e64e5e9cbd3"
+                }
+              ]
+            },
+            {
+              "summaryHash": "836eb84da52821fb365d52b38ed8d4e4f66f0b1453923e9c7088121bac2790f9",
+              "sourceRefs": [
+                {
+                  "sourceId": "description",
+                  "start": 11,
+                  "end": 286,
+                  "hash": "02325a1867782e4d9b41d3e082853d546c11c46be04a6a66dbad5e64e5e9cbd3"
+                },
+                {
+                  "sourceId": "description",
+                  "start": 288,
+                  "end": 629,
+                  "hash": "67d9ed2afe5172e7e94e5a36f1e750bb6c6b886aeda06a18a82191d67de66a87"
+                },
+                {
+                  "sourceId": "description",
+                  "start": 631,
+                  "end": 839,
+                  "hash": "31fc16d619db805686af583280ce10384519da1f286873c8fa9bba18333d184f"
+                }
+              ]
+            },
+            {
+              "summaryHash": "8bc8c8256a4944c5b2efcc67d803cf0d88a37589095acc5653be5fbd8c251b76",
+              "sourceRefs": [
+                {
+                  "sourceId": "description",
+                  "start": 841,
+                  "end": 1073,
+                  "hash": "394ae8c9cf2f7e1b11ea0309f70b14a833813adc9a63dc39d9b2a036e3c182ab"
+                }
+              ]
+            },
+            {
+              "summaryHash": "1df08bbe1136bbdea337cd5fa19ec58cdf59bdb18e83cd0bd4a1fb0bccffc6bd",
+              "sourceRefs": [
+                {
+                  "sourceId": "description",
+                  "start": 1075,
+                  "end": 1213,
+                  "hash": "c8d10f936be2aa78cd13e627c0173889cd74db3d78de37d418fefbd33d4fc1c0"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "limitations": [
+        "diff_context_incomplete",
+        "retrieval_python_indentation",
+        "retrieval_unverified_fallback",
+        "retrieval_budget_exceeded"
+      ],
+      "decisions": [
+        {
+          "goalId": "goal_1",
+          "artifactId": "read_ee9fcfc6fec832b5f204c159",
+          "reason": "accepted"
+        },
+        {
+          "goalId": "goal_1",
+          "artifactId": "read_9b1167319f2d3b470ea06b96",
+          "reason": "accepted"
+        },
+        {
+          "goalId": "goal_1",
+          "artifactId": "read_0976e38ec273d5e5fe287622",
+          "reason": "accepted"
+        },
+        {
+          "goalId": "goal_1",
+          "artifactId": "read_f58bcc9c01d1dd699b331d66",
+          "reason": "accepted"
+        },
+        {
+          "goalId": "goal_1",
+          "artifactId": "read_67305f13ffd201f91381a5ea",
+          "reason": "accepted"
+        },
+        {
+          "goalId": "goal_1",
+          "artifactId": "read_e07b2490f3d7dfe44270959a",
+          "reason": "accepted"
+        }
+      ],
+      "transport": {
+        "provider": "google",
+        "modelVersion": "gemini-3.8-flash",
+        "inputTokens": 5821,
+        "outputTokens": 753,
+        "thoughtTokens": 867,
+        "finishReasons": [
+          "STOP"
+        ],
+        "latencyMs": 5050,
+        "outputBytes": 2855,
+        "outputHash": "c5613eb58ff0da80d4b3e6c477a98b42f81b63036bfcee18f7855f7fea38b79e"
+      },
+      "lifecycle": [
+        {
+          "kind": "freshness",
+          "phase": "initial",
+          "outcome": "unchanged"
+        },
+        {
+          "kind": "read",
+          "trigger": "automatic",
+          "requested": 1,
+          "accepted": 1,
+          "outcome": "supplied"
+        },
+        {
+          "kind": "stop",
+          "reason": "no_read_requested"
+        },
+        {
+          "kind": "freshness",
+          "phase": "final",
+          "outcome": "unchanged"
+        }
+      ]
+    }
+  ],
+  "operatorTargetDiagnostics": {
+    "version": 1,
+    "targetCount": 0,
+    "omittedTargetCount": 0,
+    "rejectedProviderProposalCount": 0,
+    "projectionOmissionCounts": {
+      "targetLimit": 0,
+      "sourceRefLimit": 0,
+      "changeClusterRefLimit": 0,
+      "evidenceRefLimit": 0,
+      "proposalLimit": 0
+    },
+    "targets": [],
+    "ordinaryDocumentation": {
+      "state": "capability_disabled",
+      "admittedObjectiveCount": 0,
+      "planCount": 0,
+      "rejectionCounts": {
+        "multiSpan": 0,
+        "sourceIneligible": 0,
+        "unsupportedWording": 0,
+        "unsafePath": 0,
+        "redactedLiteral": 0,
+        "planLimit": 0
+      },
+      "predicateCounts": {
+        "supported": 0,
+        "contradicted": 0,
+        "unavailable": 0
+      }
+    }
+  }
+}

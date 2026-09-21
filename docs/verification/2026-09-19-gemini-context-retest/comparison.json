@@ -1,0 +1,868 @@
+{
+  "deployment": "https://agentproof-gr8dslzh4-renggyus-projects.vercel.app",
+  "results": [
+    {
+      "id": "flask-5918",
+      "elapsedMs": 22322,
+      "error": null,
+      "model": "gemini-3.8-flash",
+      "sameRevision": true,
+      "head": "a82e942870b6472bb40017349cca772c242eb1ad",
+      "base": "d8eaaba824655046958d1a97f11780de460c3271",
+      "state": "partial",
+      "rankingStatus": "ready",
+      "goals": [
+        {
+          "summary": "Implement automatic OPTIONS handling as a regular route and view dispatch rather than a special check during every request dispatch",
+          "emphasis": "primary",
+          "facets": [
+            {
+              "kind": "context",
+              "summary": "Flask previously added OPTIONS to every rule by default and performed a check on every request dispatch to inspect if the request method was OPTIONS and if automatic options were enabled.",
+              "sourceRefs": [
+                {
+                  "sourceId": "task",
+                  "start": 71,
+                  "end": 261,
+                  "hash": "2766250b3654520cd547672d7013fbb5b8bb6ab0e2e807b94c992df947d5b98b"
+                },
+                {
+                  "sourceId": "task",
+                  "start": 353,
+                  "end": 1749,
+                  "hash": "59d1bec59161279016e70857c33a7ec6e3880e3dddebb2f37a26fc28d8a6b57c"
+                }
+              ]
+            },
+            {
+              "kind": "motivation",
+              "summary": "Checking for OPTIONS and automatic options on every request dispatch is perceived as wasteful compared to letting regular routing handle an explicit rule and endpoint.",
+              "sourceRefs": [
+                {
+                  "sourceId": "task",
+                  "start": 353,
+                  "end": 1749,
+                  "hash": "59d1bec59161279016e70857c33a7ec6e3880e3dddebb2f37a26fc28d8a6b57c"
+                }
+              ]
+            },
+            {
+              "kind": "implementation_claim",
+              "summary": "Implements automatic options as part of regular routing and view dispatch instead of checking on every request dispatch.",
+              "sourceRefs": [
+                {
+                  "sourceId": "description",
+                  "start": 0,
+                  "end": 138,
+                  "hash": "dc1d30f42bb92b8e59482400bea40920906acd1be3dc19ae64e139c7177b86af"
+                }
+              ]
+            },
+            {
+              "kind": "implementation_claim",
+              "summary": "Catches Exception instead of DuplicateRuleError until Werkzeug 3.2 is available to prevent registering duplicate internal routes for the same URL, although adding duplicates does not break behavior.",
+              "sourceRefs": [
+                {
+                  "sourceId": "description",
+                  "start": 140,
+                  "end": 480,
+                  "hash": "c3c0d1663b74c978974ed3bf5235a5b38ab1dc8b8022d2af4ab38d24c032b0a5"
+                }
+              ]
+            },
+            {
+              "kind": "condition",
+              "summary": "When PROVIDE_AUTOMATIC_OPTIONS configuration was disabled, the logic previously failed to allow re-enabling via route arguments or view attributes.",
+              "sourceRefs": [
+                {
+                  "sourceId": "task",
+                  "start": 353,
+                  "end": 1749,
+                  "hash": "59d1bec59161279016e70857c33a7ec6e3880e3dddebb2f37a26fc28d8a6b57c"
+                }
+              ]
+            },
+            {
+              "kind": "implementation_claim",
+              "summary": "Adjusts the 'flask routes' CLI command output to exclude the internal _automatic_options endpoint to prevent noise.",
+              "sourceRefs": [
+                {
+                  "sourceId": "description",
+                  "start": 482,
+                  "end": 581,
+                  "hash": "a9382ce06a8471ca28f028cdc72a1b515affd9a6f4fc41b31f28fae84371ca2f"
+                }
+              ]
+            },
+            {
+              "kind": "implementation_claim",
+              "summary": "Refactors the static view away from a lambda and weakref to align with how the new automatic options view is structured.",
+              "sourceRefs": [
+                {
+                  "sourceId": "description",
+                  "start": 583,
+                  "end": 691,
+                  "hash": "9cace0693a3584b1515136d7165c7eca9a0d1cb1f8c7aa745899809ac1b79b7f"
+                }
+              ]
+            }
+          ],
+          "first": {
+            "id": "read_fa6919b5af4121bc39d1913a",
+            "path": "src/flask/sansio/app.py",
+            "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+            "side": "head",
+            "startLine": 604,
+            "endLine": 671,
+            "hash": "86e77f1d73bb18331f13a6546eb92e1ac2b8fb5a6aadc0698d8df6fae4962589",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          "candidates": [
+            {
+              "artifactId": "read_fa6919b5af4121bc39d1913a",
+              "relevance": "relevant",
+              "whyInspect": "Contains the core URL rule registration logic where automatic OPTIONS routes are created and registered to the internal endpoint, including fallback exception handling for duplicate rules.",
+              "reviewQuestion": "Does URL rule registration correctly configure automatic OPTIONS rules and handle potential route collisions or view attribute overrides?",
+              "uncertainty": "Whether catching generic Exception during rule addition masks any unexpected rule registration failures.",
+              "artifact": {
+                "id": "read_fa6919b5af4121bc39d1913a",
+                "path": "src/flask/sansio/app.py",
+                "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+                "side": "head",
+                "startLine": 604,
+                "endLine": 671,
+                "hash": "86e77f1d73bb18331f13a6546eb92e1ac2b8fb5a6aadc0698d8df6fae4962589",
+                "kind": "code",
+                "origin": "snapshot"
+              }
+            },
+            {
+              "artifactId": "read_70dff5b0c70695799bc253a0",
+              "relevance": "relevant",
+              "whyInspect": "Shows where the internal automatic options view function is attached to the application view functions mapping during initialization.",
+              "reviewQuestion": "Is the internal options view function properly registered across application and blueprint view function mappings?",
+              "uncertainty": "The full definition of the options view function itself is outside this immediate slice.",
+              "artifact": {
+                "id": "read_70dff5b0c70695799bc253a0",
+                "path": "src/flask/app.py",
+                "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+                "side": "head",
+                "startLine": 310,
+                "endLine": 368,
+                "hash": "bc29fbbe1beca7560e1f23352768403d514d9591e557dfb05a4bba8e4928acd0",
+                "kind": "code",
+                "origin": "snapshot"
+              }
+            },
+            {
+              "artifactId": "read_ce3297af394a8c3219563b8f",
+              "relevance": "relevant",
+              "whyInspect": "Contains the CLI routes command logic filtering out internal automatic options rules while displaying OPTIONS in the allowed methods list.",
+              "reviewQuestion": "Does the CLI routes display correctly suppress the internal endpoint name without misreporting available HTTP methods?",
+              "uncertainty": "None.",
+              "artifact": {
+                "id": "read_ce3297af394a8c3219563b8f",
+                "path": "src/flask/cli.py",
+                "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+                "side": "head",
+                "startLine": 1072,
+                "endLine": 1086,
+                "hash": "335079fe1fdc4eedb386121d241400b75ab5181166b09fbad9284618dae5dad9",
+                "kind": "code",
+                "origin": "diff"
+              }
+            },
+            {
+              "artifactId": "read_0dba3e02354e5f2415c2f08c",
+              "relevance": "relevant",
+              "whyInspect": "Tests that automatic OPTIONS requests succeed when URLs include variable path arguments.",
+              "reviewQuestion": "Does the test adequately verify that variable route arguments do not cause unexpected argument errors in the options view?",
+              "uncertainty": "Does not test custom response builders or disabled automatic options configuration.",
+              "artifact": {
+                "id": "read_0dba3e02354e5f2415c2f08c",
+                "path": "tests/test_basic.py",
+                "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+                "side": "head",
+                "startLine": 53,
+                "endLine": 65,
+                "hash": "066d539646d13091b79b2e91e93a7519a559c0566353a3bf790158d3efac27fe",
+                "kind": "test",
+                "origin": "diff"
+              }
+            },
+            {
+              "artifactId": "read_e856985fc46e44a50548e253",
+              "relevance": "possible",
+              "whyInspect": "Verifies the CLI routes matching order and output when internal automatic options routes are present.",
+              "reviewQuestion": "Are CLI route outputs verifying that the internal options route is hidden across all relevant CLI flag combinations?",
+              "uncertainty": "Only tests order and flags in basic scenarios.",
+              "artifact": {
+                "id": "read_e856985fc46e44a50548e253",
+                "path": "tests/test_cli.py",
+                "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+                "side": "head",
+                "startLine": 482,
+                "endLine": 498,
+                "hash": "014361369a8df4e9edf2d12d11cb6ef91d21581c6138619edde78aad4e79e14d",
+                "kind": "test",
+                "origin": "diff"
+              }
+            },
+            {
+              "artifactId": "read_863b6573bb3f364dc7b6ebe1",
+              "relevance": "possible",
+              "whyInspect": "Inspects subclass compatibility wrappers for methods including default options response generation.",
+              "reviewQuestion": "Are legacy subclass hooks for default options generation still correctly supported or deprecated?",
+              "uncertainty": "How this ties directly into the new view-based dispatch path.",
+              "artifact": {
+                "id": "read_863b6573bb3f364dc7b6ebe1",
+                "path": "src/flask/app.py",
+                "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+                "side": "head",
+                "startLine": 254,
+                "endLine": 308,
+                "hash": "1a859288db8d29724c6d93e970d807fb5be37f9de6568f95f0c7961350d22041",
+                "kind": "code",
+                "origin": "snapshot"
+              }
+            }
+          ]
+        }
+      ],
+      "failures": [],
+      "limitations": [
+        "diff_context_incomplete",
+        "retrieval_python_indentation",
+        "retrieval_scan_budget_exceeded",
+        "retrieval_unverified_fallback",
+        "retrieval_budget_exceeded"
+      ],
+      "events": [
+        {
+          "stage": "intent",
+          "artifactBytes": 2,
+          "artifactCount": 0,
+          "transport": {
+            "provider": "google",
+            "modelVersion": "gemini-3.8-flash",
+            "inputTokens": 1515,
+            "outputTokens": 582,
+            "thoughtTokens": null,
+            "finishReasons": [
+              "STOP"
+            ],
+            "latencyMs": 2413,
+            "outputBytes": 2426,
+            "outputHash": "c2cf4199d28c57edee6b83cf3321d3b21e5d62208391519ff773d789dee132bb"
+          },
+          "decisions": []
+        },
+        {
+          "stage": "ranking",
+          "artifactBytes": 23346,
+          "artifactCount": 13,
+          "transport": {
+            "provider": "google",
+            "modelVersion": "gemini-3.8-flash",
+            "inputTokens": 8743,
+            "outputTokens": 791,
+            "thoughtTokens": 2222,
+            "finishReasons": [
+              "STOP"
+            ],
+            "latencyMs": 10374,
+            "outputBytes": 3363,
+            "outputHash": "029389af0855066b64e96763d76518d50eb922b756a70f1932f7a1e85c1ee34b"
+          },
+          "decisions": [
+            {
+              "goalId": "goal_1",
+              "artifactId": "read_fa6919b5af4121bc39d1913a",
+              "reason": "accepted"
+            },
+            {
+              "goalId": "goal_1",
+              "artifactId": "read_70dff5b0c70695799bc253a0",
+              "reason": "accepted"
+            },
+            {
+              "goalId": "goal_1",
+              "artifactId": "read_ce3297af394a8c3219563b8f",
+              "reason": "accepted"
+            },
+            {
+              "goalId": "goal_1",
+              "artifactId": "read_0dba3e02354e5f2415c2f08c",
+              "reason": "accepted"
+            },
+            {
+              "goalId": "goal_1",
+              "artifactId": "read_e856985fc46e44a50548e253",
+              "reason": "accepted"
+            },
+            {
+              "goalId": "goal_1",
+              "artifactId": "read_863b6573bb3f364dc7b6ebe1",
+              "reason": "accepted"
+            }
+          ]
+        }
+      ],
+      "baseline": {
+        "state": "partial",
+        "rankingStatus": "ready",
+        "coverageStatus": "partial",
+        "goalCount": 5,
+        "artifactCount": 8,
+        "firstPath": "src/flask/sansio/app.py",
+        "top3Paths": [
+          "src/flask/sansio/app.py",
+          "src/flask/app.py",
+          "src/flask/cli.py"
+        ],
+        "firstAt1": true,
+        "firstAt3": true,
+        "requiredConceptHits": [
+          {
+            "concept": "automatic OPTIONS",
+            "found": true
+          },
+          {
+            "concept": "routing",
+            "found": false
+          }
+        ],
+        "goals": [
+          {
+            "id": "goal_1",
+            "summary": "Handle automatic OPTIONS through a normal registered route and view dispatch path instead of a special check on every request.",
+            "emphasis": "primary",
+            "facets": [
+              {
+                "kind": "motivation",
+                "summary": "The issue reports that checking every dispatched request for OPTIONS is wasteful and that the current feature is confusing."
+              },
+              {
+                "kind": "condition",
+                "summary": "The change concerns automatic OPTIONS handling for routes where it is enabled."
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "The PR author says the implementation registers an internal automatic-options route and view, and relies on duplicate detection to avoid repeated registration where possible."
+              },
+              {
+                "kind": "context",
+                "summary": "The issue notes that adding routes can create duplicate rules, especially when multiple decorators register the same URL, and that this is considered messy even where it does not break behavior."
+              }
+            ],
+            "firstPath": "src/flask/sansio/app.py",
+            "candidatePaths": [
+              "src/flask/sansio/app.py",
+              "src/flask/app.py",
+              "src/flask/cli.py"
+            ]
+          },
+          {
+            "id": "goal_2",
+            "summary": "Ensure per-rule or view-level automatic-options settings can enable OPTIONS handling even when the global configuration is disabled.",
+            "emphasis": "primary",
+            "facets": [
+              {
+                "kind": "condition",
+                "summary": "The enabling behavior matters specifically when PROVIDE_AUTOMATIC_OPTIONS is disabled globally."
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "The issue author reports that the enabling issue has been fixed."
+              },
+              {
+                "kind": "test_claim",
+                "summary": "The issue reports that existing tests for this behavior were incomplete and had problems."
+              }
+            ],
+            "firstPath": "src/flask/sansio/app.py",
+            "candidatePaths": [
+              "src/flask/sansio/app.py",
+              "tests/test_basic.py",
+              "src/flask/app.py"
+            ]
+          },
+          {
+            "id": "goal_4",
+            "summary": "Keep the internal automatic-options endpoint out of flask routes output.",
+            "emphasis": "supporting",
+            "facets": [
+              {
+                "kind": "implementation_claim",
+                "summary": "The PR author says the routes command was adjusted to omit the internal endpoint because displaying it would be noisy."
+              }
+            ],
+            "firstPath": "src/flask/cli.py",
+            "candidatePaths": [
+              "src/flask/cli.py",
+              "src/flask/app.py"
+            ]
+          },
+          {
+            "id": "goal_5",
+            "summary": "Use a regular named static view rather than a lambda and weak reference for the new handling path.",
+            "emphasis": "supporting",
+            "facets": [
+              {
+                "kind": "implementation_claim",
+                "summary": "The PR author reports moving the static view out to match how the new automatic-options view is handled."
+              }
+            ],
+            "firstPath": "src/flask/app.py",
+            "candidatePaths": [
+              "src/flask/app.py",
+              "src/flask/sansio/app.py",
+              "tests/test_basic.py"
+            ]
+          },
+          {
+            "id": "goal_3",
+            "summary": "Consider whether the global automatic-options configuration should be deprecated.",
+            "emphasis": "optional",
+            "facets": [
+              {
+                "kind": "motivation",
+                "summary": "The issue questions the benefit of disabling automatic OPTIONS handling or configuring it per deployment."
+              }
+            ],
+            "firstPath": "src/flask/sansio/app.py",
+            "candidatePaths": [
+              "src/flask/sansio/app.py",
+              "tests/test_basic.py",
+              "src/flask/app.py"
+            ]
+          }
+        ],
+        "failures": [
+          {
+            "stage": "refinement",
+            "category": "invalid_json_or_shape",
+            "reason": "unknown_artifact_ref"
+          }
+        ],
+        "limitations": [
+          "retrieval_budget_exceeded",
+          "retrieval_language_unsupported",
+          "retrieval_scan_budget_exceeded",
+          "retrieval_unverified_fallback",
+          "invalid_reference"
+        ],
+        "unprocessedCount": 3
+      }
+    },
+    {
+      "id": "starlette-3552",
+      "elapsedMs": 12898,
+      "error": null,
+      "model": "gemini-3.8-flash",
+      "sameRevision": true,
+      "head": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+      "base": "03f12b7fcf0a3e21a8da648ca0900c79472e9efe",
+      "state": "partial",
+      "rankingStatus": "ready",
+      "goals": [
+        {
+          "summary": "Handle missing payloads and non-UTF-8 bytes cleanly in WebSocketEndpoint.decode() when configured for JSON encoding.",
+          "emphasis": "primary",
+          "facets": [
+            {
+              "kind": "context",
+              "summary": "When WebSocketEndpoint uses JSON encoding, decode() accepts either text frames with JSON or binary frames with UTF-8 JSON bytes.",
+              "sourceRefs": [
+                {
+                  "sourceId": "description",
+                  "start": 11,
+                  "end": 286,
+                  "hash": "02325a1867782e4d9b41d3e082853d546c11c46be04a6a66dbad5e64e5e9cbd3"
+                }
+              ]
+            },
+            {
+              "kind": "motivation",
+              "summary": "Missing bytes payload or non-UTF-8 bytes previously raised unhandled AttributeError, KeyError, or UnicodeDecodeError, bypassing WS_1003_UNSUPPORTED_DATA closure and causing WS_1011_INTERNAL_ERROR server tracebacks.",
+              "sourceRefs": [
+                {
+                  "sourceId": "description",
+                  "start": 11,
+                  "end": 286,
+                  "hash": "02325a1867782e4d9b41d3e082853d546c11c46be04a6a66dbad5e64e5e9cbd3"
+                },
+                {
+                  "sourceId": "description",
+                  "start": 288,
+                  "end": 629,
+                  "hash": "67d9ed2afe5172e7e94e5a36f1e750bb6c6b886aeda06a18a82191d67de66a87"
+                },
+                {
+                  "sourceId": "description",
+                  "start": 631,
+                  "end": 839,
+                  "hash": "31fc16d619db805686af583280ce10384519da1f286873c8fa9bba18333d184f"
+                }
+              ]
+            },
+            {
+              "kind": "implementation_claim",
+              "summary": "Checks bytes before decoding, catches UnicodeDecodeError to close with WS_1003_UNSUPPORTED_DATA, and raises RuntimeError indicating malformed JSON data, mirroring text JSON handling.",
+              "sourceRefs": [
+                {
+                  "sourceId": "description",
+                  "start": 841,
+                  "end": 1073,
+                  "hash": "394ae8c9cf2f7e1b11ea0309f70b14a833813adc9a63dc39d9b2a036e3c182ab"
+                }
+              ]
+            },
+            {
+              "kind": "test_claim",
+              "summary": "Verified by running test and check scripts, passing all tests with full coverage and clean formatting/typing checks.",
+              "sourceRefs": [
+                {
+                  "sourceId": "description",
+                  "start": 1075,
+                  "end": 1213,
+                  "hash": "c8d10f936be2aa78cd13e627c0173889cd74db3d78de37d418fefbd33d4fc1c0"
+                }
+              ]
+            }
+          ],
+          "first": {
+            "id": "read_ee9fcfc6fec832b5f204c159",
+            "path": "starlette/endpoints.py",
+            "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+            "side": "head",
+            "startLine": 104,
+            "endLine": 118,
+            "hash": "19585bda686fbac415bf632415fe814f2e6732a370aafdc22afb1db9747506d7",
+            "kind": "code",
+            "origin": "diff"
+          },
+          "candidates": [
+            {
+              "artifactId": "read_ee9fcfc6fec832b5f204c159",
+              "relevance": "relevant",
+              "whyInspect": "Contains the core decoding logic handling text and binary frames for JSON encoding, including Unicode decoding failure checks and fallback error handling.",
+              "reviewQuestion": "Does decode() cleanly catch UnicodeDecodeError and missing payload branches to close with WS_1003_UNSUPPORTED_DATA and raise RuntimeError?",
+              "uncertainty": "Surrounding context of decode() and json.loads error handling is truncated.",
+              "artifact": {
+                "id": "read_ee9fcfc6fec832b5f204c159",
+                "path": "starlette/endpoints.py",
+                "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+                "side": "head",
+                "startLine": 104,
+                "endLine": 118,
+                "hash": "19585bda686fbac415bf632415fe814f2e6732a370aafdc22afb1db9747506d7",
+                "kind": "code",
+                "origin": "diff"
+              }
+            },
+            {
+              "artifactId": "read_9b1167319f2d3b470ea06b96",
+              "relevance": "relevant",
+              "whyInspect": "Direct unit test verifying that invalid UTF-8 byte payloads in JSON mode cause a close frame with status 1003 and raise a RuntimeError.",
+              "reviewQuestion": "Does the unit test adequately verify closure code and raised exception for invalid UTF-8 byte frames?",
+              "uncertainty": "None.",
+              "artifact": {
+                "id": "read_9b1167319f2d3b470ea06b96",
+                "path": "tests/test_endpoints.py",
+                "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+                "side": "head",
+                "startLine": 268,
+                "endLine": 288,
+                "hash": "e8b8a643740eb40d439c9e86c2accaaf5bc6aa04c740897d55358ed557789fbd",
+                "kind": "test",
+                "origin": "snapshot"
+              }
+            },
+            {
+              "artifactId": "read_0976e38ec273d5e5fe287622",
+              "relevance": "relevant",
+              "whyInspect": "Direct unit test verifying that messages lacking both text and bytes payloads trigger status 1003 closure and raise RuntimeError.",
+              "reviewQuestion": "Does this test confirm both missing payload keys and None values in ASGI receive messages for JSON mode?",
+              "uncertainty": "None.",
+              "artifact": {
+                "id": "read_0976e38ec273d5e5fe287622",
+                "path": "tests/test_endpoints.py",
+                "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+                "side": "head",
+                "startLine": 222,
+                "endLine": 265,
+                "hash": "a3742c73ef69e70d1847cdf6096abf3ec4903daf2d38060f42e9cba93ee47790",
+                "kind": "test",
+                "origin": "snapshot"
+              }
+            },
+            {
+              "artifactId": "read_f58bcc9c01d1dd699b331d66",
+              "relevance": "relevant",
+              "whyInspect": "Integration test using TestClient verifying binary JSON handling and invalid byte error raising during websocket communication.",
+              "reviewQuestion": "Does the client-level test confirm expected error propagation when receiving malformed binary JSON?",
+              "uncertainty": "None.",
+              "artifact": {
+                "id": "read_f58bcc9c01d1dd699b331d66",
+                "path": "tests/test_endpoints.py",
+                "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+                "side": "head",
+                "startLine": 129,
+                "endLine": 166,
+                "hash": "b2af05ce7ba03064d3af45ae27d71ed2210167c8bb5beede4845cfe5dc27319d",
+                "kind": "test",
+                "origin": "snapshot"
+              }
+            },
+            {
+              "artifactId": "read_67305f13ffd201f91381a5ea",
+              "relevance": "possible",
+              "whyInspect": "Contextual test for standard JSON message receiving in WebSocketEndpoint.",
+              "reviewQuestion": "Does existing text JSON handling maintain parity with the newly handled binary and missing payload cases?",
+              "uncertainty": "None.",
+              "artifact": {
+                "id": "read_67305f13ffd201f91381a5ea",
+                "path": "tests/test_endpoints.py",
+                "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+                "side": "head",
+                "startLine": 109,
+                "endLine": 126,
+                "hash": "2ebfaf160fd8c458820778d4cb735006287dc7b0ac13f53a1abcd58d217aa588",
+                "kind": "test",
+                "origin": "snapshot"
+              }
+            },
+            {
+              "artifactId": "read_e07b2490f3d7dfe44270959a",
+              "relevance": "possible",
+              "whyInspect": "Shows analogous missing-payload handling and close-frame assertion for text-encoded endpoints.",
+              "reviewQuestion": "Does the error handling pattern in JSON decoding remain consistent with the text decoding pattern?",
+              "uncertainty": "None.",
+              "artifact": {
+                "id": "read_e07b2490f3d7dfe44270959a",
+                "path": "tests/test_endpoints.py",
+                "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+                "side": "head",
+                "startLine": 197,
+                "endLine": 219,
+                "hash": "21e603ab15f570171b4e9194b63e1162b333fa048f6aa6b45abc7edc36266d36",
+                "kind": "test",
+                "origin": "snapshot"
+              }
+            }
+          ]
+        }
+      ],
+      "failures": [],
+      "limitations": [
+        "diff_context_incomplete",
+        "retrieval_python_indentation",
+        "retrieval_unverified_fallback",
+        "retrieval_budget_exceeded"
+      ],
+      "events": [
+        {
+          "stage": "intent",
+          "artifactBytes": 2,
+          "artifactCount": 0,
+          "transport": {
+            "provider": "google",
+            "modelVersion": "gemini-3.8-flash",
+            "inputTokens": 1233,
+            "outputTokens": 404,
+            "thoughtTokens": null,
+            "finishReasons": [
+              "STOP"
+            ],
+            "latencyMs": 1591,
+            "outputBytes": 1542,
+            "outputHash": "e59914905d6e788ceee98985a57dc4544882218c0da195075730b47dcfcfb76c"
+          },
+          "decisions": []
+        },
+        {
+          "stage": "ranking",
+          "artifactBytes": 13507,
+          "artifactCount": 11,
+          "transport": {
+            "provider": "google",
+            "modelVersion": "gemini-3.8-flash",
+            "inputTokens": 5821,
+            "outputTokens": 753,
+            "thoughtTokens": 867,
+            "finishReasons": [
+              "STOP"
+            ],
+            "latencyMs": 5050,
+            "outputBytes": 2855,
+            "outputHash": "c5613eb58ff0da80d4b3e6c477a98b42f81b63036bfcee18f7855f7fea38b79e"
+          },
+          "decisions": [
+            {
+              "goalId": "goal_1",
+              "artifactId": "read_ee9fcfc6fec832b5f204c159",
+              "reason": "accepted"
+            },
+            {
+              "goalId": "goal_1",
+              "artifactId": "read_9b1167319f2d3b470ea06b96",
+              "reason": "accepted"
+            },
+            {
+              "goalId": "goal_1",
+              "artifactId": "read_0976e38ec273d5e5fe287622",
+              "reason": "accepted"
+            },
+            {
+              "goalId": "goal_1",
+              "artifactId": "read_f58bcc9c01d1dd699b331d66",
+              "reason": "accepted"
+            },
+            {
+              "goalId": "goal_1",
+              "artifactId": "read_67305f13ffd201f91381a5ea",
+              "reason": "accepted"
+            },
+            {
+              "goalId": "goal_1",
+              "artifactId": "read_e07b2490f3d7dfe44270959a",
+              "reason": "accepted"
+            }
+          ]
+        }
+      ],
+      "baseline": {
+        "state": "partial",
+        "rankingStatus": "ready",
+        "coverageStatus": "partial",
+        "goalCount": 4,
+        "artifactCount": 8,
+        "firstPath": "starlette/endpoints.py",
+        "top3Paths": [
+          "starlette/endpoints.py",
+          "tests/test_endpoints.py"
+        ],
+        "firstAt1": true,
+        "firstAt3": true,
+        "requiredConceptHits": [
+          {
+            "concept": "WebSocketEndpoint",
+            "found": true
+          },
+          {
+            "concept": "JSON decode",
+            "found": false
+          }
+        ],
+        "goals": [
+          {
+            "id": "goal_1",
+            "summary": "Make JSON-mode WebSocketEndpoint.decode() handle receive events with no text and no bytes without crashing through an unexpected exception path.",
+            "emphasis": "primary",
+            "facets": [
+              {
+                "kind": "condition",
+                "summary": "Applies when WebSocketEndpoint uses JSON encoding and the receive event has no text payload; the described cases include bytes being null or absent."
+              },
+              {
+                "kind": "motivation",
+                "summary": "The prior behavior could raise AttributeError or KeyError and cause the endpoint handler to fail instead of closing cleanly."
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "The author reports that the change checks for bytes before attempting to decode it."
+              }
+            ],
+            "firstPath": "starlette/endpoints.py",
+            "candidatePaths": [
+              "starlette/endpoints.py",
+              "tests/test_endpoints.py"
+            ]
+          },
+          {
+            "id": "goal_2",
+            "summary": "Handle non-UTF-8 binary payloads in JSON mode as unsupported WebSocket data rather than allowing UnicodeDecodeError to escape.",
+            "emphasis": "primary",
+            "facets": [
+              {
+                "kind": "condition",
+                "summary": "Applies when a binary frame contains bytes that are not valid UTF-8 JSON input."
+              },
+              {
+                "kind": "motivation",
+                "summary": "The prior unhandled UnicodeDecodeError could trigger an internal-error close and server traceback instead of the unsupported-data behavior."
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "The author reports catching UnicodeDecodeError during binary decoding."
+              }
+            ],
+            "firstPath": "starlette/endpoints.py",
+            "candidatePaths": [
+              "starlette/endpoints.py",
+              "tests/test_endpoints.py"
+            ]
+          },
+          {
+            "id": "goal_3",
+            "summary": "Use the unsupported-data handling path for malformed JSON input, including the missing-payload and invalid-UTF-8 cases, with the stated error behavior.",
+            "emphasis": "primary",
+            "facets": [
+              {
+                "kind": "acceptance",
+                "summary": "The stated target behavior is to close with WS_1003_UNSUPPORTED_DATA and raise RuntimeError with the message indicating malformed JSON data was received."
+              },
+              {
+                "kind": "context",
+                "summary": "The intended binary JSON behavior is described as matching text JSON error handling."
+              },
+              {
+                "kind": "constraint",
+                "summary": "These cases should not be converted into the general dispatch path that closes with WS_1011_INTERNAL_ERROR."
+              }
+            ],
+            "firstPath": "starlette/endpoints.py",
+            "candidatePaths": [
+              "starlette/endpoints.py",
+              "tests/test_endpoints.py"
+            ]
+          },
+          {
+            "id": "goal_4",
+            "summary": "Preserve the reported validation of the change across the project test and check commands.",
+            "emphasis": "supporting",
+            "facets": [
+              {
+                "kind": "test_claim",
+                "summary": "The author reports that all 1253 tests passed with 100% coverage and that formatting, type checking, and lint checks were clean."
+              }
+            ],
+            "firstPath": "tests/test_endpoints.py",
+            "candidatePaths": [
+              "tests/test_endpoints.py",
+              "pyproject.toml"
+            ]
+          }
+        ],
+        "failures": [
+          {
+            "stage": "ranking",
+            "category": "invalid_json_or_shape",
+            "reason": "unknown_artifact_ref"
+          }
+        ],
+        "limitations": [
+          "invalid_reference",
+          "retrieval_language_unsupported",
+          "retrieval_scan_budget_exceeded",
+          "retrieval_unverified_fallback",
+          "retrieval_budget_exceeded",
+          "requested_path_unread"
+        ],
+        "unprocessedCount": 4
+      }
+    }
+  ]
+}

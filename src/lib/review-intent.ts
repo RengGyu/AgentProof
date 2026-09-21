@@ -1,4 +1,5 @@
-import { extractReviewSnippets, REVIEW_GOAL_BYTES, REVIEW_GOAL_SNIPPETS, REVIEW_PAYLOAD_BYTES, REVIEW_FILE_BYTES } from './review-snippets';
+import { getNavigationTransportDiagnostics, type NavigationTransportDiagnostics } from './review-navigation-diagnostics';
+import { extractReviewSnippets, REVIEW_PAYLOAD_SNIPPETS, REVIEW_PAYLOAD_BYTES, REVIEW_FILE_BYTES } from './review-snippets';
 import { createHash } from "crypto";
 import { parseGeneralPrStructureV1 } from "./general-pr-structure";
 import { redactSecrets, redactSecretsPreservingLines } from "./redact";
@@ -205,10 +206,30 @@ function rankingStatus(n:ReviewNavigation):NonNullable<ReviewNavigation['ranking
 const coverageStatus=(n:ReviewNavigation):NonNullable<ReviewNavigation['coverageStatus']>=>n.unprocessed.length||n.limitations.length||n.failures?.length?'partial':'complete';
 export interface ReviewNavigationRequest {
   stage:'intent'|'ranking'; model:string; sources:Array<ReviewNavigation['sources'][number] & {spans:Array<{id:string;start:number;end:number;text:string}>}>;
+  // goalIds are retrieval hints, never authorization or relevance judgments.
   goals:ReviewNavigation['goals']; artifacts:Array<ReviewNavigation['artifacts'][number] & {content:string;goalIds?:string[]}>;
   inventory:Array<{path:string;status:string}>; capabilities:{readPaths:boolean;searchScope:'supplied_artifacts';wholeRepository:false};
 }
+type NavigationLifecycleEvent =
+ | {kind:'freshness';phase:'initial'|'final';outcome:'unchanged'|'not_checked'|'snapshot_changed'|'source_changed'|'access_changed'|'context_changed'|'collection_failed';code?:string}
+ | {kind:'read';trigger:'automatic'|'model';requested:number;accepted:number;outcome:'supplied'|'unavailable'|'no_valid_files'|'no_new_context'|'budget_exhausted'}
+ | {kind:'stop';reason:'guard'|'freshness'|'no_goals'|'no_snapshot'|'no_read_requested'|'no_new_context'|'round_limit'|'provider_failure'};
+export interface ReviewNavigationDiagnostics {
+  version:1; stage:'intent'|'ranking'|'refinement'|'preflight'; requestHash:string; artifactBytes:number;
+  providerCalled?:boolean; lifecycle?:NavigationLifecycleEvent[];
+  limits:{artifactBytes:number;artifactCount:number}; resultLimitations:string[];
+  artifacts:Array<ReviewNavigation['artifacts'][number] & {goalIds:string[]}>;
+  sources:Array<{id:string;hash:string;spans:Array<{start:number;end:number;hash:string}>}>;
+  goals:Array<{id:string;summaryHash:string;sourceRefs:ReviewNavigation['goals'][number]['sourceRefs'];facets:Array<{summaryHash:string;sourceRefs:ReviewNavigation['goals'][number]['sourceRefs']}>}>;
+  limitations:string[];
+  decisions:Array<{reason:NavigationFailureReason|'remapped'|'accepted'|'shared_supplied_artifact';goalId?:string;artifactId?:string;referenceHash?:string}>;
+  transport?:NavigationTransportDiagnostics;
+}
+const navigationDiagnostics=new WeakMap<ReviewNavigation,ReviewNavigationDiagnostics[]>();
+/** Transient, text-free execution evidence. Callers may explicitly collect it without storing source. */
+export const getReviewNavigationDiagnostics=(navigation:ReviewNavigation)=>structuredClone(navigationDiagnostics.get(navigation)??[]);
 export interface ReviewNavigationOptions {
+  onDiagnostics?:(event:ReviewNavigationDiagnostics)=>void;
   model:string; provider?:(request:ReviewNavigationRequest)=>Promise<unknown>;
   readArtifacts?:(paths:string[],headSha:string)=>Promise<Array<{path:string;headSha:string;content:string}>>;
   readCurrentInput?:()=>Promise<PullRequestInput|null>;
@@ -242,6 +263,7 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
   }
   navigation.sources=sources.map(({spans:_,...source})=>source);
   const artifacts:ReviewNavigationRequest['artifacts']=[];
+  const incompletePaths=new Set<string>();
   const preferredSnapshotIds=new Set<string>(),artifactGoals=new Map<string,Set<string>>();
   const suppliedSnapshots:Array<{path:string;headSha:string;content:string}>=[];
   const add=(path:string,revision:string,side:'head'|'base',start:number,content:string,origin:'diff'|'snapshot')=>{
@@ -249,7 +271,7 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
     if(!safePath(path)||!exact(revision)||start<1){navigation.limitations.push('invalid_reference');return;}
     if(!content.trim())return;
     const lines=redactSecretsPreservingLines(content).split('\n');
-    const bounded=lines.slice(0,80).join('\n').slice(0,8000);if(bounded.length<content.length)navigation.limitations.push('artifact_context_truncated');
+    const bounded=lines.slice(0,80).join('\n').slice(0,8000);if(bounded.length<content.length){navigation.limitations.push('artifact_context_truncated');if(side==='head')incompletePaths.add(path);}
     const endLine=start+bounded.split('\n').length-1,hash=sha(bounded),id=`read_${sha(JSON.stringify([path,revision,start,endLine,hash])).slice(0,24)}`;
     if(!artifacts.some(a=>a.id===id))artifacts.push({id,path,revision,side,startLine:start,endLine,hash,kind:/(?:^|\/)(?:tests?|__tests__)(?:\/|\.)|[._]test\./i.test(path)?'test':'code',origin,content:bounded});
     return id;
@@ -257,7 +279,17 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
   if(repository&&input.sourceProvenance?.origin==='github_snapshot'){
     for(const file of input.changedFiles){
       const side=file.status==='removed'?'base':'head',revision=side==='base'?navigation.baseSha:navigation.headSha;if(!revision)continue;
-      const patch=file.patch??'';const hunks=[...patch.matchAll(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@.*\n/gm)];
+      let patch=file.patch??'';
+      const marker=patch.indexOf('\n...[truncated for privacy and token control]');
+      if(marker>=0){
+        // The summary may end in the middle of a source line; never label that fragment exact code.
+        patch=patch.slice(0,Math.max(0,patch.lastIndexOf('\n',marker-1)));
+        navigation.limitations.push('diff_context_incomplete');
+        if(side==='head')incompletePaths.add(file.path);
+      }else if(!patch.trim()){
+        navigation.limitations.push('diff_context_incomplete');if(side==='head')incompletePaths.add(file.path);
+      }
+      const hunks=[...patch.matchAll(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@.*\n/gm)];
       for(let n=0;n<hunks.length;n++){
         const h=hunks[n]!,body=patch.slice(h.index!+h[0].length,hunks[n+1]?.index??patch.length);
         const lines=body.split('\n').filter(line=>line.startsWith(' ')||line.startsWith(side==='head'?'+':'-')).map(line=>line.slice(1));
@@ -269,27 +301,33 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
       suppliedSnapshots.push({...b,headSha:b.headSha});
     }
   }
+  const traces:ReviewNavigationDiagnostics[]=[];
+  const lifecycle:NavigationLifecycleEvent[]=[];
   const returned=new Set<string>(),aliases=new Map<string,string>();
   const canonical=(id:string):string=>aliases.has(id)?canonical(aliases.get(id)!):id;
   const finish=()=>{
     if(!navigation.goals.length)navigation.unprocessed=[...new Set([...navigation.unprocessed,...sources.flatMap(s=>s.spans.map(p=>p.id))])];
     navigation.artifacts=artifacts.filter(a=>returned.has(a.id)).map(({content:_,...a})=>a);navigation.limitations=[...new Set(navigation.limitations)];
     navigation.rankingStatus=rankingStatus(navigation);navigation.coverageStatus=coverageStatus(navigation);
+    if(!traces.length)traces.push({version:1,stage:'preflight',providerCalled:false,requestHash:inputNavigationHash(input),artifactBytes:0,limits:{artifactBytes:REVIEW_PAYLOAD_BYTES,artifactCount:REVIEW_PAYLOAD_SNIPPETS},resultLimitations:[],artifacts:[],sources:[],goals:[],limitations:[...navigation.limitations],decisions:[]});
+    traces.at(-1)!.lifecycle=structuredClone(lifecycle);
+    for(const trace of traces)trace.resultLimitations=[...navigation.limitations];
+    navigationDiagnostics.set(navigation,structuredClone(traces));
+    for(const trace of traces)try{options.onDiagnostics?.(structuredClone(trace));}catch{/* Observability must not invalidate results. */}
     navContexts.set(navigation,{inputHash:inputNavigationHash(input),outputHash:sha(JSON.stringify(navigation))});
     return {...report,reviewCandidates:{...report.reviewCandidates!,navigation}};
   };
-  if(!options.provider||!sources.length||input.repositoryPrivate!==false){navigation.limitations.push(input.repositoryPrivate!==false?'private_or_unknown_access':'semantic_unavailable');return finish();}
+  if(!options.provider||!sources.length||input.repositoryPrivate!==false){navigation.limitations.push(input.repositoryPrivate!==false?'private_or_unknown_access':'semantic_unavailable');lifecycle.push({kind:'stop',reason:'guard'});return finish();}
   const addSnapshots=async(blobs:Array<{path:string;headSha:string;content:string}>)=>{
     const safe=blobs.filter(b=>safePath(b.path)&&b.headSha===navigation.headSha);
     if(safe.length<blobs.length)navigation.limitations.push('invalid_reference');
     if(safe.length>8)navigation.limitations.push('retrieval_file_budget_exceeded');
-    const hints=navigation.goals.map(g=>({id:g.id,terms:allTerms([g.summary,...g.facets.map(f=>f.summary),...g.sourceRefs.map(r=>sources.find(s=>s.id===r.sourceId)?.spans.find(p=>p.start===r.start)?.text??'')].join(' ').slice(0,8000)).slice(0,64),anchors:artifacts.filter(a=>a.side==='head'&&(a.origin==='diff'&&artifactGoals.get(a.id)?.has(g.id)||a.id===g.firstInspection||g.candidates.some(c=>c.artifactId===a.id))).map(a=>({path:a.path,startLine:a.startLine,endLine:a.endLine}))}));
+    const hints=navigation.goals.map(g=>({id:g.id,terms:allTerms([g.summary,...g.facets.map(f=>f.summary),...[...g.sourceRefs,...g.facets.flatMap(f=>f.sourceRefs)].map(r=>sources.find(s=>s.id===r.sourceId)?.spans.find(p=>p.start===r.start)?.text??'')].join(' ')).sort().slice(0,1024),anchors:artifacts.filter(a=>a.side==='head'&&(a.origin==='diff'&&(incompletePaths.has(a.path)||artifactGoals.get(a.id)?.has(g.id))||a.id===g.firstInspection||g.candidates.some(c=>c.artifactId===a.id))).map(a=>({path:a.path,startLine:a.startLine,endLine:a.endLine}))}));
     const selected=await extractReviewSnippets(safe.slice(0,8),hints);
     navigation.limitations.push(...selected.limitations);
     for(const snippet of selected.snippets){const id=add(snippet.path,snippet.headSha,'head',snippet.startLine,snippet.content,'snapshot');if(id){if(snippet.matched)preferredSnapshotIds.add(id);artifactGoals.set(id,new Set([...(artifactGoals.get(id)??[]),...snippet.goalIds]));}}
   };
   const returnedArtifacts=()=>{
-    const goalIds=navigation.goals.map(g=>g.id);
     const associations=new Map(artifacts.map(a=>[a.id,new Set(artifactGoals.get(a.id)??[])]));
     const pool=artifacts.filter(a=>canonical(a.id)===a.id).slice();
     // Canonicalize only overlapping, byte-identical source at the same revision and side.
@@ -309,42 +347,49 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
       if(a.id!==id)aliases.set(a.id,id);if(b.id!==id)aliases.set(b.id,id);
       pool[i]=artifacts.find(c=>c.id===id)!;pool.splice(j,1);j=i;
     }
-    const selected=new Map<string,Set<string>>(),budgets=new Map(goalIds.map(id=>[id,2])),counts=new Map(goalIds.map(id=>[id,0]));let bytes=2;
-    const include=(artifactId:string,goalId:string)=>{
-      if(selected.get(artifactId)?.has(goalId))return true;
-      const a=artifacts.find(a=>a.id===artifactId);if(!a)return false;
-      const size=Buffer.byteLength(JSON.stringify({...a,goalIds}))+1;
-      if(counts.get(goalId)!>=REVIEW_GOAL_SNIPPETS||budgets.get(goalId)!+size>REVIEW_GOAL_BYTES||!selected.has(artifactId)&&bytes+size>REVIEW_PAYLOAD_BYTES)return false;
-      counts.set(goalId,counts.get(goalId)!+1);budgets.set(goalId,budgets.get(goalId)!+size);
-      if(!selected.has(artifactId)){selected.set(artifactId,new Set());bytes+=size;}selected.get(artifactId)!.add(goalId);return true;
+    const selected=new Map<string,Set<string>>();let bytes=2;
+    // A fixed overhead allowance makes grouping labels irrelevant to the source-code budget.
+    const budgetGoalIds=Array.from({length:16},(_,n)=>`goal_${n+1}`);
+    const cost=(id:string)=>Buffer.byteLength(JSON.stringify({...artifacts.find(a=>a.id===id)!,goalIds:budgetGoalIds}))+1;
+    const include=(artifactId:string,ids:string[])=>{
+      if(selected.has(artifactId)){for(const id of ids)selected.get(artifactId)!.add(id);return true;}
+      const size=cost(artifactId);
+      if(selected.size>=REVIEW_PAYLOAD_SNIPPETS||bytes+size>REVIEW_PAYLOAD_BYTES)return false;
+      bytes+=size;selected.set(artifactId,new Set(ids));return true;
     };
-    // Expansion must fit the whole validated comparison set, not just its first item.
     const required=navigation.goals.map(g=>({goal:g.id,ids:[...new Set([...(g.firstInspection?[g.firstInspection]:[]),...g.candidates.map(c=>c.artifactId)])]}));
     const expanded=required.map(g=>({...g,ids:[...new Set(g.ids.map(canonical))]}));
-    const cost=(id:string)=>Buffer.byteLength(JSON.stringify({...artifacts.find(a=>a.id===id)!,goalIds}))+1;
-    const fits=expanded.every(g=>g.ids.length<=REVIEW_GOAL_SNIPPETS&&2+g.ids.reduce((n,id)=>n+cost(id),0)<=REVIEW_GOAL_BYTES)&&2+[...new Set(expanded.flatMap(g=>g.ids))].reduce((n,id)=>n+cost(id),0)<=REVIEW_PAYLOAD_BYTES;
+    const expandedIds=[...new Set(expanded.flatMap(g=>g.ids))];
+    const fits=expandedIds.length<=REVIEW_PAYLOAD_SNIPPETS&&2+expandedIds.reduce((n,id)=>n+cost(id),0)<=REVIEW_PAYLOAD_BYTES;
     const reservation=fits?expanded:required;
     if(!fits)navigation.limitations.push('retrieval_budget_exceeded');
-    // Reserve space for validated comparison evidence; this is not a relevance score.
-    for(let slot=0;slot<REVIEW_GOAL_SNIPPETS;slot++)for(const g of reservation){
-      const id=g.ids[slot];if(id&&!include(id,g.goal))navigation.limitations.push('retrieval_budget_exceeded');
+    for(let slot=0;slot<REVIEW_PAYLOAD_SNIPPETS;slot++)for(const g of reservation){
+      const id=g.ids[slot];if(id&&!include(id,[g.goal]))navigation.limitations.push('retrieval_budget_exceeded');
     }
-    const ordered=pool.sort((a,b)=>Number(preferredSnapshotIds.has(b.id))-Number(preferredSnapshotIds.has(a.id))||a.path.localeCompare(b.path)||a.startLine-b.startLine);
-    for(let slot=0;slot<REVIEW_GOAL_SNIPPETS;slot++)for(const id of goalIds){
-      for(const a of ordered){if(!associations.get(a.id)?.has(id)||[...selected].some(([key,ids])=>ids.has(id)&&canonical(key)===a.id))continue;if(include(a.id,id))break;}
+    const ranked=pool.sort((a,b)=>Number(preferredSnapshotIds.has(b.id))-Number(preferredSnapshotIds.has(a.id))||a.path.localeCompare(b.path)||a.startLine-b.startLine);
+    const firstPaths=new Set<string>();const leading=ranked.filter(a=>{if(firstPaths.has(a.path))return false;firstPaths.add(a.path);return true;});
+    const ordered=[...leading,...ranked.filter(a=>!leading.includes(a))];
+    const testIndex=ordered.findIndex(a=>a.kind==='test');if(testIndex>0)ordered.splice(1,0,...ordered.splice(testIndex,1));
+    for(const a of ordered){
+      if([...selected.keys()].some(key=>key!==a.id&&canonical(key)===a.id))continue;
+      if(!include(a.id,[...(associations.get(a.id)??[])]))navigation.limitations.push('retrieval_budget_exceeded');
     }
-    if(pool.some(a=>[...(associations.get(a.id)??[])].some(id=>!selected.get(a.id)?.has(id))))navigation.limitations.push('retrieval_budget_exceeded');
-    // Remap a validated location only if its replacement was actually supplied for that goal.
+    // Remap a validated location only if its replacement is in the shared packet.
     for(const g of navigation.goals){
-      const resolve=(id:string)=>selected.get(canonical(id))?.has(g.id)?canonical(id):id;
+      const resolve=(id:string)=>selected.has(canonical(id))?canonical(id):id;
       if(g.firstInspection)g.firstInspection=resolve(g.firstInspection);
-      g.candidates=g.candidates.map(c=>({...c,artifactId:resolve(c.artifactId)}));
+      g.candidates=g.candidates.map(c=>({...c,artifactId:resolve(c.artifactId)})).filter((c,index,all)=>all.findIndex(other=>other.artifactId===c.artifactId)===index);
     }
     return [...selected].map(([id,ids])=>{returned.add(id);return {...artifacts.find(a=>a.id===id)!,goalIds:[...ids]};}).sort((a,b)=>a.path.localeCompare(b.path)||a.startLine-b.startLine||a.id.localeCompare(b.id));
   };
   const request=(stage:'intent'|'ranking'):ReviewNavigationRequest=>{
     const packet=stage==='ranking'?returnedArtifacts():[];
     return {stage,model:options.model,sources:stage==='intent'?sources:[],goals:navigation.goals.map(g=>({...g,firstInspection:null,candidates:[],uncertainty:[]})),artifacts:packet,inventory:stage==='ranking'?input.changedFiles.filter(f=>safePath(f.path)).slice(0,128).map(f=>({path:f.path,status:f.status??'modified'})):[],capabilities:{readPaths:!!options.readArtifacts,searchScope:'supplied_artifacts',wholeRepository:false}};
+  };
+  const invoke=async(packet:ReviewNavigationRequest,stage:ReviewNavigationDiagnostics['stage'])=>{
+    const trace:ReviewNavigationDiagnostics={version:1,stage,providerCalled:true,limits:{artifactBytes:REVIEW_PAYLOAD_BYTES,artifactCount:REVIEW_PAYLOAD_SNIPPETS},resultLimitations:[],requestHash:sha(JSON.stringify(packet)),artifactBytes:Buffer.byteLength(JSON.stringify(packet.artifacts)),artifacts:packet.artifacts.map(({content:_,...a})=>({...a,goalIds:[...(a.goalIds??[])]})),sources:packet.sources.map(s=>({id:s.id,hash:s.hash,spans:s.spans.map(p=>({start:p.start,end:p.end,hash:sha(p.text)}))})),goals:packet.goals.map(g=>({id:g.id,summaryHash:sha(g.summary),sourceRefs:structuredClone(g.sourceRefs),facets:g.facets.map(f=>({summaryHash:sha(f.summary),sourceRefs:structuredClone(f.sourceRefs)}))})),limitations:[...new Set(navigation.limitations)],decisions:[]};
+    traces.push(trace);
+    try{return await options.provider!(packet);}finally{trace.transport=getNavigationTransportDiagnostics(packet);}
   };
   const refs=(ids:unknown)=>{
     if(!Array.isArray(ids)||!ids.length||ids.length>24){recordFailure('invalid_json_or_shape','local_shape');return [];}
@@ -360,14 +405,57 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
     if(safe!==text||sourceOverlap){recordFailure('invalid_json_or_shape','unsafe_summary');navigation.limitations.push('unsafe_summary_omitted');}
     return safe&&safe!=='[redacted]'?safe:undefined;
   };
-  const fresh=async()=>{if(!options.readCurrentInput)return true;try{const current=await options.readCurrentInput();return !!current&&inputNavigationHash({...current,verificationCriterionEvidenceV2:input.verificationCriterionEvidenceV2})===inputNavigationHash(input);}catch{return false;}};
+  const fresh=async(phase:'initial'|'final')=>{
+    let outcome:Extract<NavigationLifecycleEvent,{kind:'freshness'}>['outcome']='not_checked',code:string|undefined;
+    if(options.readCurrentInput)try{
+      const current=await options.readCurrentInput();
+      if(!current)outcome='collection_failed';
+      else if(current.repositoryPrivate!==false||current.url!==input.url)outcome='access_changed';
+      else if(current.sourceProvenance?.headSha!==input.sourceProvenance?.headSha||current.sourceProvenance?.baseSha!==input.sourceProvenance?.baseSha||current.sourceProvenance?.origin!==input.sourceProvenance?.origin)outcome='snapshot_changed';
+      else if(JSON.stringify([current.taskSource,current.taskText,current.title,current.description,current.requirementSourceIdentityHash,current.verificationContractBindingV2?.sourceIdentity])!==JSON.stringify([input.taskSource,input.taskText,input.title,input.description,input.requirementSourceIdentityHash,input.verificationContractBindingV2?.sourceIdentity]))outcome='source_changed';
+      else outcome=inputNavigationHash({...current,verificationCriterionEvidenceV2:input.verificationCriterionEvidenceV2})===inputNavigationHash(input)?'unchanged':'context_changed';
+    }catch(error){
+      // Collector errors are classified by their public discriminator, never their raw message.
+      const name=error instanceof Error?error.name:'';
+      outcome=name==='GitHubPullRequestHeadChangedError'?'snapshot_changed':name==='GitHubPullRequestSourceChangedError'?'source_changed':'collection_failed';
+      if(navRecord(error)&&['github_rate_limited','github_secondary_rate_limited','github_token_rejected','github_auth_required','github_permission_denied','github_not_found','github_fetch_failed'].includes(String(error.code)))code=String(error.code);
+      if(code&&['github_token_rejected','github_auth_required','github_permission_denied','github_not_found'].includes(code))outcome='access_changed';
+    }
+    lifecycle.push({kind:'freshness',phase,outcome,...(code?{code}:{})});
+    if(outcome==='unchanged'||outcome==='not_checked')return true;
+    navigation.limitations.push(outcome==='snapshot_changed'||outcome==='source_changed'?'stale_snapshot':outcome==='access_changed'?'freshness_access_changed':outcome==='context_changed'?'freshness_context_changed':'freshness_unavailable');
+    return false;
+  };
   let stage:'intent'|'ranking'|'refinement'='intent';
   const recordFailure=(category:NavigationFailureCategory,reason:NavigationFailureReason,failureStage:NonNullable<ReviewNavigation['failures']>[number]['stage']=stage)=>{
+    const trace=traces.at(-1);if(trace&&trace.decisions.length<512)trace.decisions.push({reason});
     if(navigation.failures!.length<4&&!navigation.failures!.some(f=>f.stage===failureStage&&f.reason===reason))navigation.failures!.push({stage:failureStage,category,reason});
   };
+  const readPaths=new Set<string>();
+  const readSnapshots=async(requested:unknown[],trigger:'automatic'|'model')=>{
+    const safe=[...new Set(requested.filter((p):p is string=>typeof p==='string'&&safePath(p)))];
+    if(safe.length!==requested.length)navigation.limitations.push('invalid_reference');
+    const available=safe.filter(p=>!readPaths.has(p));
+    const paths=available.slice(0,Math.max(0,8-readPaths.size));
+    if(paths.length<available.length)navigation.limitations.push('retrieval_file_budget_exceeded');
+    const event:Extract<NavigationLifecycleEvent,{kind:'read'}>={kind:'read',trigger,requested:safe.length,accepted:0,outcome:'no_new_context'};
+    lifecycle.push(event);
+    if(!paths.length){event.outcome=available.length?'budget_exhausted':'no_new_context';return false;}
+    if(!options.readArtifacts){event.outcome='unavailable';navigation.limitations.push('read_unavailable');return false;}
+    for(const path of paths)readPaths.add(path);
+    let blobs:Array<{path:string;headSha:string;content:string}>;
+    try{blobs=await options.readArtifacts(paths,navigation.headSha!);}catch{event.outcome='unavailable';navigation.limitations.push('read_unavailable');recordFailure('read_unavailable','read_unavailable','read');return false;}
+    const valid=blobs.filter(b=>paths.includes(b.path)&&b.headSha===navigation.headSha&&!blobs.some(other=>other.path===b.path&&other.content!==b.content));
+    if(valid.length<blobs.length)navigation.limitations.push('invalid_reference');
+    event.accepted=new Set(valid.map(b=>b.path)).size;
+    if(paths.some(p=>!valid.some(b=>b.path===p)))navigation.limitations.push('requested_path_unread');
+    const before=artifacts.length;await addSnapshots(valid);
+    event.outcome=!valid.length?'no_valid_files':artifacts.length>before?'supplied':'no_new_context';
+    return artifacts.length>before;
+  };
   try {
-    if(!await fresh()){navigation.limitations.push('stale_snapshot');return finish();}
-    const result=await options.provider(request('intent'));
+    if(!await fresh('initial')){lifecycle.push({kind:'stop',reason:'freshness'});return finish();}
+    const result=await invoke(request('intent'),'intent');
     if(!navRecord(result)||!Array.isArray(result.goals)||result.goals.length>16||!Array.isArray(result.unprocessed))throw new NavigationValidationError('local_shape');
     navigation.goals=result.goals.flatMap((g,index)=>{
       if(!navRecord(g)||!['primary','supporting','optional','uncertain'].includes(String(g.emphasis))||!Array.isArray(g.facets)||g.facets.length>12||!Array.isArray(g.openQuestions)||g.openQuestions.length>12){recordFailure('invalid_json_or_shape','local_shape');return [];}
@@ -383,21 +471,23 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
     const processed=new Set(navigation.goals.flatMap(g=>[...g.sourceRefs,...g.facets.flatMap(f=>f.sourceRefs)].map(r=>`${r.sourceId}:${r.start}`)));
     navigation.unprocessed.push(...sources.flatMap(s=>s.spans.filter(p=>!processed.has(p.id)).map(p=>p.id)));
     navigation.goals.sort((a,b)=>['primary','supporting','optional','uncertain'].indexOf(a.emphasis)-['primary','supporting','optional','uncertain'].indexOf(b.emphasis));
-    if(!navigation.goals.length){navigation.limitations.push('no_interpreted_goal');return finish();}
+    if(!navigation.goals.length){navigation.limitations.push('no_interpreted_goal');lifecycle.push({kind:'stop',reason:'no_goals'});return finish();}
     navigation.state='partial';
     // Associate changed evidence by each goal's own source and wording, not every goal's anchors.
     for(const g of navigation.goals){
-      const text=[g.summary,...g.facets.map(f=>f.summary),...g.sourceRefs.map(r=>sources.find(s=>s.id===r.sourceId)?.spans.find(p=>p.start===r.start)?.text??'')].join(' ').slice(0,8000),terms=allTerms(text).slice(0,64);
+      const text=[g.summary,...g.facets.map(f=>f.summary),...[...g.sourceRefs,...g.facets.flatMap(f=>f.sourceRefs)].map(r=>sources.find(s=>s.id===r.sourceId)?.spans.find(p=>p.start===r.start)?.text??'')].join(' '),terms=allTerms(text).sort().slice(0,1024);
       const matching=artifacts.filter(a=>text.includes(a.path)||allTerms(a.content+' '+a.path).some(t=>terms.some(term=>t.startsWith(term)||term.startsWith(t))));
       for(const a of artifacts.filter(a=>matching.some(m=>m.path===a.path))){const ids=artifactGoals.get(a.id)??new Set<string>();ids.add(g.id);artifactGoals.set(a.id,ids);}
     }
     await addSnapshots(suppliedSnapshots);
-    if(!repository||!navigation.headSha){navigation.limitations.push('exact_snapshot_unavailable');return finish();}
+    if(!repository||!navigation.headSha){navigation.limitations.push('exact_snapshot_unavailable');lifecycle.push({kind:'stop',reason:'no_snapshot'});return finish();}
+    const missing=[...incompletePaths].filter(path=>!suppliedSnapshots.some(b=>b.path===path)).sort();
+    if(missing.length)await readSnapshots(missing,'automatic');
     for(let round=0;round<2;round++){
       stage=round===0?'ranking':'refinement';
       const previouslyReturned=new Set(returned),packet=request('ranking');
-      if(round===1&&!packet.artifacts.some(a=>!previouslyReturned.has(a.id)))break;
-      const result:unknown=await options.provider(packet);
+      if(round===1&&!packet.artifacts.some(a=>!previouslyReturned.has(a.id))){lifecycle.push({kind:'stop',reason:'no_new_context'});break;}
+      const result:unknown=await invoke(packet,stage);
       if(!navRecord(result)||!Array.isArray(result.rankings)||result.rankings.length>16||!Array.isArray(result.readPaths))throw new NavigationValidationError('local_shape');
       // Validate each result locally while retaining previously usable locations.
       const nextGoals=structuredClone(navigation.goals);
@@ -410,39 +500,31 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
         seenGoals.add(goal.id);
         const candidates:ReviewNavigation['goals'][number]['candidates']=[];
         for(const edge of row.candidates){
-          const rawId=navRecord(edge)?String(edge.artifactId):'',id=packet.artifacts.some(a=>a.id===canonical(rawId)&&a.goalIds?.includes(goal.id))?canonical(rawId):rawId;
-          const allowed=packet.artifacts.some(a=>a.id===id&&a.goalIds?.includes(goal.id))||goal.candidates.some(c=>c.artifactId===id);
+          const rawId=navRecord(edge)?String(edge.artifactId):'',id=packet.artifacts.some(a=>a.id===canonical(rawId))?canonical(rawId):rawId;
+          const allowed=returned.has(rawId)&&returned.has(id);
+          traces.at(-1)?.decisions.push({goalId:goal.id,...(allowed?{artifactId:id}:{referenceHash:sha(rawId)}),reason:!allowed?'unknown_artifact_ref':!navRecord(edge)||!['relevant','possible'].includes(String(edge.relevance))?'local_shape':id!==rawId?'remapped':packet.artifacts.find(a=>a.id===id)?.goalIds?.includes(goal.id)?'accepted':'shared_supplied_artifact'});
           if(!navRecord(edge)||!returned.has(rawId)||!returned.has(id)||!allowed||!['relevant','possible'].includes(String(edge.relevance))){recordFailure('invalid_json_or_shape',!returned.has(rawId)||!returned.has(id)||!allowed?'unknown_artifact_ref':'local_shape');navigation.limitations.push('invalid_reference');continue;}
           const previous=goal.candidates.find(c=>c.artifactId===id);
           candidates.push({artifactId:id,relevance:edge.relevance as 'relevant'|'possible',whyInspect:safeSummary(edge.whyInspect)??previous?.whyInspect??'',reviewQuestion:safeSummary(edge.reviewQuestion)??previous?.reviewQuestion??'',uncertainty:safeSummary(edge.uncertainty)??previous?.uncertainty??''});
         }
         const first=typeof row.firstInspection==='string'&&returned.has(row.firstInspection)?candidates.find(e=>e.artifactId===row.firstInspection||e.artifactId===canonical(row.firstInspection as string)):undefined;
         if(row.firstInspection!==null&&!first){recordFailure('invalid_json_or_shape','first_not_candidate');navigation.limitations.push('invalid_reference');}
-        const previousFirst=goal.candidates.find(c=>c.artifactId===goal.firstInspection),paths=new Set<string>();
+        const previousFirst=goal.candidates.find(c=>c.artifactId===goal.firstInspection),ids=new Set<string>();
         // Omission does not reject a previously validated candidate. Explicit new first choice wins.
-        goal.candidates=[...(first?[first]:previousFirst?[previousFirst]:[]),...candidates,...goal.candidates].filter(e=>{const path=artifacts.find(a=>a.id===e.artifactId)!.path;if(paths.has(path))return false;paths.add(path);return true;}).slice(0,12);
+        goal.candidates=[...(first?[first]:previousFirst?[previousFirst]:[]),...candidates,...goal.candidates].filter(e=>{if(ids.has(e.artifactId))return false;ids.add(e.artifactId);return true;}).slice(0,12);
         goal.firstInspection=first?.artifactId??goal.firstInspection;goal.uncertainty=row.uncertainty.flatMap(text=>safeSummary(text)??[]);
       }
       navigation.goals=nextGoals;
-      if(round===0&&result.readPaths.length&&options.readArtifacts){
-        const paths=[...new Set(result.readPaths.filter((p):p is string=>typeof p==='string'&&safePath(p)))].slice(0,8);
-        if(!paths.length)break;
-        const previousArtifactCount=artifacts.length;
-        let blobs:Array<{path:string;headSha:string;content:string}>=[];
-        try{blobs=paths.length&&options.readArtifacts?await options.readArtifacts(paths,navigation.headSha):[];}catch{navigation.limitations.push('read_unavailable');recordFailure('read_unavailable','read_unavailable','read');break;}
-        const validBlobs=blobs.filter(b=>paths.includes(b.path)&&b.headSha===navigation.headSha&&!blobs.some(other=>other.path===b.path&&other.content!==b.content));
-        if(validBlobs.length<blobs.length)navigation.limitations.push('invalid_reference');
-        await addSnapshots(validBlobs);
-        if(paths.some(p=>!blobs.some(b=>b.path===p)))navigation.limitations.push('requested_path_unread');
-        if(artifacts.length===previousArtifactCount)break;
-        continue;
-      }
+      if(round===0&&result.readPaths.length){
+        if(await readSnapshots(result.readPaths,'model'))continue;
+        lifecycle.push({kind:'stop',reason:'no_new_context'});
+      }else lifecycle.push({kind:'stop',reason:round===1?'round_limit':'no_read_requested'});
       break;
     }
     navigation.state=navigation.goals.every(g=>g.firstInspection)&&!navigation.unprocessed.length&&!navigation.limitations.length?'ranked':'partial';
-  }catch(error){recordFailure(navigationFailureCategory(error),navigationFailureReason(error));navigation.limitations.push('semantic_unavailable');}
+  }catch(error){recordFailure(navigationFailureCategory(error),navigationFailureReason(error));navigation.limitations.push('semantic_unavailable');lifecycle.push({kind:'stop',reason:'provider_failure'});}
   // Retained provisional locations still require final authorization after failure.
-  if(!await fresh()){navigation.goals.forEach(g=>{g.firstInspection=null;g.candidates=[];});navigation.state='partial';navigation.limitations.push('stale_snapshot');}
+  if(!await fresh('final')){navigation.goals.forEach(g=>{g.firstInspection=null;g.candidates=[];});navigation.state='partial';lifecycle.push({kind:'stop',reason:'freshness'});}
   return finish();
 }
 
@@ -467,7 +549,7 @@ export function validReviewNavigation(value:unknown):value is ReviewNavigation {
     }
     if(n.failures!==undefined&&(!Array.isArray(n.failures)||n.failures.length>4||!n.failures.every(f=>navRecord(f)&&navKeys(f,['stage','category',...(Object.hasOwn(f,'reason')?['reason']:[])])&&(!Object.hasOwn(f,'reason')||navigationFailureReasons.includes(f.reason!))&&['intent','ranking','refinement','read'].includes(f.stage)&&navigationFailureCategories.includes(f.category))))return false;
     if(n.rankingStatus!==undefined&&n.rankingStatus!==rankingStatus(n)||n.coverageStatus!==undefined&&n.coverageStatus!==coverageStatus(n))return false;
-    if(n.rankingStatus!==undefined&&n.goals.some(g=>new Set(g.candidates.map(e=>n.artifacts.find(a=>a.id===e.artifactId)!.path)).size!==g.candidates.length))return false;
+    if(n.rankingStatus!==undefined&&n.goals.some(g=>new Set(g.candidates.map(e=>e.artifactId)).size!==g.candidates.length))return false;
     return true;
   }catch{return false;}
 }

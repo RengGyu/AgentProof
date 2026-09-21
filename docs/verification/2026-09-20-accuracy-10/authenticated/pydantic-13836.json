@@ -1,0 +1,1194 @@
+{
+  "deployment": "https://agentproof-gr8dslzh4-renggyus-projects.vercel.app",
+  "elapsedMs": 20108,
+  "report": {
+    "analysisId": "ap_mu9uua1b_vlwse0",
+    "createdAt": "2026-09-20T13:31:16.943Z",
+    "source": {
+      "title": "Fix import of the V1 Hypothesis plugin under Pydantic V2",
+      "url": "https://github.com/pydantic/pydantic/pull/13836",
+      "author": "RainieLLM",
+      "baseBranch": "main",
+      "headBranch": "fix-v1-hypothesis-plugin-imports",
+      "provenance": {
+        "version": 1,
+        "origin": "github_snapshot",
+        "headSha": "e78b82f0dd20622a18a9fa439b5ca3ca5514d87d",
+        "baseSha": "915896d163835a57fd7987180087409a3229bd71",
+        "changedFileInventory": {
+          "version": 1,
+          "completeness": "complete",
+          "headSha": "e78b82f0dd20622a18a9fa439b5ca3ca5514d87d"
+        },
+        "evidenceCapturedAt": "2026-09-20T13:31:16.935Z",
+        "inputFingerprint": {
+          "version": 1,
+          "algorithm": "sha256",
+          "value": "9af9d58475c038e3ff824f1b61534305d56bc7efbb421e92e188bdaf0773a4cf",
+          "coverage": "github_metadata"
+        }
+      }
+    },
+    "summary": {
+      "oneLine": "Critical evidence gap found. Coverage 0%. Test/build execution failed, so the PR is not proven ready.",
+      "confidence": 0.2,
+      "priority": "blocker",
+      "evidenceCoverage": 0,
+      "topRisks": [
+        "Test/build execution failed, so the PR is not proven ready.",
+        "Static or merge-gate checks failed outside test/build proof."
+      ]
+    },
+    "requirements": [],
+    "claims": [
+      {
+        "id": "claim_1",
+        "text": "## Change Summary",
+        "evidenceRefs": [],
+        "supported": false
+      },
+      {
+        "id": "claim_2",
+        "text": "This change points the import at the V1 namespace:",
+        "evidenceRefs": [
+          "ev_50",
+          "ev_2",
+          "ev_3"
+        ],
+        "supported": false
+      },
+      {
+        "id": "claim_3",
+        "text": "fix #13835",
+        "evidenceRefs": [
+          "ev_50"
+        ],
+        "supported": true
+      },
+      {
+        "id": "claim_4",
+        "text": "* [ ] Tests pass on CI",
+        "evidenceRefs": [
+          "ev_40",
+          "ev_41",
+          "ev_42"
+        ],
+        "supported": true
+      },
+      {
+        "id": "claim_5",
+        "text": "* [x] My PR is ready to review, please add a comment including the phrase \"please review\" to assign reviewers",
+        "evidenceRefs": [
+          "ev_55"
+        ],
+        "supported": false
+      }
+    ],
+    "scope": {
+      "suspected": false,
+      "outOfScopeFiles": [],
+      "reasons": [],
+      "evidenceRefs": []
+    },
+    "testing": {
+      "ciStatus": "failed",
+      "lintStatus": "unknown",
+      "typecheckStatus": "passed",
+      "missingTests": []
+    },
+    "reviewPriority": [
+      {
+        "path": "Test/build checks",
+        "reason": "At least one test, build, or CI execution check failed; requirement satisfaction is not proven.",
+        "priority": "blocker",
+        "evidenceRefs": [
+          "ev_4",
+          "ev_5",
+          "ev_6",
+          "ev_7",
+          "ev_8",
+          "ev_9",
+          "ev_10",
+          "ev_11",
+          "ev_12",
+          "ev_13",
+          "ev_14",
+          "ev_15",
+          "ev_16",
+          "ev_17",
+          "ev_18",
+          "ev_19",
+          "ev_20",
+          "ev_21",
+          "ev_22",
+          "ev_23",
+          "ev_24",
+          "ev_25",
+          "ev_26",
+          "ev_27",
+          "ev_28",
+          "ev_29",
+          "ev_30",
+          "ev_31",
+          "ev_32",
+          "ev_33",
+          "ev_34",
+          "ev_35",
+          "ev_36",
+          "ev_37",
+          "ev_38",
+          "ev_39"
+        ]
+      },
+      {
+        "path": "Static or merge-gate checks",
+        "reason": "A non-test/build check failed; review merge policy separately from requirement and execution proof.",
+        "priority": "high",
+        "evidenceRefs": [
+          "ev_49"
+        ]
+      }
+    ],
+    "proofGraph": {
+      "version": 1,
+      "nodes": [],
+      "context": [
+        {
+          "id": "ctx_1",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Change Summary",
+          "text": "`pydantic/v1/_hypothesis_plugin.py` ships with Pydantic V2"
+        },
+        {
+          "id": "ctx_2",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Change Summary",
+          "text": "But it imported the top-level names `pydantic`, `pydantic.color` and `pydantic.types`"
+        },
+        {
+          "id": "ctx_3",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Change Summary",
+          "text": "Under V2, those names point to the V2 modules"
+        },
+        {
+          "id": "ctx_4",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Change Summary",
+          "text": "So the V1-only names that the module reads from them (`color.r_rgba`, `types.ConstrainedNumberMeta`, `types._DEFINED_TYPES`) raised `AttributeError` at import time"
+        },
+        {
+          "id": "ctx_5",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Change Summary",
+          "text": "The plugin could not be imported at all"
+        },
+        {
+          "id": "ctx_6",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Change Summary",
+          "text": "This change points the import at the V1 namespace:"
+        },
+        {
+          "id": "ctx_7",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Change Summary",
+          "text": "import pydantic"
+        },
+        {
+          "id": "ctx_8",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Change Summary",
+          "text": "import pydantic.color"
+        },
+        {
+          "id": "ctx_9",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Change Summary",
+          "text": "import pydantic.types"
+        },
+        {
+          "id": "ctx_10",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Change Summary",
+          "text": "+import pydantic.v1 as pydantic"
+        },
+        {
+          "id": "ctx_11",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Change Summary",
+          "text": "The package `pydantic.v1` already exposes `color` and `types` as attributes"
+        },
+        {
+          "id": "ctx_12",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Change Summary",
+          "text": "So one aliased import is enough"
+        },
+        {
+          "id": "ctx_13",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Change Summary",
+          "text": "A separate `import pydantic.v1.color` is not needed"
+        },
+        {
+          "id": "ctx_14",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Change Summary",
+          "text": "That form would also break: `import a.b.c` without `as` binds the top-level name `pydantic` again and overwrites the alias"
+        },
+        {
+          "id": "ctx_15",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Related issue number",
+          "text": "fix #13835"
+        }
+      ],
+      "summary": {
+        "requirementCount": 0,
+        "requirementsWithImplementation": 0,
+        "requirementsWithTargetedTests": 0,
+        "requirementsWithExecution": 0,
+        "requirementsWithGaps": 0,
+        "gapCount": 0
+      }
+    },
+    "reprompt": {
+      "targetAgent": "codex",
+      "prompt": "You are revising an AI-generated PR for AgentProof verification.\nDo not broaden the PR. Make only changes tied to the original task.\n1. Fix the failing test/build check and summarize the exact log line that proves it now passes.\n2. Address failing static or merge-gate checks separately: check.\nReturn a concise summary with changed files, tests run, and remaining risks."
+    },
+    "evidenceIndex": [
+      {
+        "id": "ev_4",
+        "kind": "check",
+        "label": "Test build on PyEmscripten (Pyodide) (3.14)",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105812054374",
+        "summary": "Status: failed. Test build on PyEmscripten (Pyodide) (3.14) - Check annotations available. Check annotations: failure at .github:597, notice at .github:1. Raw annotation messages and raw annotation details omitted.",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_5",
+        "kind": "check",
+        "label": "Test macos-15-intel / 3.15t",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811190149",
+        "summary": "Status: failed. Test macos-15-intel / 3.15t - Check annotations available. Check annotations: failure at .github:489. Raw annotation messages and raw annotation details omitted.",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_6",
+        "kind": "check",
+        "label": "Test windows-latest / 3.10",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811190123",
+        "summary": "Status: failed. Test windows-latest / 3.10 - Check annotations available. Check annotations: failure at .github:469. Raw annotation messages and raw annotation details omitted.",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_7",
+        "kind": "check",
+        "label": "Test windows-latest / 3.14",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811190077",
+        "summary": "Status: failed. Test windows-latest / 3.14",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_8",
+        "kind": "check",
+        "label": "Test macos-latest / 3.15",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811190061",
+        "summary": "Status: failed. Test macos-latest / 3.15",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_9",
+        "kind": "check",
+        "label": "Test macos-latest / 3.14",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811190057",
+        "summary": "Status: failed. Test macos-latest / 3.14",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_10",
+        "kind": "check",
+        "label": "Test ubuntu-latest / pypy3.11",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811190056",
+        "summary": "Status: failed. Test ubuntu-latest / pypy3.11",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_11",
+        "kind": "check",
+        "label": "Test windows-latest / 3.15t",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811190054",
+        "summary": "Status: failed. Test windows-latest / 3.15t",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_12",
+        "kind": "check",
+        "label": "Test ubuntu-latest / 3.15",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811190053",
+        "summary": "Status: failed. Test ubuntu-latest / 3.15",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_13",
+        "kind": "check",
+        "label": "Test typing-extensions (`main` branch) on Python 3.10",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811190051",
+        "summary": "Status: failed. Test typing-extensions (`main` branch) on Python 3.10",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_14",
+        "kind": "check",
+        "label": "Test windows-latest / 3.12",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811190049",
+        "summary": "Status: failed. Test windows-latest / 3.12",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_15",
+        "kind": "check",
+        "label": "Test macos-15-intel / 3.15",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811190043",
+        "summary": "Status: failed. Test macos-15-intel / 3.15",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_16",
+        "kind": "check",
+        "label": "Test windows-latest / 3.15",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811190035",
+        "summary": "Status: failed. Test windows-latest / 3.15",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_17",
+        "kind": "check",
+        "label": "Test macos-latest / 3.12",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811190034",
+        "summary": "Status: failed. Test macos-latest / 3.12",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_18",
+        "kind": "check",
+        "label": "Test macos-latest / pypy3.11",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811190032",
+        "summary": "Status: failed. Test macos-latest / pypy3.11",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_19",
+        "kind": "check",
+        "label": "Test windows-latest / 3.11",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811190030",
+        "summary": "Status: failed. Test windows-latest / 3.11",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_20",
+        "kind": "check",
+        "label": "Test typing-extensions (`main` branch) on Python 3.13",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811190026",
+        "summary": "Status: failed. Test typing-extensions (`main` branch) on Python 3.13",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_21",
+        "kind": "check",
+        "label": "Test ubuntu-latest / 3.12",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811190024",
+        "summary": "Status: failed. Test ubuntu-latest / 3.12",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_22",
+        "kind": "check",
+        "label": "Test windows-latest / 3.13",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811190021",
+        "summary": "Status: failed. Test windows-latest / 3.13",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_23",
+        "kind": "check",
+        "label": "Test ubuntu-latest / 3.15t",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811190020",
+        "summary": "Status: failed. Test ubuntu-latest / 3.15t",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_24",
+        "kind": "check",
+        "label": "Test typing-extensions (`main` branch) on Python 3.11",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811190016",
+        "summary": "Status: failed. Test typing-extensions (`main` branch) on Python 3.11",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_25",
+        "kind": "check",
+        "label": "Test macos-latest / 3.15t",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811190013",
+        "summary": "Status: failed. Test macos-latest / 3.15t",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_26",
+        "kind": "check",
+        "label": "Test macos-latest / 3.10",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811190012",
+        "summary": "Status: failed. Test macos-latest / 3.10",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_27",
+        "kind": "check",
+        "label": "Test ubuntu-latest / 3.11",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811190004",
+        "summary": "Status: failed. Test ubuntu-latest / 3.11",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_28",
+        "kind": "check",
+        "label": "Test ubuntu-latest / 3.13",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811190001",
+        "summary": "Status: failed. Test ubuntu-latest / 3.13",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_29",
+        "kind": "check",
+        "label": "Test typing-extensions (`main` branch) on Python 3.14",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811190000",
+        "summary": "Status: failed. Test typing-extensions (`main` branch) on Python 3.14",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_30",
+        "kind": "check",
+        "label": "Test ubuntu-latest / 3.10",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811189999",
+        "summary": "Status: failed. Test ubuntu-latest / 3.10",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_31",
+        "kind": "check",
+        "label": "Test ubuntu-latest / 3.14",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811189996",
+        "summary": "Status: failed. Test ubuntu-latest / 3.14",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_32",
+        "kind": "check",
+        "label": "Test macos-latest / 3.11",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811189989",
+        "summary": "Status: failed. Test macos-latest / 3.11",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_33",
+        "kind": "check",
+        "label": "Test typing-extensions (`main` branch) on Python 3.12",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811189976",
+        "summary": "Status: failed. Test typing-extensions (`main` branch) on Python 3.12",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_34",
+        "kind": "check",
+        "label": "Test windows-latest / pypy3.11",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811189944",
+        "summary": "Status: failed. Test windows-latest / pypy3.11",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_35",
+        "kind": "check",
+        "label": "Test macos-latest / 3.13",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811189931",
+        "summary": "Status: failed. Test macos-latest / 3.13",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_36",
+        "kind": "check",
+        "label": "Test memray",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811189930",
+        "summary": "Status: failed. Test memray",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_37",
+        "kind": "check",
+        "label": "core / Test with debug build (pypy3.11)",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811189929",
+        "summary": "Status: failed. core / Test with debug build (pypy3.11)",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_38",
+        "kind": "check",
+        "label": "Test typing-extensions (`main` branch) on Python 3.15",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811189894",
+        "summary": "Status: failed. Test typing-extensions (`main` branch) on Python 3.15",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_39",
+        "kind": "check",
+        "label": "core / Test with debug build (3.14)",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811189743",
+        "summary": "Status: failed. core / Test with debug build (3.14)",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_49",
+        "kind": "check",
+        "label": "check",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105812215779",
+        "summary": "Status: failed. check",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_51",
+        "kind": "check",
+        "label": "Send tweet",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105812238325",
+        "summary": "Status: unknown. Send tweet",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_52",
+        "kind": "check",
+        "label": "release-pydantic-core",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105812237494",
+        "summary": "Status: unknown. release-pydantic-core",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_53",
+        "kind": "check",
+        "label": "release-pydantic",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105812237377",
+        "summary": "Status: unknown. release-pydantic",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_54",
+        "kind": "check",
+        "label": "deploy-docs",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105812237357",
+        "summary": "Status: unknown. deploy-docs",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_55",
+        "kind": "check",
+        "label": "coverage-pr-comment",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105812060688",
+        "summary": "Status: unknown. coverage-pr-comment",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_56",
+        "kind": "check",
+        "label": "coverage-combine",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105812060662",
+        "summary": "Status: unknown. coverage-combine",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_57",
+        "kind": "check",
+        "label": "Test LangChain (main branch) on Python ${{ matrix.python-version }}",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255440/job/105811219929",
+        "summary": "Status: unknown. Test LangChain (main branch) on Python ${{ matrix.python-version }}",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_58",
+        "kind": "check",
+        "label": "Test FastDepends (main branch) on Python ${{ matrix.python-version }}",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255440/job/105811219910",
+        "summary": "Status: unknown. Test FastDepends (main branch) on Python ${{ matrix.python-version }}",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_59",
+        "kind": "check",
+        "label": "Test Polar (main branch) on Python ${{ matrix.python-version }}",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255440/job/105811217287",
+        "summary": "Status: unknown. Test Polar (main branch) on Python ${{ matrix.python-version }}",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_60",
+        "kind": "check",
+        "label": "Test Beanie (main branch) on Python ${{ matrix.python-version }}",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255440/job/105811217230",
+        "summary": "Status: unknown. Test Beanie (main branch) on Python ${{ matrix.python-version }}",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_61",
+        "kind": "check",
+        "label": "Test Semantic Kernel (main branch) on Python ${{ matrix.python-version }}",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255440/job/105811214778",
+        "summary": "Status: unknown. Test Semantic Kernel (main branch) on Python ${{ matrix.python-version }}",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_62",
+        "kind": "check",
+        "label": "Test Cadwyn (main branch) on Python ${{ matrix.python-version }}",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255440/job/105811213539",
+        "summary": "Status: unknown. Test Cadwyn (main branch) on Python ${{ matrix.python-version }}",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_63",
+        "kind": "check",
+        "label": "Test FastMCP (main branch) on Python ${{ matrix.python-version }}",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255440/job/105811213044",
+        "summary": "Status: unknown. Test FastMCP (main branch) on Python ${{ matrix.python-version }}",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_64",
+        "kind": "log",
+        "label": "GitHub Actions job: Test openapi-python-client (main branch) on Python ${{ matrix.python-version }}",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255440/job/105811190502",
+        "summary": "Status: unknown. GitHub Actions job: Test openapi-python-client (main branch) on Python ${{ matrix.python-version }}: GitHub Actions job Test openapi-python-client (main branch) on Python ${{ matrix.python-version }}: unknown.",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_65",
+        "kind": "log",
+        "label": "GitHub Actions job: Test Dify (main branch) on Python ${{ matrix.python-version }}",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255440/job/105811190736",
+        "summary": "Status: unknown. GitHub Actions job: Test Dify (main branch) on Python ${{ matrix.python-version }}: GitHub Actions job Test Dify (main branch) on Python ${{ matrix.python-version }}: unknown.",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_66",
+        "kind": "log",
+        "label": "GitHub Actions job: Test BentoML (main branch) on Python ${{ matrix.python-version }}",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255440/job/105811190827",
+        "summary": "Status: unknown. GitHub Actions job: Test BentoML (main branch) on Python ${{ matrix.python-version }}: GitHub Actions job Test BentoML (main branch) on Python ${{ matrix.python-version }}: unknown.",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_67",
+        "kind": "log",
+        "label": "GitHub Actions job: Test Django Ninja (main branch) on Python ${{ matrix.python-version }}",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255440/job/105811191049",
+        "summary": "Status: unknown. GitHub Actions job: Test Django Ninja (main branch) on Python ${{ matrix.python-version }}: GitHub Actions job Test Django Ninja (main branch) on Python ${{ matrix.python-version }}: unknown.",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_68",
+        "kind": "log",
+        "label": "GitHub Actions job: Create an issue if tests failed",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255440/job/105811191372",
+        "summary": "Status: unknown. GitHub Actions job: Create an issue if tests failed: GitHub Actions job Create an issue if tests failed: unknown.",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_69",
+        "kind": "log",
+        "label": "GitHub Actions job: Test MCP Python SDK (main branch) on Python ${{ matrix.python-version }}",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255440/job/105811204936",
+        "summary": "Status: unknown. GitHub Actions job: Test MCP Python SDK (main branch) on Python ${{ matrix.python-version }}: GitHub Actions job Test MCP Python SDK (main branch) on Python ${{ matrix.python-version }}: unknown.",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_70",
+        "kind": "log",
+        "label": "GitHub Actions job: Test FastAPI (main branch) on Python ${{ matrix.python-version }}",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255440/job/105811205226",
+        "summary": "Status: unknown. GitHub Actions job: Test FastAPI (main branch) on Python ${{ matrix.python-version }}: GitHub Actions job Test FastAPI (main branch) on Python ${{ matrix.python-version }}: unknown.",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_71",
+        "kind": "log",
+        "label": "GitHub Actions job: Test Redis OM Python (main branch) on Python ${{ matrix.python-version }}",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255440/job/105811205836",
+        "summary": "Status: unknown. GitHub Actions job: Test Redis OM Python (main branch) on Python ${{ matrix.python-version }}: GitHub Actions job Test Redis OM Python (main branch) on Python ${{ matrix.python-version }}: unknown.",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_72",
+        "kind": "log",
+        "label": "GitHub Actions job: Test Pandera (main branch) on Python ${{ matrix.python-version }}",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255440/job/105811206018",
+        "summary": "Status: unknown. GitHub Actions job: Test Pandera (main branch) on Python ${{ matrix.python-version }}: GitHub Actions job Test Pandera (main branch) on Python ${{ matrix.python-version }}: unknown.",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_73",
+        "kind": "log",
+        "label": "GitHub Actions job: Test ODMantic (main branch) on Python ${{ matrix.python-version }}",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255440/job/105811206543",
+        "summary": "Status: unknown. GitHub Actions job: Test ODMantic (main branch) on Python ${{ matrix.python-version }}: GitHub Actions job Test ODMantic (main branch) on Python ${{ matrix.python-version }}: unknown.",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_74",
+        "kind": "log",
+        "label": "GitHub Actions job: Test SQLModel (main branch) on Python ${{ matrix.python-version }}",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255440/job/105811207816",
+        "summary": "Status: unknown. GitHub Actions job: Test SQLModel (main branch) on Python ${{ matrix.python-version }}: GitHub Actions job Test SQLModel (main branch) on Python ${{ matrix.python-version }}: unknown.",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_75",
+        "kind": "log",
+        "label": "GitHub Actions job: Test pydantic-xml (main branch) on Python ${{ matrix.python-version }}",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255440/job/105811211391",
+        "summary": "Status: unknown. GitHub Actions job: Test pydantic-xml (main branch) on Python ${{ matrix.python-version }}: GitHub Actions job Test pydantic-xml (main branch) on Python ${{ matrix.python-version }}: unknown.",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_40",
+        "kind": "check",
+        "label": "core / Test MSRV",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811190300",
+        "summary": "Status: passed. core / Test MSRV",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_41",
+        "kind": "check",
+        "label": "Mypy typechecking tests",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811189984",
+        "summary": "Status: passed. Mypy typechecking tests",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_42",
+        "kind": "check",
+        "label": "Typechecking integration tests",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811189917",
+        "summary": "Status: passed. Typechecking integration tests",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_43",
+        "kind": "check",
+        "label": "Test Pydantic plugin",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811189880",
+        "summary": "Status: passed. Test Pydantic plugin",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_44",
+        "kind": "check",
+        "label": "core / Test on windows",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811189875",
+        "summary": "Status: passed. core / Test on windows",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_45",
+        "kind": "check",
+        "label": "core / Test on ubuntu",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811189871",
+        "summary": "Status: passed. core / Test on ubuntu",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_46",
+        "kind": "check",
+        "label": "core / Test on macos",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811189793",
+        "summary": "Status: passed. core / Test on macos",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_47",
+        "kind": "check",
+        "label": "core / Build PyEmscripten (3.14)",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811189715",
+        "summary": "Status: passed. core / Build PyEmscripten (3.14)",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_48",
+        "kind": "check",
+        "label": "core / Build sdist",
+        "locator": "https://github.com/pydantic/pydantic/actions/runs/35411255497/job/105811189597",
+        "summary": "Status: passed. core / Build sdist",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_50",
+        "kind": "check",
+        "label": "CodSpeed Performance Analysis",
+        "locator": "https://github.com/pydantic/pydantic/runs/105812937566",
+        "summary": "Status: passed. CodSpeed Performance Analysis - `✅ 216` untouched benchmarks  \n`⏩ 163` skipped benchmarks[^skipped]  \n\n\n\n\n\n---\n\n<sub>Comparing <code>RainieLLM:fix-v1-hypothesis-plugin-imports</code> (e78b82f) with <code>main</code> (915896d)</sub>\n\n<a href=\"https://app.codspeed.io/pydantic/pydantic/branches/RainieLLM\n...[truncated for privacy and token control]",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_2",
+        "kind": "diff",
+        "label": "pydantic/v1/_hypothesis_plugin.py",
+        "locator": "pydantic/v1/_hypothesis_plugin.py",
+        "codeLocation": {
+          "path": "pydantic/v1/_hypothesis_plugin.py",
+          "side": "head",
+          "revisionSha": "e78b82f0dd20622a18a9fa439b5ca3ca5514d87d",
+          "line": 32
+        },
+        "summary": "modified pydantic/v1/_hypothesis_plugin.py (+1/-3). Patch excerpt: @@ -32,9 +32,7 @@\n \n import hypothesis.strategies as st\n \n-import pydantic\n-import pydantic.color\n-import pydantic.types\n+import pydantic.v1 as pydantic\n from pydantic.v1.utils import lenient_issubclass\n \n # FilePath and DirectoryPath are explicitly unsupported, as we'd have to create",
+        "confidence": 0.85
+      },
+      {
+        "id": "ev_3",
+        "kind": "test",
+        "label": "tests/test_v1_hypothesis_plugin.py",
+        "locator": "tests/test_v1_hypothesis_plugin.py",
+        "codeLocation": {
+          "path": "tests/test_v1_hypothesis_plugin.py",
+          "side": "head",
+          "revisionSha": "e78b82f0dd20622a18a9fa439b5ca3ca5514d87d",
+          "line": 1
+        },
+        "summary": "added tests/test_v1_hypothesis_plugin.py (+45/-0). Test evidence file. Patch excerpt: @@ -0,0 +1,45 @@\n+\"\"\"Regression tests for the Pydantic V1 Hypothesis plugin.\n+\n+`pydantic/v1/_hypothesis_plugin.py` lives in the V1 namespace but ships with\n+Pydantic V2. It used to import `pydantic`, `pydantic.color` and\n+\n...[middle truncated for privacy and token control]\nic.v1._hypothesis_plugin'\n+\n+\n+def test_v1_hypothesis_plugin_registers_strategies() -> None:\n+    \"\"\"The strategies the plugin registers must still resolve under Pydantic V2.\"\"\"\n+\n...[truncated for privacy and token control]",
+        "confidence": 0.85
+      },
+      {
+        "id": "ev_1",
+        "kind": "pr_description",
+        "label": "PR description",
+        "summary": "<!-- Thank you for your contribution! -->\n\n## Change Summary\n\n`pydantic/v1/_hypothesis_plugin.py` ships with Pydantic V2. But it imported the top-level names `pydantic`, `pydantic.color` and `pydantic.types`. Under V2, those names point to the V2 modules. So the V1-only names that the module reads from them (`color.r_rgba`, `types.ConstrainedNumberMeta`, `types._DEFINED_TYPES`) raised `AttributeError` at import time. The plugin could not be imported at all.\n\nThis change points the import at the V1 namespace:\n\n    -import pydantic\n    -import pydantic.color\n    -import pydantic.types\n    +import pydantic.v1 as pyd\n...[truncated for privacy and token control]",
+        "confidence": 0.7
+      }
+    ],
+    "limitations": [
+      "GitHub check-run evidence was capped at 60 checks.",
+      "GitHub check annotation metadata was capped at 3 failed execution checks.",
+      "GitHub check annotation metadata was collected; raw annotation details and raw log archives were not fetched or stored.",
+      "GitHub Actions job-step metadata unavailable: request timed out after 2500 ms or network failed.",
+      "Public GitHub Actions metadata was collected for build/test jobs; raw log archives were not fetched or stored.",
+      "COLLECTOR_LIMITATION: GitHub workflow execution identity remained incomplete because exact-head check-run pagination was unavailable or capped.",
+      "Public GitHub Actions metadata showed failing build/test jobs; raw log archives were not fetched or stored.",
+      "Public GitHub metadata reported successful test/build checks, but no execution output or raw logs were collected; success remains an unverified observation.",
+      "Raw CI logs were not fetched or stored.",
+      "No original task text was provided and no single valid linked issue was available; the PR description is retained only as unverified author context."
+    ],
+    "analysisContext": "unlinked_pr",
+    "reportSchemaVersion": "verification-report.v2",
+    "verificationContract": {
+      "version": 2,
+      "policy": "strict_typed_contract",
+      "state": "absent",
+      "source": null,
+      "gaps": [
+        {
+          "kind": "verification_contract_missing",
+          "message": "Approved verification contract is missing."
+        }
+      ],
+      "objectives": []
+    },
+    "reviewCandidates": {
+      "version": 1,
+      "intentGraph": {
+        "version": 1,
+        "source": {
+          "kind": "description",
+          "hash": "91a550bf70d8f5140db484e816339585ad75ef933eddde07d9ace6f16564d218",
+          "length": 1293,
+          "coordinates": "redacted_lf_utf16"
+        },
+        "repository": "pydantic/pydantic",
+        "goals": [],
+        "chunks": [],
+        "edges": [],
+        "capabilities": {
+          "wholeRepository": "unavailable",
+          "embeddings": "unavailable",
+          "symbolResolution": "unavailable",
+          "semantic": "existing_relations_only",
+          "snapshotChunks": 0,
+          "rejectedSnapshots": 0,
+          "truncated": false
+        }
+      },
+      "requirements": [],
+      "retainedRelations": [],
+      "navigation": {
+        "version": 1,
+        "model": "gemini-3.8-flash",
+        "state": "partial",
+        "repository": "pydantic/pydantic",
+        "headSha": "e78b82f0dd20622a18a9fa439b5ca3ca5514d87d",
+        "baseSha": "915896d163835a57fd7987180087409a3229bd71",
+        "sources": [
+          {
+            "id": "description",
+            "authority": "pr_author_claim",
+            "hash": "91a550bf70d8f5140db484e816339585ad75ef933eddde07d9ace6f16564d218",
+            "length": 1293,
+            "processedLength": 1292,
+            "url": "https://github.com/pydantic/pydantic/pull/13836"
+          },
+          {
+            "id": "title",
+            "authority": "pr_author_claim",
+            "hash": "58d34bd8872a153089f30e4326dc147e3f05007351435f65eba75f052772f587",
+            "length": 56,
+            "processedLength": 56,
+            "url": "https://github.com/pydantic/pydantic/pull/13836"
+          }
+        ],
+        "goals": [
+          {
+            "id": "goal_1",
+            "summary": "Fix imports in the V1 Hypothesis plugin when running under Pydantic V2",
+            "emphasis": "primary",
+            "authority": "pr_author_claim",
+            "sourceRefs": [
+              {
+                "sourceId": "title",
+                "start": 0,
+                "end": 56,
+                "hash": "58d34bd8872a153089f30e4326dc147e3f05007351435f65eba75f052772f587"
+              },
+              {
+                "sourceId": "description",
+                "start": 62,
+                "end": 461,
+                "hash": "bb4c669af8d4a58be62a5ff0725d4fd6e8824315a54da664d37512fb0c67efb0"
+              },
+              {
+                "sourceId": "description",
+                "start": 463,
+                "end": 513,
+                "hash": "a5431bbab408eb119507d6912134d1a214373866af2019df5be96fe3f168f378"
+              },
+              {
+                "sourceId": "description",
+                "start": 515,
+                "end": 625,
+                "hash": "f04b64bd1a37699f2a51a3259cd3e3c239e10cfa0b6a710b6bdc70e84ad4a0c4"
+              },
+              {
+                "sourceId": "description",
+                "start": 940,
+                "end": 950,
+                "hash": "37c9e7b362d8f4d98b6de373c9f55ea505a9bc8dae37ed01b4e290d942aa4412"
+              }
+            ],
+            "facets": [
+              {
+                "kind": "context",
+                "summary": "The V1 Hypothesis plugin is included with Pydantic V2, but top-level imports point to V2 modules rather than V1 modules.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 62,
+                    "end": 461,
+                    "hash": "bb4c669af8d4a58be62a5ff0725d4fd6e8824315a54da664d37512fb0c67efb0"
+                  }
+                ]
+              },
+              {
+                "kind": "motivation",
+                "summary": "Importing top-level Pydantic modules caused import-time AttributeErrors because expected V1-only attributes were missing from V2 modules, preventing plugin import.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 62,
+                    "end": 461,
+                    "hash": "bb4c669af8d4a58be62a5ff0725d4fd6e8824315a54da664d37512fb0c67efb0"
+                  }
+                ]
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "Replaced separate top-level imports with an aliased import of pydantic.v1 as pydantic.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 463,
+                    "end": 513,
+                    "hash": "a5431bbab408eb119507d6912134d1a214373866af2019df5be96fe3f168f378"
+                  },
+                  {
+                    "sourceId": "description",
+                    "start": 515,
+                    "end": 625,
+                    "hash": "f04b64bd1a37699f2a51a3259cd3e3c239e10cfa0b6a710b6bdc70e84ad4a0c4"
+                  }
+                ]
+              },
+              {
+                "kind": "constraint",
+                "summary": "Avoid standalone submodule imports like `import a.b.c` without an alias because they re-bind and overwrite the top-level alias, whereas pydantic.v1 already exposes required submodules.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 627,
+                    "end": 913,
+                    "hash": "237c39132e8178c5c5caaddf2f78a1188eb41bfdced10d9d91262ad7fa79d850"
+                  }
+                ]
+              },
+              {
+                "kind": "test_claim",
+                "summary": "PR author indicates unit tests for the changes exist.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 966,
+                    "end": 1292,
+                    "hash": "0d8a55cff95691a416822e0d56e6afc288faea82d9348010e66276876684ebaa"
+                  }
+                ]
+              }
+            ],
+            "openQuestions": [],
+            "firstInspection": "read_de64e2d3fa8442a9879281b7",
+            "candidates": [
+              {
+                "artifactId": "read_de64e2d3fa8442a9879281b7",
+                "relevance": "relevant",
+                "whyInspect": "Contains the core import changes where pydantic.v1 is imported as pydantic and lenient_issubclass is imported from pydantic.v1.utils.",
+                "reviewQuestion": "Does aliasing pydantic.v1 as pydantic ensure that all referenced submodules and attributes resolve to V1 implementations without rebinding collisions?",
+                "uncertainty": "Only lines 32-38 are visible in the snippet; subsequent usage of submodules across the rest of the file is truncated."
+              },
+              {
+                "artifactId": "read_442a1011ab0a46e62d835727",
+                "relevance": "relevant",
+                "whyInspect": "Contains new regression tests checking that the V1 hypothesis plugin imports cleanly under V2 and registers strategies properly.",
+                "reviewQuestion": "Do the unit tests adequately cover the previous import-time AttributeErrors and verify strategy resolution for V1 types?",
+                "uncertainty": "Tests skip execution when hypothesis is not installed."
+              }
+            ],
+            "uncertainty": [
+              "Full file context for pydantic/v1/_hypothesis_plugin.py is truncated to lines 32-38."
+            ]
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "read_de64e2d3fa8442a9879281b7",
+            "path": "pydantic/v1/_hypothesis_plugin.py",
+            "revision": "e78b82f0dd20622a18a9fa439b5ca3ca5514d87d",
+            "side": "head",
+            "startLine": 32,
+            "endLine": 38,
+            "hash": "53d4dcad50301791f6fd93514b7251b2e4b6fd801ba91a9af84d62e94930484b",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_442a1011ab0a46e62d835727",
+            "path": "tests/test_v1_hypothesis_plugin.py",
+            "revision": "e78b82f0dd20622a18a9fa439b5ca3ca5514d87d",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 45,
+            "hash": "57b0ed4773f59c564ff3b708a19040c82279a5a7d6557e70519d1df0035a1dc6",
+            "kind": "test",
+            "origin": "snapshot"
+          }
+        ],
+        "unprocessed": [
+          "description:0",
+          "description:43",
+          "description:915",
+          "description:952",
+          "description:0",
+          "description:43",
+          "description:915",
+          "description:952"
+        ],
+        "limitations": [
+          "diff_context_incomplete",
+          "retrieval_python_indentation",
+          "retrieval_unverified_fallback"
+        ],
+        "failures": [],
+        "rankingStatus": "ready",
+        "coverageStatus": "partial"
+      }
+    },
+    "generalPrAssessmentSummary": {
+      "version": 1,
+      "mode": "ordinary_pr",
+      "sourceState": "pr_author_claim",
+      "overallConclusion": "no_assessable_claims",
+      "counts": {
+        "evidence_supported": 0,
+        "evidence_partial": 0,
+        "not_demonstrated": 0,
+        "contradicted": 0,
+        "blocked": 0,
+        "not_assessable": 0
+      },
+      "reasonCodes": [
+        "author_claim_requires_confirmation",
+        "deterministic_candidate_missing",
+        "semantic_observer_unavailable"
+      ],
+      "observations": {
+        "version": 1,
+        "inventory": {
+          "state": "complete",
+          "changedArtifacts": 2,
+          "changedTestCandidates": 1
+        },
+        "links": {
+          "state": "unavailable",
+          "linkedObjectives": 0,
+          "supports": 0,
+          "tests": 0,
+          "implements": 0,
+          "contradicts": 0
+        },
+        "coverage": {
+          "source": null,
+          "evidence": null
+        }
+      }
+    }
+  }
+}

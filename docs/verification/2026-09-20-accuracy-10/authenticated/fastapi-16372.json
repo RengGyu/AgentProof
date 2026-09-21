@@ -1,0 +1,1372 @@
+{
+  "deployment": "https://agentproof-gr8dslzh4-renggyus-projects.vercel.app",
+  "elapsedMs": 29553,
+  "report": {
+    "analysisId": "ap_mu9utmud_3pa2ky",
+    "createdAt": "2026-09-20T13:30:46.885Z",
+    "source": {
+      "title": "Improve openapi tags typing",
+      "url": "https://github.com/fastapi/fastapi/pull/16372",
+      "author": "tamy-le",
+      "baseBranch": "master",
+      "headBranch": "improve-openapi-tags-typing",
+      "provenance": {
+        "version": 1,
+        "origin": "github_snapshot",
+        "headSha": "6f280f6f714b935f246d43a01e82fe509bc74948",
+        "baseSha": "50113da16fec53b66b80d75e80a89296de4fa5a5",
+        "changedFileInventory": {
+          "version": 1,
+          "completeness": "complete",
+          "headSha": "6f280f6f714b935f246d43a01e82fe509bc74948"
+        },
+        "evidenceCapturedAt": "2026-09-20T13:30:46.875Z",
+        "inputFingerprint": {
+          "version": 1,
+          "algorithm": "sha256",
+          "value": "db88d6114a9d0d1877a21b0324859b2bebaf5ea1a01453a13539a3f3aaaa071a",
+          "coverage": "github_metadata"
+        }
+      }
+    },
+    "summary": {
+      "oneLine": "Critical evidence gap found. Coverage 0%. Test/build execution failed, so the PR is not proven ready.",
+      "confidence": 0.2,
+      "priority": "blocker",
+      "evidenceCoverage": 0,
+      "topRisks": [
+        "Test/build execution failed, so the PR is not proven ready.",
+        "Some changed files have broad test evidence, but no targeted test mapping."
+      ]
+    },
+    "requirements": [],
+    "claims": [
+      {
+        "id": "claim_1",
+        "text": "- [x] This PR links to a GitHub Discussion for the proposed code change",
+        "evidenceRefs": [
+          "ev_6",
+          "ev_7",
+          "ev_54"
+        ],
+        "supported": true
+      },
+      {
+        "id": "claim_2",
+        "text": "- [ ] I added tests for the change",
+        "evidenceRefs": [
+          "ev_6",
+          "ev_7",
+          "ev_54"
+        ],
+        "supported": true
+      },
+      {
+        "id": "claim_3",
+        "text": "- [ ] The new or updated tests fail on the main branch and pass on this PR",
+        "evidenceRefs": [
+          "ev_8",
+          "ev_9",
+          "ev_56"
+        ],
+        "supported": false
+      },
+      {
+        "id": "claim_4",
+        "text": "- [ ] The documentation explains the change if needed",
+        "evidenceRefs": [
+          "ev_52",
+          "ev_48",
+          "ev_49"
+        ],
+        "supported": false
+      }
+    ],
+    "scope": {
+      "suspected": false,
+      "outOfScopeFiles": [],
+      "reasons": [],
+      "evidenceRefs": []
+    },
+    "testing": {
+      "ciStatus": "failed",
+      "lintStatus": "unknown",
+      "typecheckStatus": "unknown",
+      "missingTests": [
+        {
+          "path": "docs_src/metadata/tutorial004_py310.py",
+          "why": "Passing test evidence exists, but no targeted test evidence clearly maps to this file.",
+          "evidenceRefs": [
+            "ev_2",
+            "ev_6",
+            "ev_7",
+            "ev_54",
+            "ev_55"
+          ],
+          "provenance": [
+            {
+              "evidenceRef": "ev_2",
+              "sourceType": "diff",
+              "locator": "docs_src/metadata/tutorial004_py310.py",
+              "confidence": 0.85,
+              "evidenceText": "modified docs_src/metadata/tutorial004_py310.py (+2/-1). Patch excerpt: @@ -1,6 +1,7 @@ from fastapi import FastAPI +from fastapi.types import OpenAPITag -tags_metadata = [ +tags_metadata: list[OpenAPITag] = [ { \"name\": \"users\", \"descrip..."
+            },
+            {
+              "evidenceRef": "ev_6",
+              "sourceType": "check",
+              "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432580/job/105257266877",
+              "confidence": 0.9,
+              "evidenceText": "Status: failed. test-redistribute-alls-green - Check annotations available. Check annotations: failure at .github:34. Raw annotation messages and raw annotation details omitted."
+            },
+            {
+              "evidenceRef": "ev_7",
+              "sourceType": "check",
+              "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432580/job/105256846896",
+              "confidence": 0.9,
+              "evidenceText": "Status: failed. test-redistribute - Check annotations available. Check annotations: failure at .github:13589. Raw annotation messages and raw annotation details omitted."
+            },
+            {
+              "evidenceRef": "ev_54",
+              "sourceType": "log",
+              "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432580/job/105256846896",
+              "confidence": 0.75,
+              "evidenceText": "Status: failed. GitHub Actions job: test-redistribute: GitHub Actions job test-redistribute: failed. Steps: Build source distribution: passed; Run source distribution tests: failed; Build wheel distribution: unknown"
+            },
+            {
+              "evidenceRef": "ev_55",
+              "sourceType": "log",
+              "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432580/job/105257266877",
+              "confidence": 0.75,
+              "evidenceText": "Status: failed. GitHub Actions job: test-redistribute-alls-green: GitHub Actions job test-redistribute-alls-green: failed."
+            }
+          ]
+        },
+        {
+          "path": "fastapi/applications.py",
+          "why": "Passing test evidence exists, but no targeted test evidence clearly maps to this file.",
+          "evidenceRefs": [
+            "ev_3",
+            "ev_6",
+            "ev_7",
+            "ev_54",
+            "ev_55"
+          ],
+          "provenance": [
+            {
+              "evidenceRef": "ev_3",
+              "sourceType": "diff",
+              "locator": "fastapi/applications.py",
+              "confidence": 0.85,
+              "evidenceText": "modified fastapi/applications.py (+3/-3). Patch excerpt: @@ -21,7 +21,7 @@ ) from fastapi.openapi.utils import get_openapi from fastapi.params import Depends -from fastapi.types import DecoratedCallable, IncEx +from fastapi.types import..."
+            },
+            {
+              "evidenceRef": "ev_6",
+              "sourceType": "check",
+              "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432580/job/105257266877",
+              "confidence": 0.9,
+              "evidenceText": "Status: failed. test-redistribute-alls-green - Check annotations available. Check annotations: failure at .github:34. Raw annotation messages and raw annotation details omitted."
+            },
+            {
+              "evidenceRef": "ev_7",
+              "sourceType": "check",
+              "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432580/job/105256846896",
+              "confidence": 0.9,
+              "evidenceText": "Status: failed. test-redistribute - Check annotations available. Check annotations: failure at .github:13589. Raw annotation messages and raw annotation details omitted."
+            },
+            {
+              "evidenceRef": "ev_54",
+              "sourceType": "log",
+              "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432580/job/105256846896",
+              "confidence": 0.75,
+              "evidenceText": "Status: failed. GitHub Actions job: test-redistribute: GitHub Actions job test-redistribute: failed. Steps: Build source distribution: passed; Run source distribution tests: failed; Build wheel distribution: unknown"
+            },
+            {
+              "evidenceRef": "ev_55",
+              "sourceType": "log",
+              "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432580/job/105257266877",
+              "confidence": 0.75,
+              "evidenceText": "Status: failed. GitHub Actions job: test-redistribute-alls-green: GitHub Actions job test-redistribute-alls-green: failed."
+            }
+          ]
+        },
+        {
+          "path": "fastapi/openapi/utils.py",
+          "why": "Passing test evidence exists, but no targeted test evidence clearly maps to this file.",
+          "evidenceRefs": [
+            "ev_4",
+            "ev_6",
+            "ev_7",
+            "ev_54",
+            "ev_55"
+          ],
+          "provenance": [
+            {
+              "evidenceRef": "ev_4",
+              "sourceType": "diff",
+              "locator": "fastapi/openapi/utils.py",
+              "confidence": 0.85,
+              "evidenceText": "modified fastapi/openapi/utils.py (+2/-2). Patch excerpt: @@ -36,7 +36,7 @@ from fastapi.params import Body, ParamTypes from fastapi.responses import Response from fastapi.sse import _SSE_EVENT_SCHEMA -from fastapi.types import Dependenc..."
+            },
+            {
+              "evidenceRef": "ev_6",
+              "sourceType": "check",
+              "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432580/job/105257266877",
+              "confidence": 0.9,
+              "evidenceText": "Status: failed. test-redistribute-alls-green - Check annotations available. Check annotations: failure at .github:34. Raw annotation messages and raw annotation details omitted."
+            },
+            {
+              "evidenceRef": "ev_7",
+              "sourceType": "check",
+              "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432580/job/105256846896",
+              "confidence": 0.9,
+              "evidenceText": "Status: failed. test-redistribute - Check annotations available. Check annotations: failure at .github:13589. Raw annotation messages and raw annotation details omitted."
+            },
+            {
+              "evidenceRef": "ev_54",
+              "sourceType": "log",
+              "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432580/job/105256846896",
+              "confidence": 0.75,
+              "evidenceText": "Status: failed. GitHub Actions job: test-redistribute: GitHub Actions job test-redistribute: failed. Steps: Build source distribution: passed; Run source distribution tests: failed; Build wheel distribution: unknown"
+            },
+            {
+              "evidenceRef": "ev_55",
+              "sourceType": "log",
+              "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432580/job/105257266877",
+              "confidence": 0.75,
+              "evidenceText": "Status: failed. GitHub Actions job: test-redistribute-alls-green: GitHub Actions job test-redistribute-alls-green: failed."
+            }
+          ]
+        },
+        {
+          "path": "fastapi/types.py",
+          "why": "Passing test evidence exists, but no targeted test evidence clearly maps to this file.",
+          "evidenceRefs": [
+            "ev_5",
+            "ev_6",
+            "ev_7",
+            "ev_54",
+            "ev_55"
+          ],
+          "provenance": [
+            {
+              "evidenceRef": "ev_5",
+              "sourceType": "diff",
+              "locator": "fastapi/types.py",
+              "confidence": 0.85,
+              "evidenceText": "modified fastapi/types.py (+18/-1). Patch excerpt: @@ -1,7 +1,7 @@ import types from collections.abc import Callable from enum import Enum -from typing import Any, TypeVar, Union +from typing import Any, TypedDict, TypeVar, Union from py..."
+            },
+            {
+              "evidenceRef": "ev_6",
+              "sourceType": "check",
+              "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432580/job/105257266877",
+              "confidence": 0.9,
+              "evidenceText": "Status: failed. test-redistribute-alls-green - Check annotations available. Check annotations: failure at .github:34. Raw annotation messages and raw annotation details omitted."
+            },
+            {
+              "evidenceRef": "ev_7",
+              "sourceType": "check",
+              "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432580/job/105256846896",
+              "confidence": 0.9,
+              "evidenceText": "Status: failed. test-redistribute - Check annotations available. Check annotations: failure at .github:13589. Raw annotation messages and raw annotation details omitted."
+            },
+            {
+              "evidenceRef": "ev_54",
+              "sourceType": "log",
+              "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432580/job/105256846896",
+              "confidence": 0.75,
+              "evidenceText": "Status: failed. GitHub Actions job: test-redistribute: GitHub Actions job test-redistribute: failed. Steps: Build source distribution: passed; Run source distribution tests: failed; Build wheel distribution: unknown"
+            },
+            {
+              "evidenceRef": "ev_55",
+              "sourceType": "log",
+              "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432580/job/105257266877",
+              "confidence": 0.75,
+              "evidenceText": "Status: failed. GitHub Actions job: test-redistribute-alls-green: GitHub Actions job test-redistribute-alls-green: failed."
+            }
+          ]
+        }
+      ]
+    },
+    "reviewPriority": [
+      {
+        "path": "Test/build checks",
+        "reason": "At least one test, build, or CI execution check failed; requirement satisfaction is not proven.",
+        "priority": "blocker",
+        "evidenceRefs": [
+          "ev_6",
+          "ev_7",
+          "ev_54",
+          "ev_55"
+        ]
+      },
+      {
+        "path": "docs_src/metadata/tutorial004_py310.py",
+        "reason": "Passing test evidence exists, but no targeted test evidence clearly maps to this file.",
+        "priority": "medium",
+        "evidenceRefs": [
+          "ev_2",
+          "ev_6",
+          "ev_7",
+          "ev_54",
+          "ev_55"
+        ]
+      },
+      {
+        "path": "fastapi/applications.py",
+        "reason": "Passing test evidence exists, but no targeted test evidence clearly maps to this file.",
+        "priority": "medium",
+        "evidenceRefs": [
+          "ev_3",
+          "ev_6",
+          "ev_7",
+          "ev_54",
+          "ev_55"
+        ]
+      },
+      {
+        "path": "fastapi/openapi/utils.py",
+        "reason": "Passing test evidence exists, but no targeted test evidence clearly maps to this file.",
+        "priority": "medium",
+        "evidenceRefs": [
+          "ev_4",
+          "ev_6",
+          "ev_7",
+          "ev_54",
+          "ev_55"
+        ]
+      },
+      {
+        "path": "fastapi/types.py",
+        "reason": "Passing test evidence exists, but no targeted test evidence clearly maps to this file.",
+        "priority": "medium",
+        "evidenceRefs": [
+          "ev_5",
+          "ev_6",
+          "ev_7",
+          "ev_54",
+          "ev_55"
+        ]
+      }
+    ],
+    "proofGraph": {
+      "version": 1,
+      "nodes": [],
+      "context": [
+        {
+          "id": "ctx_1",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Pull Request",
+          "text": "Discussion: #16362"
+        },
+        {
+          "id": "ctx_2",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Description",
+          "text": "This PR improves typing for `OpenAPI tag metadata` by introducing `TypedDict` definitions for the OpenAPI tag structure"
+        },
+        {
+          "id": "ctx_3",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Description",
+          "text": "The goal is to provide better IDE autocomplete and static type checking for fields such as name, description, and `externalDocs`, while preserving backward compatibility with existing code using `list[dict[str, Any]]`"
+        },
+        {
+          "id": "ctx_4",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Description",
+          "text": "The parameter accepts both forms:"
+        },
+        {
+          "id": "ctx_5",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Description",
+          "text": "`list[OpenAPITag] | list[dict[str, Any]] | None`"
+        },
+        {
+          "id": "ctx_6",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "AI Disclaimer",
+          "text": "<details>"
+        },
+        {
+          "id": "ctx_7",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "AI Disclaimer",
+          "text": "<summary>AI transcript</summary>"
+        },
+        {
+          "id": "ctx_8",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "AI Disclaimer",
+          "text": "</details>"
+        }
+      ],
+      "summary": {
+        "requirementCount": 0,
+        "requirementsWithImplementation": 0,
+        "requirementsWithTargetedTests": 0,
+        "requirementsWithExecution": 0,
+        "requirementsWithGaps": 0,
+        "gapCount": 0
+      }
+    },
+    "reprompt": {
+      "targetAgent": "codex",
+      "prompt": "You are revising an AI-generated PR for AgentProof verification.\nDo not broaden the PR. Make only changes tied to the original task.\n1. Add or identify tests that cover: docs_src/metadata/tutorial004_py310.py, fastapi/applications.py, fastapi/openapi/utils.py, fastapi/types.py.\n2. Fix the failing test/build check and summarize the exact log line that proves it now passes.\nReturn a concise summary with changed files, tests run, and remaining risks."
+    },
+    "evidenceIndex": [
+      {
+        "id": "ev_6",
+        "kind": "check",
+        "label": "test-redistribute-alls-green",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432580/job/105257266877",
+        "summary": "Status: failed. test-redistribute-alls-green - Check annotations available. Check annotations: failure at .github:34. Raw annotation messages and raw annotation details omitted.",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_7",
+        "kind": "check",
+        "label": "test-redistribute",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432580/job/105256846896",
+        "summary": "Status: failed. test-redistribute - Check annotations available. Check annotations: failure at .github:13589. Raw annotation messages and raw annotation details omitted.",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_54",
+        "kind": "log",
+        "label": "GitHub Actions job: test-redistribute",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432580/job/105256846896",
+        "summary": "Status: failed. GitHub Actions job: test-redistribute: GitHub Actions job test-redistribute: failed. Steps: Build source distribution: passed; Run source distribution tests: failed; Build wheel distribution: unknown",
+        "confidence": 0.75
+      },
+      {
+        "id": "ev_55",
+        "kind": "log",
+        "label": "GitHub Actions job: test-redistribute-alls-green",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432580/job/105257266877",
+        "summary": "Status: failed. GitHub Actions job: test-redistribute-alls-green: GitHub Actions job test-redistribute-alls-green: failed.",
+        "confidence": 0.75
+      },
+      {
+        "id": "ev_10",
+        "kind": "check",
+        "label": "create-draft-release",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35240388656/job/105267072974",
+        "summary": "Status: unknown. create-draft-release",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_52",
+        "kind": "check",
+        "label": "latest-changes/label",
+        "summary": "Status: pending. latest-changes/label - Waiting for one Latest Changes label",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_8",
+        "kind": "check",
+        "label": "test-alls-green",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432572/job/105258609203",
+        "summary": "Status: passed. test-alls-green",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_9",
+        "kind": "check",
+        "label": "regression-test",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432572/job/105256847490",
+        "summary": "Status: passed. regression-test",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_11",
+        "kind": "check",
+        "label": "job",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35240388723/job/105267013384",
+        "summary": "Status: passed. job",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_12",
+        "kind": "check",
+        "label": "coverage-combine",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432572/job/105258190508",
+        "summary": "Status: passed. coverage-combine",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_13",
+        "kind": "check",
+        "label": "docs-all-green",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432577/job/105257911636",
+        "summary": "Status: passed. docs-all-green",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_14",
+        "kind": "check",
+        "label": "CodSpeed Performance Analysis",
+        "locator": "https://github.com/fastapi/fastapi/runs/105257732653",
+        "summary": "Status: passed. CodSpeed Performance Analysis - `✅ 24` untouched benchmarks  \n\n\n\n\n\n---\n\n<sub>Comparing <code>tamy-le:improve-openapi-tags-typing</code> (6f280f6) with <code>master</code> (50113da)</sub>\n\n<a href=\"https://app.codspeed.io/fastapi/fastapi/branches/tamy-le%3Aimprove-openapi-tags-typing?utm_source=github&\n...[truncated for privacy and token control]",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_15",
+        "kind": "check",
+        "label": "build-docs (fr)",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432577/job/105257327698",
+        "summary": "Status: passed. build-docs (fr)",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_16",
+        "kind": "check",
+        "label": "build-docs (zh-hant)",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432577/job/105257327447",
+        "summary": "Status: passed. build-docs (zh-hant)",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_17",
+        "kind": "check",
+        "label": "build-docs (ko)",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432577/job/105257327378",
+        "summary": "Status: passed. build-docs (ko)",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_18",
+        "kind": "check",
+        "label": "build-docs (ru)",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432577/job/105257327365",
+        "summary": "Status: passed. build-docs (ru)",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_19",
+        "kind": "check",
+        "label": "build-docs (pt)",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432577/job/105257327348",
+        "summary": "Status: passed. build-docs (pt)",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_20",
+        "kind": "check",
+        "label": "build-docs (zh)",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432577/job/105257327322",
+        "summary": "Status: passed. build-docs (zh)",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_21",
+        "kind": "check",
+        "label": "build-docs (hi)",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432577/job/105257327309",
+        "summary": "Status: passed. build-docs (hi)",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_22",
+        "kind": "check",
+        "label": "build-docs (uk)",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432577/job/105257327302",
+        "summary": "Status: passed. build-docs (uk)",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_23",
+        "kind": "check",
+        "label": "build-docs (ja)",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432577/job/105257327281",
+        "summary": "Status: passed. build-docs (ja)",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_24",
+        "kind": "check",
+        "label": "build-docs (es)",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432577/job/105257327256",
+        "summary": "Status: passed. build-docs (es)",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_25",
+        "kind": "check",
+        "label": "build-docs (de)",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432577/job/105257327242",
+        "summary": "Status: passed. build-docs (de)",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_26",
+        "kind": "check",
+        "label": "build-docs (tr)",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432577/job/105257327239",
+        "summary": "Status: passed. build-docs (tr)",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_27",
+        "kind": "check",
+        "label": "build-docs (en)",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432577/job/105257327231",
+        "summary": "Status: passed. build-docs (en)",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_28",
+        "kind": "check",
+        "label": "pre-commit-alls-green",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432599/job/105257158840",
+        "summary": "Status: passed. pre-commit-alls-green",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_29",
+        "kind": "check",
+        "label": "langs",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432577/job/105257127813",
+        "summary": "Status: passed. langs",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_30",
+        "kind": "check",
+        "label": "zizmor",
+        "locator": "https://github.com/fastapi/fastapi/runs/105256954495",
+        "summary": "Status: passed. zizmor - [View all branch alerts](/fastapi/fastapi/security/code-scanning?query=pr%3A16372+tool%3Azizmor+is%3Aopen).",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_31",
+        "kind": "check",
+        "label": "test (windows-latest, 3.12, lowest-direct, no-deprecation, coverage)",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432572/job/105256925657",
+        "summary": "Status: passed. test (windows-latest, 3.12, lowest-direct, no-deprecation, coverage)",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_32",
+        "kind": "check",
+        "label": "test (windows-latest, 3.14t, no-deprecation, highest, starlette-git)",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432572/job/105256925552",
+        "summary": "Status: passed. test (windows-latest, 3.14t, no-deprecation, highest, starlette-git)",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_33",
+        "kind": "check",
+        "label": "test (macos-latest, 3.10, lowest-direct, no-deprecation, coverage)",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432572/job/105256925543",
+        "summary": "Status: passed. test (macos-latest, 3.10, lowest-direct, no-deprecation, coverage)",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_34",
+        "kind": "check",
+        "label": "test (macos-latest, 3.14, no-deprecation, highest, starlette-pypi)",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432572/job/105256925520",
+        "summary": "Status: passed. test (macos-latest, 3.14, no-deprecation, highest, starlette-pypi)",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_35",
+        "kind": "check",
+        "label": "test (ubuntu-latest, 3.13, highest, no-deprecation, coverage)",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432572/job/105256925517",
+        "summary": "Status: passed. test (ubuntu-latest, 3.13, highest, no-deprecation, coverage)",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_36",
+        "kind": "check",
+        "label": "test (macos-latest, 3.14t, no-deprecation, highest, starlette-pypi)",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432572/job/105256925507",
+        "summary": "Status: passed. test (macos-latest, 3.14t, no-deprecation, highest, starlette-pypi)",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_37",
+        "kind": "check",
+        "label": "test (ubuntu-latest, 3.14t, highest, no-deprecation, coverage)",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432572/job/105256925492",
+        "summary": "Status: passed. test (ubuntu-latest, 3.14t, highest, no-deprecation, coverage)",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_38",
+        "kind": "check",
+        "label": "test (windows-latest, 3.14t, no-deprecation, highest, starlette-pypi)",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432572/job/105256925487",
+        "summary": "Status: passed. test (windows-latest, 3.14t, no-deprecation, highest, starlette-pypi)",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_39",
+        "kind": "check",
+        "label": "test (ubuntu-latest, 3.13, highest, no-deprecation, true)",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432572/job/105256925481",
+        "summary": "Status: passed. test (ubuntu-latest, 3.13, highest, no-deprecation, true)",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_40",
+        "kind": "check",
+        "label": "test (macos-latest, 3.14t, no-deprecation, highest, starlette-git)",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432572/job/105256925467",
+        "summary": "Status: passed. test (macos-latest, 3.14t, no-deprecation, highest, starlette-git)",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_41",
+        "kind": "check",
+        "label": "test (windows-latest, 3.14, no-deprecation, highest, starlette-pypi)",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432572/job/105256925445",
+        "summary": "Status: passed. test (windows-latest, 3.14, no-deprecation, highest, starlette-pypi)",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_42",
+        "kind": "check",
+        "label": "test (ubuntu-latest, 3.14, highest, starlette-git, test-deprecation, coverage)",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432572/job/105256925417",
+        "summary": "Status: passed. test (ubuntu-latest, 3.14, highest, starlette-git, test-deprecation, coverage)",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_43",
+        "kind": "check",
+        "label": "test (ubuntu-latest, 3.13, highest, no-deprecation, codspeed)",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432572/job/105256925416",
+        "summary": "Status: passed. test (ubuntu-latest, 3.13, highest, no-deprecation, codspeed)",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_44",
+        "kind": "check",
+        "label": "test (macos-latest, 3.14, no-deprecation, highest, starlette-git)",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432572/job/105256925391",
+        "summary": "Status: passed. test (macos-latest, 3.14, no-deprecation, highest, starlette-git)",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_45",
+        "kind": "check",
+        "label": "test (windows-latest, 3.14, no-deprecation, highest, starlette-git)",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432572/job/105256925379",
+        "summary": "Status: passed. test (windows-latest, 3.14, no-deprecation, highest, starlette-git)",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_46",
+        "kind": "check",
+        "label": "benchmark",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432572/job/105256924855",
+        "summary": "Status: passed. benchmark",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_47",
+        "kind": "check",
+        "label": "Run zizmor",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432862/job/105256847983",
+        "summary": "Status: passed. Run zizmor",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_48",
+        "kind": "check",
+        "label": "changes",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432572/job/105256847650",
+        "summary": "Status: passed. changes",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_49",
+        "kind": "check",
+        "label": "changes",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432577/job/105256846715",
+        "summary": "Status: passed. changes",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_50",
+        "kind": "check",
+        "label": "pre-commit",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432599/job/105256846168",
+        "summary": "Status: passed. pre-commit",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_51",
+        "kind": "check",
+        "label": "Add to project",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237430176/job/105256840429",
+        "summary": "Status: passed. Add to project",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_53",
+        "kind": "check",
+        "label": "deploy-docs",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237767962",
+        "summary": "Status: passed. deploy-docs - Docs Deployed",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_56",
+        "kind": "log",
+        "label": "GitHub Actions job: regression-test",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432572/job/105256847490",
+        "summary": "Status: passed. GitHub Actions job: regression-test: GitHub Actions job regression-test: passed. Reported conclusion: success; execution output not collected. Steps: Find changed tests: passed; Run the changed tests against the base code: unknown",
+        "confidence": 0.75
+      },
+      {
+        "id": "ev_57",
+        "kind": "log",
+        "label": "GitHub Actions job: test (windows-latest, 3.14, no-deprecation, highest, starlette-git)",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432572/job/105256925379",
+        "summary": "Status: passed. GitHub Actions job: test (windows-latest, 3.14, no-deprecation, highest, starlette-git): GitHub Actions job test (windows-latest, 3.14, no-deprecation, highest, starlette-git): passed. Reported conclusion: success; execution output not collected. Steps: Uninstall httpx2 to run tests with httpx: unknown; Test: passed",
+        "confidence": 0.75
+      },
+      {
+        "id": "ev_58",
+        "kind": "log",
+        "label": "GitHub Actions job: test (macos-latest, 3.14, no-deprecation, highest, starlette-git)",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432572/job/105256925391",
+        "summary": "Status: passed. GitHub Actions job: test (macos-latest, 3.14, no-deprecation, highest, starlette-git): GitHub Actions job test (macos-latest, 3.14, no-deprecation, highest, starlette-git): passed. Reported conclusion: success; execution output not collected. Steps: Uninstall httpx2 to run tests with httpx: unknown; Test: passed",
+        "confidence": 0.75
+      },
+      {
+        "id": "ev_59",
+        "kind": "log",
+        "label": "GitHub Actions job: test (ubuntu-latest, 3.13, highest, no-deprecation, codspeed)",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432572/job/105256925416",
+        "summary": "Status: passed. GitHub Actions job: test (ubuntu-latest, 3.13, highest, no-deprecation, codspeed): GitHub Actions job test (ubuntu-latest, 3.13, highest, no-deprecation, codspeed): passed. Reported conclusion: success; execution output not collected. Steps: Uninstall httpx2 to run tests with httpx: unknown; Test: passed",
+        "confidence": 0.75
+      },
+      {
+        "id": "ev_60",
+        "kind": "log",
+        "label": "GitHub Actions job: test (ubuntu-latest, 3.14, highest, starlette-git, test-deprecation, coverage)",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432572/job/105256925417",
+        "summary": "Status: passed. GitHub Actions job: test (ubuntu-latest, 3.14, highest, starlette-git, test-deprecation, coverage): GitHub Actions job test (ubuntu-latest, 3.14, highest, starlette-git, test-deprecation, coverage): passed. Reported conclusion: success; execution output not collected. Steps: Uninstall httpx2 to run tests with httpx: unknown; Test: passed",
+        "confidence": 0.75
+      },
+      {
+        "id": "ev_61",
+        "kind": "log",
+        "label": "GitHub Actions job: test (windows-latest, 3.14, no-deprecation, highest, starlette-pypi)",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432572/job/105256925445",
+        "summary": "Status: passed. GitHub Actions job: test (windows-latest, 3.14, no-deprecation, highest, starlette-pypi): GitHub Actions job test (windows-latest, 3.14, no-deprecation, highest, starlette-pypi): passed. Reported conclusion: success; execution output not collected. Steps: Uninstall httpx2 to run tests with httpx: unknown; Test: passed",
+        "confidence": 0.75
+      },
+      {
+        "id": "ev_62",
+        "kind": "log",
+        "label": "GitHub Actions job: test (macos-latest, 3.14t, no-deprecation, highest, starlette-git)",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432572/job/105256925467",
+        "summary": "Status: passed. GitHub Actions job: test (macos-latest, 3.14t, no-deprecation, highest, starlette-git): GitHub Actions job test (macos-latest, 3.14t, no-deprecation, highest, starlette-git): passed. Reported conclusion: success; execution output not collected. Steps: Uninstall httpx2 to run tests with httpx: unknown; Test: passed",
+        "confidence": 0.75
+      },
+      {
+        "id": "ev_63",
+        "kind": "log",
+        "label": "GitHub Actions job: test (ubuntu-latest, 3.13, highest, no-deprecation, true)",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432572/job/105256925481",
+        "summary": "Status: passed. GitHub Actions job: test (ubuntu-latest, 3.13, highest, no-deprecation, true): GitHub Actions job test (ubuntu-latest, 3.13, highest, no-deprecation, true): passed. Reported conclusion: success; execution output not collected. Steps: Uninstall httpx2 to run tests with httpx: unknown; Test: passed",
+        "confidence": 0.75
+      },
+      {
+        "id": "ev_64",
+        "kind": "log",
+        "label": "GitHub Actions job: test (windows-latest, 3.14t, no-deprecation, highest, starlette-pypi)",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432572/job/105256925487",
+        "summary": "Status: passed. GitHub Actions job: test (windows-latest, 3.14t, no-deprecation, highest, starlette-pypi): GitHub Actions job test (windows-latest, 3.14t, no-deprecation, highest, starlette-pypi): passed. Reported conclusion: success; execution output not collected. Steps: Uninstall httpx2 to run tests with httpx: unknown; Test: passed",
+        "confidence": 0.75
+      },
+      {
+        "id": "ev_65",
+        "kind": "log",
+        "label": "GitHub Actions job: test (ubuntu-latest, 3.14t, highest, no-deprecation, coverage)",
+        "locator": "https://github.com/fastapi/fastapi/actions/runs/35237432572/job/105256925492",
+        "summary": "Status: passed. GitHub Actions job: test (ubuntu-latest, 3.14t, highest, no-deprecation, coverage): GitHub Actions job test (ubuntu-latest, 3.14t, highest, no-deprecation, coverage): passed. Reported conclusion: success; execution output not collected. Steps: Uninstall httpx2 to run tests with httpx: unknown; Test: passed",
+        "confidence": 0.75
+      },
+      {
+        "id": "ev_2",
+        "kind": "diff",
+        "label": "docs_src/metadata/tutorial004_py310.py",
+        "locator": "docs_src/metadata/tutorial004_py310.py",
+        "codeLocation": {
+          "path": "docs_src/metadata/tutorial004_py310.py",
+          "side": "head",
+          "revisionSha": "6f280f6f714b935f246d43a01e82fe509bc74948",
+          "line": 1
+        },
+        "summary": "modified docs_src/metadata/tutorial004_py310.py (+2/-1). Patch excerpt: @@ -1,6 +1,7 @@\n from fastapi import FastAPI\n+from fastapi.types import OpenAPITag\n \n-tags_metadata = [\n+tags_metadata: list[OpenAPITag] = [\n     {\n         \"name\": \"users\",\n         \"description\": \"Operations with users. The **login** logic is also here.\",",
+        "confidence": 0.85
+      },
+      {
+        "id": "ev_3",
+        "kind": "diff",
+        "label": "fastapi/applications.py",
+        "locator": "fastapi/applications.py",
+        "codeLocation": {
+          "path": "fastapi/applications.py",
+          "side": "head",
+          "revisionSha": "6f280f6f714b935f246d43a01e82fe509bc74948",
+          "line": 21
+        },
+        "summary": "modified fastapi/applications.py (+3/-3). Patch excerpt: @@ -21,7 +21,7 @@\n )\n from fastapi.openapi.utils import get_openapi\n from fastapi.params import Depends\n-from fastapi.types import DecoratedCallable, IncEx\n+from fastapi.types import DecoratedCallable, IncEx, OpenAPITag\n fr\n...[middle truncated for privacy and token control]\n```python\n                 from fastapi import FastAPI\n \n-                tags_metadata = [\n+                tags_metadata: list[OpenAPITag] = [\n                     {\n...[truncated for privacy and token control]",
+        "confidence": 0.85
+      },
+      {
+        "id": "ev_4",
+        "kind": "diff",
+        "label": "fastapi/openapi/utils.py",
+        "locator": "fastapi/openapi/utils.py",
+        "codeLocation": {
+          "path": "fastapi/openapi/utils.py",
+          "side": "head",
+          "revisionSha": "6f280f6f714b935f246d43a01e82fe509bc74948",
+          "line": 36
+        },
+        "summary": "modified fastapi/openapi/utils.py (+2/-2). Patch excerpt: @@ -36,7 +36,7 @@\n from fastapi.params import Body, ParamTypes\n from fastapi.responses import Response\n from fastapi.sse import _SSE_EVENT_SCHEMA\n-from fastapi.types import DependencyCacheKey, ModelNameMap\n+from fastapi.typ\n...[middle truncated for privacy and token control]\nne = None,\n+    tags: list[OpenAPITag] | list[dict[str, Any]] | None = None,\n     servers: list[dict[str, str | Any]] | None = None,\n     terms_of_service: str | None = None,\n     contact: dict[str, str | Any] | None = None,",
+        "confidence": 0.85
+      },
+      {
+        "id": "ev_5",
+        "kind": "diff",
+        "label": "fastapi/types.py",
+        "locator": "fastapi/types.py",
+        "codeLocation": {
+          "path": "fastapi/types.py",
+          "side": "head",
+          "revisionSha": "6f280f6f714b935f246d43a01e82fe509bc74948",
+          "line": 1
+        },
+        "summary": "modified fastapi/types.py (+18/-1). Patch excerpt: @@ -1,7 +1,7 @@\n import types\n from collections.abc import Callable\n from enum import Enum\n-from typing import Any, TypeVar, Union\n+from typing import Any, TypedDict, TypeVar, Union\n \n from pydantic import BaseModel\n from p\n...[middle truncated for privacy and token control]\nocs(_OpenAPIExternalDocsOptional):\n+    url: str\n+\n+\n+class _OpenAPITagOptional(TypedDict, total=False):\n+    description: str\n+    externalDocs: OpenAPIExternalDocs\n+\n+\n+class OpenAPITag(_OpenAPITagOptional):\n+    name: str",
+        "confidence": 0.85
+      },
+      {
+        "id": "ev_1",
+        "kind": "pr_description",
+        "label": "PR description",
+        "summary": "## Pull Request\n\nDiscussion: #16362 \n\n## Description\n\nThis PR improves typing for `OpenAPI tag metadata` by introducing `TypedDict` definitions for the OpenAPI tag structure.\n\nThe goal is to provide better IDE autocomplete and static type checking for fields such as name, description, and `externalDocs`, while preserving backward compatibility with existing code using `list[dict[str, Any]]`.\n\nThe parameter accepts both forms:\n\n`list[OpenAPITag] | list[dict[str, Any]] | None`\n## AI Disclaimer\n\n<!-- If using AI, write here the prompt and model used -->\n\n<details>\n<summary>AI transcript</summary>\n\n<!-- Paste here th\n...[truncated for privacy and token control]",
+        "confidence": 0.7
+      }
+    ],
+    "limitations": [
+      "GitHub check annotation metadata was collected; raw annotation details and raw log archives were not fetched or stored.",
+      "Public GitHub Actions metadata showed failing build/test jobs; raw log archives were not fetched or stored.",
+      "COLLECTOR_LIMITATION: GitHub workflow execution identity collection was capped at 3 workflow runs.",
+      "Public GitHub metadata reported successful test/build checks, but no execution output or raw logs were collected; success remains an unverified observation.",
+      "Raw CI logs were not fetched or stored.",
+      "No original task text was provided and no single valid linked issue was available; the PR description is retained only as unverified author context."
+    ],
+    "analysisContext": "unlinked_pr",
+    "reportSchemaVersion": "verification-report.v2",
+    "verificationContract": {
+      "version": 2,
+      "policy": "strict_typed_contract",
+      "state": "absent",
+      "source": null,
+      "gaps": [
+        {
+          "kind": "verification_contract_missing",
+          "message": "Approved verification contract is missing."
+        }
+      ],
+      "objectives": []
+    },
+    "reviewCandidates": {
+      "version": 1,
+      "intentGraph": {
+        "version": 1,
+        "source": {
+          "kind": "description",
+          "hash": "230be6e9d863ce191437c9042bc97f65823d9fa593f98b0b21ee7dcb6602cd66",
+          "length": 944,
+          "coordinates": "redacted_lf_utf16"
+        },
+        "repository": "fastapi/fastapi",
+        "goals": [],
+        "chunks": [],
+        "edges": [],
+        "capabilities": {
+          "wholeRepository": "unavailable",
+          "embeddings": "unavailable",
+          "symbolResolution": "unavailable",
+          "semantic": "existing_relations_only",
+          "snapshotChunks": 0,
+          "rejectedSnapshots": 0,
+          "truncated": false
+        }
+      },
+      "requirements": [],
+      "retainedRelations": [],
+      "navigation": {
+        "version": 1,
+        "model": "gemini-3.8-flash",
+        "state": "partial",
+        "repository": "fastapi/fastapi",
+        "headSha": "6f280f6f714b935f246d43a01e82fe509bc74948",
+        "baseSha": "50113da16fec53b66b80d75e80a89296de4fa5a5",
+        "sources": [
+          {
+            "id": "description",
+            "authority": "pr_author_claim",
+            "hash": "230be6e9d863ce191437c9042bc97f65823d9fa593f98b0b21ee7dcb6602cd66",
+            "length": 944,
+            "processedLength": 943,
+            "url": "https://github.com/fastapi/fastapi/pull/16372"
+          },
+          {
+            "id": "title",
+            "authority": "pr_author_claim",
+            "hash": "e3e0efd89181f0a756d00a3313218da61aaacc930738f3469fea908b1a3f7500",
+            "length": 27,
+            "processedLength": 27,
+            "url": "https://github.com/fastapi/fastapi/pull/16372"
+          }
+        ],
+        "goals": [
+          {
+            "id": "goal_1",
+            "summary": "Improve typing for OpenAPI tag metadata using TypedDict definitions",
+            "emphasis": "primary",
+            "authority": "pr_author_claim",
+            "sourceRefs": [
+              {
+                "sourceId": "title",
+                "start": 0,
+                "end": 27,
+                "hash": "e3e0efd89181f0a756d00a3313218da61aaacc930738f3469fea908b1a3f7500"
+              },
+              {
+                "sourceId": "description",
+                "start": 54,
+                "end": 174,
+                "hash": "2348a997867278a57779bc13cf2fcf8983c89314c8f1449e47df206a1798ae27"
+              }
+            ],
+            "facets": [
+              {
+                "kind": "context",
+                "summary": "Referenced discussion: #16362",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 17,
+                    "end": 36,
+                    "hash": "e3556e90d7856f8332bf8277a281762c4a29757c7558adc430be0a0ad3a3dd81"
+                  }
+                ]
+              },
+              {
+                "kind": "motivation",
+                "summary": "Provide better IDE autocomplete and static type checking for fields such as name, description, and externalDocs",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 176,
+                    "end": 394,
+                    "hash": "48ea5afdabbb54dc49d4afb8d988cf9ec2210a4065b90a13957873b882116593"
+                  }
+                ]
+              },
+              {
+                "kind": "constraint",
+                "summary": "Preserve backward compatibility with existing code using list[dict[str, Any]]",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 176,
+                    "end": 394,
+                    "hash": "48ea5afdabbb54dc49d4afb8d988cf9ec2210a4065b90a13957873b882116593"
+                  }
+                ]
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "Introduces TypedDict definitions for the OpenAPI tag structure so the parameter accepts list[OpenAPITag] | list[dict[str, Any]] | None",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 54,
+                    "end": 174,
+                    "hash": "2348a997867278a57779bc13cf2fcf8983c89314c8f1449e47df206a1798ae27"
+                  },
+                  {
+                    "sourceId": "description",
+                    "start": 396,
+                    "end": 429,
+                    "hash": "8a1689658f73b03daf51cd96119d49a901be21a1c4b4430b9f0d33f883e8d690"
+                  },
+                  {
+                    "sourceId": "description",
+                    "start": 431,
+                    "end": 496,
+                    "hash": "23ebf334ccb366347fe960e9d9dfdf44688fb3e6cb0b2dce480eb4e49aa5e081"
+                  }
+                ]
+              }
+            ],
+            "openQuestions": [],
+            "firstInspection": "read_32fc7810f3f3c62ba03b3b67",
+            "candidates": [
+              {
+                "artifactId": "read_32fc7810f3f3c62ba03b3b67",
+                "relevance": "relevant",
+                "whyInspect": "Defines OpenAPITag, _OpenAPITagOptional, OpenAPIExternalDocs, and _OpenAPIExternalDocsOptional TypedDict structures.",
+                "reviewQuestion": "Are required fields (like name for tags and url for externalDocs) and optional fields accurately modeled using TypedDict inheritance?",
+                "uncertainty": "Whether additional OpenAPI tag specification fields should be supported or if total=False inheritance complies across targeted Python versions."
+              },
+              {
+                "artifactId": "read_0f5b57fb07f12c4fcec06b03",
+                "relevance": "relevant",
+                "whyInspect": "Applies the new OpenAPITag type in the FastAPI class constructor annotation for openapi_tags.",
+                "reviewQuestion": "Does the union type list[OpenAPITag] | list[dict[str, Any]] | None properly preserve backward compatibility with raw dicts while supporting the TypedDict?",
+                "uncertainty": "None"
+              },
+              {
+                "artifactId": "read_388986ae5dca071d8c18e32b",
+                "relevance": "relevant",
+                "whyInspect": "Updates the get_openapi helper signature tags parameter to accept list[OpenAPITag] | list[dict[str, Any]] | None.",
+                "reviewQuestion": "Does get_openapi signature align identically with FastAPI constructor and maintain expected type compatibility?",
+                "uncertainty": "None"
+              },
+              {
+                "artifactId": "read_050365992b88e51fd17bc887",
+                "relevance": "possible",
+                "whyInspect": "Demonstrates usage of OpenAPITag annotation in tutorial code for metadata documentation.",
+                "reviewQuestion": "Does the tutorial correctly import OpenAPITag from fastapi.types and annotate tag definitions as intended for end users?",
+                "uncertainty": "None"
+              },
+              {
+                "artifactId": "read_106a80c74cafc31bc754269d",
+                "relevance": "possible",
+                "whyInspect": "Executes integration test asserting openapi.json generated from the tutorial code with tags metadata.",
+                "reviewQuestion": "Does the snapshot test confirm that OpenAPI schema output remains unchanged when tags metadata uses TypedDict?",
+                "uncertainty": "None"
+              },
+              {
+                "artifactId": "read_98d2c76c2c9d1ec21e64d612",
+                "relevance": "possible",
+                "whyInspect": "Examines the docstring example in FastAPI.__init__ demonstrating OpenAPITag usage.",
+                "reviewQuestion": "Does the documentation example accurately reflect proper typing and structure for tag metadata?",
+                "uncertainty": "Docstring content is truncated."
+              },
+              {
+                "artifactId": "read_0a6c74a137ca932f2383cdf6",
+                "relevance": "possible",
+                "whyInspect": "Inspects typing module imports in fastapi/types.py for TypedDict availability.",
+                "reviewQuestion": "Is TypedDict imported safely for all supported Python runtime environments?",
+                "uncertainty": "None."
+              }
+            ],
+            "uncertainty": []
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "read_050365992b88e51fd17bc887",
+            "path": "docs_src/metadata/tutorial004_py310.py",
+            "revision": "6f280f6f714b935f246d43a01e82fe509bc74948",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 7,
+            "hash": "7609330c5aba84d502cf97ed8634e2d26ee77196e089421bbf96ffb48988dcd1",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_e0c6f343c653f77e498bc70b",
+            "path": "fastapi/openapi/utils.py",
+            "revision": "6f280f6f714b935f246d43a01e82fe509bc74948",
+            "side": "head",
+            "startLine": 36,
+            "endLine": 42,
+            "hash": "658092417f405b869152f7ac2c6b543b5f38fc826e3d8364b9d14ea1d190124a",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_388986ae5dca071d8c18e32b",
+            "path": "fastapi/openapi/utils.py",
+            "revision": "6f280f6f714b935f246d43a01e82fe509bc74948",
+            "side": "head",
+            "startLine": 591,
+            "endLine": 597,
+            "hash": "e9f5502cd77ed66f6dbd73f50b6feeaebb2acbefc2037fdbe6168ec54daf4772",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_0a6c74a137ca932f2383cdf6",
+            "path": "fastapi/types.py",
+            "revision": "6f280f6f714b935f246d43a01e82fe509bc74948",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 7,
+            "hash": "1e1fdce8520e22eee5de2c70b86da6bec110f8828ea53ac65ea9b4e6aa76a212",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_32fc7810f3f3c62ba03b3b67",
+            "path": "fastapi/types.py",
+            "revision": "6f280f6f714b935f246d43a01e82fe509bc74948",
+            "side": "head",
+            "startLine": 10,
+            "endLine": 29,
+            "hash": "75c597036d5e2aba536944099b14390a5055cc85229077208e4b4953b36ba92f",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_adb5832e518757a8d16eff1b",
+            "path": "fastapi/applications.py",
+            "revision": "6f280f6f714b935f246d43a01e82fe509bc74948",
+            "side": "head",
+            "startLine": 17,
+            "endLine": 31,
+            "hash": "471ff19b7f328822f3efa626535ef15a79764b6b12fe78d7f57db09040972255",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_0f5b57fb07f12c4fcec06b03",
+            "path": "fastapi/applications.py",
+            "revision": "6f280f6f714b935f246d43a01e82fe509bc74948",
+            "side": "head",
+            "startLine": 216,
+            "endLine": 231,
+            "hash": "5b3644767d30977877c7ac7c0f95d74c6f593ec54c39bbddbbef65926761d267",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_98d2c76c2c9d1ec21e64d612",
+            "path": "fastapi/applications.py",
+            "revision": "6f280f6f714b935f246d43a01e82fe509bc74948",
+            "side": "head",
+            "startLine": 255,
+            "endLine": 270,
+            "hash": "1d90d4a928f0edc91ed1df909c493b509fe7cca4f704f6b4a9f90dc569afe73a",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_65ae392443606d1c2b2ac0b0",
+            "path": "tests/test_tutorial/test_metadata/test_tutorial004.py",
+            "revision": "6f280f6f714b935f246d43a01e82fe509bc74948",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 9,
+            "hash": "d722424baf704ce6089b0e19e3d0a400b46f34c1748a27ba68f92dd59a9de490",
+            "kind": "test",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_106a80c74cafc31bc754269d",
+            "path": "tests/test_tutorial/test_metadata/test_tutorial004.py",
+            "revision": "6f280f6f714b935f246d43a01e82fe509bc74948",
+            "side": "head",
+            "startLine": 16,
+            "endLine": 66,
+            "hash": "3561e040992b53b3ee1805719bdfa39e552420cf15019edf5aa036e779a0256c",
+            "kind": "test",
+            "origin": "snapshot"
+          }
+        ],
+        "unprocessed": [
+          "description:0",
+          "description:38",
+          "description:498",
+          "description:558",
+          "description:602",
+          "description:648",
+          "description:660",
+          "description:674",
+          "description:0",
+          "description:38",
+          "description:498",
+          "description:558",
+          "description:602",
+          "description:648",
+          "description:660",
+          "description:674"
+        ],
+        "limitations": [
+          "diff_context_incomplete",
+          "retrieval_python_indentation",
+          "retrieval_scan_budget_exceeded",
+          "retrieval_unverified_fallback",
+          "retrieval_budget_exceeded",
+          "requested_path_unread"
+        ],
+        "failures": [],
+        "rankingStatus": "ready",
+        "coverageStatus": "partial"
+      }
+    },
+    "generalPrAssessmentSummary": {
+      "version": 1,
+      "mode": "ordinary_pr",
+      "sourceState": "pr_author_claim",
+      "overallConclusion": "no_assessable_claims",
+      "counts": {
+        "evidence_supported": 0,
+        "evidence_partial": 0,
+        "not_demonstrated": 0,
+        "contradicted": 0,
+        "blocked": 0,
+        "not_assessable": 0
+      },
+      "reasonCodes": [
+        "author_claim_requires_confirmation",
+        "deterministic_candidate_missing",
+        "semantic_observer_unavailable"
+      ],
+      "observations": {
+        "version": 1,
+        "inventory": {
+          "state": "complete",
+          "changedArtifacts": 4,
+          "changedTestCandidates": 0
+        },
+        "links": {
+          "state": "unavailable",
+          "linkedObjectives": 0,
+          "supports": 0,
+          "tests": 0,
+          "implements": 0,
+          "contradicts": 0
+        },
+        "coverage": {
+          "source": null,
+          "evidence": null
+        }
+      }
+    }
+  }
+}

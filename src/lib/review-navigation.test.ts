@@ -201,10 +201,12 @@ describe('navigation refinement resilience',()=>{
   let reads=0;rounds=0;const i=input();const stale=await run(i,provider,{readArtifacts:async()=>{throw Error();},readCurrentInput:async()=>++reads===1?i:null});
   expect(stale.reviewCandidates.navigation.goals[0].firstInspection).toBeNull();
  });
- it('deduplicates file slots while retaining the selected first artifact line',async()=>{
+ it('retains independent same-file locations and the selected first artifact line',async()=>{
   const i=input();i.changedFiles[0].patch+='\n@@ -40 +40 @@\n-old\n+second_location();';
   const r=await run(i,async(q:any)=>{if(q.stage==='intent')return goals(q);return {...ranks(q),rankings:q.goals.map((g:any)=>({goalId:g.id,firstInspection:q.artifacts[1].id,candidates:q.artifacts.map((a:any)=>({...ranks(q).rankings[0].candidates[0],artifactId:a.id})),uncertainty:[]}))};});
-  expect(r.reviewCandidates.navigation.goals[0].candidates).toHaveLength(1);
+  expect(r.reviewCandidates.navigation.goals[0].candidates).toHaveLength(2);
+  expect(intent.validReviewNavigation(r.reviewCandidates.navigation)).toBe(true);
+  expect(buildPrEvidenceReview(r).objectives[0].code).toHaveLength(2);
   expect(buildPrEvidenceReview(r).objectives[0].firstInspection).toMatchObject({label:'src/queue.ts',line:40});
  });
  it('separates primary ranking readiness from partial source coverage across signed surfaces',async()=>{
@@ -267,7 +269,7 @@ it('accepts complete bounded coverage independently of optional ranking and reje
 it('reauthorizes a retained provisional location after a failed second round',async()=>{
  const i=input();let round=0,reads=0;
  const r=await run(i,async(q:any)=>q.stage==='intent'?goals(q):++round===1?{...ranks(q),readPaths:['src/neighbor.ts']}:Promise.reject(Error('unavailable')),{...refinementRead,readCurrentInput:async()=>++reads===1?i:null});
- expect(r.reviewCandidates.navigation.goals[0].firstInspection).toBeNull();expect(r.reviewCandidates.navigation.rankingStatus).toBe('unavailable');expect(r.reviewCandidates.navigation.limitations).toContain('stale_snapshot');
+ expect(r.reviewCandidates.navigation.goals[0].firstInspection).toBeNull();expect(r.reviewCandidates.navigation.rankingStatus).toBe('unavailable');expect(r.reviewCandidates.navigation.limitations).toContain('freshness_unavailable');
 });
 
 it('leaves the deterministic report unchanged apart from its additive companion',async()=>{
@@ -383,11 +385,11 @@ describe('goal-directed structural retrieval',()=>{
   const r=await run(i,async(q:any)=>{if(q.stage==='intent'){const v=goals(q);v.goals[1].summary='Inspect pending storage';return v;}seen=q.artifacts;return ranks(q);});
   expect(seen).toHaveLength(1);expect(seen[0].goalIds).toEqual(['goal_1','goal_2']);expect(r.reviewCandidates.navigation.goals.filter((g:any)=>g.emphasis==='primary').every((g:any)=>g.firstInspection)).toBe(true);
  });
- it('bounds each goal and the total artifact payload and keeps tests as candidate context',async()=>{
+ it('bounds the shared artifact payload and keeps tests as candidate context',async()=>{
   const i=input();i.verificationCriterionEvidenceV2={artifactBlobs:Array.from({length:8},(_,n)=>({path:n%2?`tests/pending${n}.ts`:`src/pending${n}.ts`,headSha:head,content:Array.from({length:20},(_,k)=>`export function pending${n}_${k}() {\n  return '${'x'.repeat(700)}';\n}`).join('\n')}))};let seen:any[]=[];
   const r=await run(i,async(q:any)=>{if(q.stage==='intent')return goals(q);seen=q.artifacts;return ranks(q);});
   expect(seen.some(a=>a.kind==='test')).toBe(true);expect(seen.length).toBeGreaterThan(0);expect(Buffer.byteLength(JSON.stringify(seen))).toBeLessThanOrEqual(48000);
-  for(const g of r.reviewCandidates.navigation.goals){const candidates=seen.filter(a=>a.goalIds?.includes(g.id));expect(candidates.length).toBeLessThanOrEqual(4);expect(Buffer.byteLength(JSON.stringify(candidates))).toBeLessThanOrEqual(12000);}
+  for(const g of r.reviewCandidates.navigation.goals){const candidates=seen.filter(a=>a.goalIds?.includes(g.id));expect(candidates.length).toBeLessThanOrEqual(16);expect(Buffer.byteLength(JSON.stringify(candidates))).toBeLessThanOrEqual(48000);}
   expect(r.reviewCandidates.navigation.limitations).toContain('retrieval_budget_exceeded');expect(JSON.stringify(seen)).not.toContain('pending0_19');
  });
  it('does not admit wrong-head structural snippets',async()=>{
@@ -402,7 +404,7 @@ it('coalesces overlapping fallback ranges without losing goal associations',asyn
 });
 it('reports bounded structural enumeration even for a dense file',async()=>{
  const {extractReviewSnippets}=await import('./review-snippets');const r=await extractReviewSnippets([{path:'src/dense.ts',headSha:head,content:'const pending = 1;\n'.repeat(1200)}],[{id:'goal_1',terms:['pending'],anchors:[]}]);
- expect(r.limitations).toContain('retrieval_scan_budget_exceeded');expect(r.snippets.length).toBeLessThanOrEqual(4);
+ expect(r.limitations).toContain('retrieval_scan_budget_exceeded');expect(r.snippets.length).toBeLessThanOrEqual(16);
 });
 
 describe('stable refinement comparison',()=>{
@@ -440,10 +442,10 @@ describe('stable refinement comparison',()=>{
  });
 });
 
-it('keeps a full incumbent budget valid when new context cannot fit',async()=>{
- const i=input();i.changedFiles=Array.from({length:4},(_,n)=>({path:`src/pending${n}.ts`,patch:`@@ -1 +1 @@\n+pending(${n});`}));let rounds=0;let original:string[]=[];
- const r=await run(i,async(q:any)=>{if(q.stage==='intent')return {...goals(q),goals:goals(q).goals.slice(0,1)};rounds++;original=q.artifacts.map((a:any)=>a.id);return {rankings:[{goalId:'goal_1',firstInspection:original[0],candidates:original.map(id=>({...ranks(q).rankings[0].candidates[0],artifactId:id})),uncertainty:[]}],readPaths:['src/new.ts']};},{readArtifacts:async()=>[{path:'src/new.ts',headSha:head,content:'function pending() { return 0; }'}]});
- expect(rounds).toBe(1);expect(r.reviewCandidates.navigation.goals[0].candidates.map((c:any)=>c.artifactId)).toEqual(original);expect(r.reviewCandidates.navigation.limitations).toContain('retrieval_budget_exceeded');expect(intent.validReviewNavigation(r.reviewCandidates.navigation)).toBe(true);
+it('keeps a full shared incumbent budget valid when new context cannot fit',async()=>{
+ const i=input();i.changedFiles=Array.from({length:16},(_,n)=>({path:`src/pending${n}.ts`,patch:`@@ -1 +1 @@\n+pending(${n});`}));let rounds=0;let original:string[]=[];
+ const r=await run(i,async(q:any)=>{if(q.stage==='intent')return goals(q);rounds++;original=q.artifacts.map((a:any)=>a.id);return {rankings:q.goals.map((g:any,n:number)=>({goalId:g.id,firstInspection:original[n*8],candidates:original.slice(n*8,n*8+8).map(id=>({artifactId:id,relevance:'relevant',whyInspect:'Inspect behavior',reviewQuestion:'Check behavior?',uncertainty:''})),uncertainty:[]})),readPaths:['src/new.ts']};},{readArtifacts:async()=>[{path:'src/new.ts',headSha:head,content:'function pending() { return 0; }'}]});
+ expect(rounds).toBe(1);expect(r.reviewCandidates.navigation.goals.flatMap((g:any)=>g.candidates.map((c:any)=>c.artifactId))).toEqual(original);expect(r.reviewCandidates.navigation.limitations).toContain('retrieval_budget_exceeded');expect(intent.validReviewNavigation(r.reviewCandidates.navigation)).toBe(true);
 });
 it.each([true,false])('merges cross-round partial overlaps only when shared lines agree: %s',async(agree)=>{
  const i=input();i.changedFiles=[{path:'src/overlap.rs',patch:'@@ -1,4 +1,4 @@\n line_one\n line_two\n line_three\n pending();'}];let rounds=0;let packet:any;
@@ -451,9 +453,9 @@ it.each([true,false])('merges cross-round partial overlaps only when shared line
  expect(rounds).toBe(2);expect(packet.artifacts).toHaveLength(agree?1:2);expect(intent.validReviewNavigation(r.reviewCandidates.navigation)).toBe(true);
 });
 it('does not let a larger canonical range displace required comparison evidence at the byte budget',async()=>{
- const i=input();const content=(n:number)=>`pending('${'x'.repeat(2800)}${n}');`;i.changedFiles=Array.from({length:4},(_,n)=>({path:`src/pending${n}.ts`,patch:`@@ -2 +2 @@\n+${content(n)}`}));let rounds=0;let ids:string[]=[];let second:any;
- const r=await run(i,async(q:any)=>{if(q.stage==='intent')return {...goals(q),goals:goals(q).goals.slice(0,1)};if(++rounds===1){ids=q.artifacts.map((a:any)=>a.id);return {rankings:[{goalId:'goal_1',firstInspection:ids[0],candidates:ids.map(id=>({...ranks(q).rankings[0].candidates[0],artifactId:id})),uncertainty:[]}],readPaths:['src/pending0.ts']};}second=q;return {rankings:[],readPaths:[]};},{readArtifacts:async()=>[{path:'src/pending0.ts',headSha:head,content:`function pending() {\n${content(0)}\nconst extra = '${'y'.repeat(4000)}';\n}`}]});
- if(second){const represented=second.artifacts.map((a:any)=>a.path);expect(represented).toEqual(expect.arrayContaining(ids.map(id=>r.reviewCandidates.navigation.artifacts.find((a:any)=>a.id===id).path)));expect(Buffer.byteLength(JSON.stringify(second.artifacts))).toBeLessThanOrEqual(12000);}expect(r.reviewCandidates.navigation.goals[0].candidates).toHaveLength(ids.length);
+ const i=input();const content=(n:number)=>`pending('${'x'.repeat(6200)}${n}');`;i.changedFiles=Array.from({length:7},(_,n)=>({path:`src/pending${n}.ts`,patch:`@@ -2 +2 @@\n+${content(n)}`}));let rounds=0;let ids:string[]=[];let second:any;
+ const r=await run(i,async(q:any)=>{if(q.stage==='intent')return {...goals(q),goals:goals(q).goals.slice(0,1)};if(++rounds===1){ids=q.artifacts.map((a:any)=>a.id);return {rankings:[{goalId:'goal_1',firstInspection:ids[0],candidates:ids.map(id=>({...ranks(q).rankings[0].candidates[0],artifactId:id})),uncertainty:[]}],readPaths:['src/pending0.ts']};}second=q;return {rankings:[],readPaths:[]};},{readArtifacts:async()=>[{path:'src/pending0.ts',headSha:head,content:`function pending() {\n${content(0)}\nconst extra = '${'y'.repeat(1700)}';\n}`}]});
+ if(second){const represented=second.artifacts.map((a:any)=>a.path);expect(represented).toEqual(expect.arrayContaining(ids.map(id=>r.reviewCandidates.navigation.artifacts.find((a:any)=>a.id===id).path)));expect(Buffer.byteLength(JSON.stringify(second.artifacts))).toBeLessThanOrEqual(48000);}expect(r.reviewCandidates.navigation.goals[0].candidates).toHaveLength(ids.length);
 });
 it('normalizes bounded text and retains safe siblings beside malformed optional fields',async()=>{
  const r=await run(input(),async(q:any)=>{if(q.stage==='intent'){const v:any=goals(q);v.goals[0].openQuestions=[42,'Safe question?'];return v;}const v:any=ranks(q);v.rankings[0].uncertainty=[null,'Execution is unmeasured'];v.rankings[0].candidates[0].whyInspect='Inspect behavior. '.repeat(50);return v;});const n=r.reviewCandidates.navigation;
@@ -462,4 +464,88 @@ it('normalizes bounded text and retains safe siblings beside malformed optional 
 it('does not retain copied source code after whitespace normalization',async()=>{
  const i=input();i.changedFiles[0].patch='@@ -1 +1 @@\n+return  queue.pending;';const r=await run(i,async(q:any)=>{if(q.stage==='intent')return goals(q);const v=ranks(q);v.rankings[0].candidates[0].whyInspect='Check return  queue.pending; for retention.';return v;});
  expect(r.reviewCandidates.navigation.goals[0].candidates[0].whyInspect).toBe('Check the referenced code for retention.');expect(JSON.stringify(r.reviewCandidates.navigation)).not.toContain('return queue.pending;');
+});
+it('accepts shared supplied evidence across goal hints but rejects unsupplied IDs',async()=>{
+ const i=input();i.changedFiles.push({path:'src/retire.ts',patch:'@@ -1 +1 @@\n+retire();'});const events:any[]=[];
+ const r=await run(i,async(q:any)=>{if(q.stage==='intent')return goals(q);const artifact=q.artifacts.find((a:any)=>a.path==='src/queue.ts');expect(artifact.goalIds).toEqual(['goal_1']);const v=ranks(q);v.rankings[1]={...v.rankings[1],firstInspection:artifact.id,candidates:[{...v.rankings[0].candidates[0],artifactId:artifact.id},{...v.rankings[0].candidates[0],artifactId:'UNSUPPLIED_RAW_TOKEN'}]};return v;},{onDiagnostics:(event:any)=>events.push(event)});
+ const n=r.reviewCandidates.navigation;expect(n.goals[1].firstInspection).toBe(n.goals[0].firstInspection);expect(n.goals[1].candidates).toHaveLength(1);
+ expect(events.some(e=>e.decisions?.some((d:any)=>d.reason==='unknown_artifact_ref'))).toBe(true);expect(JSON.stringify(events)).not.toContain('UNSUPPLIED_RAW_TOKEN');expect(JSON.stringify(events)).not.toContain('return queue.pending');
+ const packet=events.find(e=>e.stage==='ranking');expect(packet.artifacts[0]).toMatchObject({hash:expect.stringMatching(/^[a-f0-9]{64}$/),revision:head});expect(packet.requestHash).toMatch(/^[a-f0-9]{64}$/);expect(packet.artifactBytes).toBeGreaterThan(0);
+});
+it('keeps context allocation when eight source concerns are facets of one goal',async()=>{
+ const files=Array.from({length:8},(_,n)=>({path:`src/concern${n}.ts`,headSha:head,content:`function concern${n}() { return concern${n}; }`}));const i=input();i.taskText=Array.from({length:8},(_,n)=>`Inspect concern${n} behavior.`).join('\n\n');i.changedFiles=[];i.verificationCriterionEvidenceV2={artifactBlobs:files};
+ const packets:any[]=[];
+ for(const grouped of [true,false])await run(i,async(q:any)=>{if(q.stage==='intent'){const spans=q.sources[0].spans;const units=spans.map((s:any,n:number)=>({summary:`Inspect concern${n}`,emphasis:'primary',sourceRefs:[s.id],facets:[],openQuestions:[]}));return {goals:grouped?[{...units[0],facets:units.slice(1).map((u:any)=>({kind:'condition',summary:u.summary,sourceRefs:u.sourceRefs}))}]:units,unprocessed:[]};}packets.push(q.artifacts);return {rankings:[],readPaths:[]};});
+ expect(packets[0]).toHaveLength(8);expect(packets[0].map((a:any)=>a.hash)).toEqual(packets[1].map((a:any)=>a.hash));
+});
+it('keeps diagnostics transient, text-free, inspectable and independent of a failing sink',async()=>{
+ const i=input();const packets:any[]=[];const r=await run(i,async(q:any)=>{packets.push(structuredClone(q));return q.stage==='intent'?goals(q):ranks(q);},{onDiagnostics:()=>{throw Error('sink failure');}});const n=r.reviewCandidates.navigation;
+ const events=intent.getReviewNavigationDiagnostics(n);expect(events).toHaveLength(2);expect(events[1].requestHash).toBe(createHash('sha256').update(JSON.stringify(packets[1])).digest('hex'));expect(events[1].artifacts.map(a=>a.id)).toEqual(packets[1].artifacts.map((a:any)=>a.id));expect(events[1].artifactBytes).toBe(Buffer.byteLength(JSON.stringify(packets[1].artifacts)));expect(events[1].artifacts[0].hash).toBe(createHash('sha256').update(packets[1].artifacts[0].content).digest('hex'));expect(n.goals[0].firstInspection).not.toBeNull();expect(JSON.stringify(events)).not.toContain(i.taskText);expect(JSON.stringify(n)).not.toContain('requestHash');
+});
+it('rejects an internal alias that was never actually supplied to the model',async()=>{
+ const i=input();const body='function pending() {\n pending();\n}';i.changedFiles=[{path:'src/pending.ts',patch:'@@ -2 +2 @@\n+ pending();'}];i.verificationCriterionEvidenceV2={artifactBlobs:[{path:'src/pending.ts',headSha:head,content:body}]};const hash=createHash('sha256').update(' pending();').digest('hex');const hidden='read_'+createHash('sha256').update(JSON.stringify(['src/pending.ts',head,2,2,hash])).digest('hex').slice(0,24);
+ const r=await run(i,async(q:any)=>{if(q.stage==='intent')return goals(q);expect(q.artifacts.some((a:any)=>a.id===hidden)).toBe(false);const v=ranks(q);v.rankings[0].firstInspection=hidden;v.rankings[0].candidates[0].artifactId=hidden;return v;});expect(r.reviewCandidates.navigation.goals[0].firstInspection).toBeNull();expect(r.reviewCandidates.navigation.failures.some((f:any)=>f.reason==='unknown_artifact_ref')).toBe(true);
+});
+
+describe('navigation collection and terminal diagnostics',()=>{
+ it.each(['src/buffer.py','lib/delivery.py'])('automatically supplements a truncated summary before ranking: %s',async(path)=>{
+  const i=input();const content=['def pending(value):',...Array.from({length:20},(_,n)=>`    item${n} = ${n}`),'    return value'].join('\n');
+  i.changedFiles=[{path,status:'modified',patch:'@@ -1,22 +1,22 @@\n def pending(value):\n    cut_off\n...[truncated for privacy and token control]'}];let reads=0;let packet:any;
+  const r=await run(i,async(q:any)=>{if(q.stage==='intent')return goals(q);packet=q;return ranks(q);},{readArtifacts:async(paths:string[],sha:string)=>{reads++;expect(paths).toEqual([path]);expect(sha).toBe(head);return [{path,headSha:head,content}];}});
+  expect(reads).toBe(1);expect(packet.artifacts.some((a:any)=>a.origin==='snapshot'&&a.content.includes('return value'))).toBe(true);expect(JSON.stringify(packet)).not.toContain('cut_off');
+  const events:any[]=intent.getReviewNavigationDiagnostics(r.reviewCandidates.navigation);expect(events.at(-1).lifecycle).toEqual(expect.arrayContaining([expect.objectContaining({kind:'read',trigger:'automatic',outcome:'supplied'})]));
+ });
+ it('collects zero-call freshness failures without claiming a changed snapshot',async()=>{
+  const i=input();let calls=0;const emitted:any[]=[];
+  const r=await run(i,async()=>{calls++;},{readCurrentInput:async()=>{throw Object.assign(Error('DO_NOT_STORE'),{code:'github_rate_limited'});},onDiagnostics:(d:any)=>emitted.push(d)});
+  expect(calls).toBe(0);expect(r.reviewCandidates.navigation.limitations).toContain('freshness_unavailable');expect(r.reviewCandidates.navigation.limitations).not.toContain('stale_snapshot');expect(emitted).toHaveLength(1);
+  expect(emitted[0]).toMatchObject({stage:'preflight',providerCalled:false,lifecycle:expect.arrayContaining([expect.objectContaining({kind:'freshness',phase:'initial',outcome:'collection_failed',code:'github_rate_limited'})])});expect(JSON.stringify(emitted)).not.toContain('DO_NOT_STORE');
+ });
+ it('distinguishes a known revision change thrown by the collector',async()=>{
+  const {GitHubPullRequestHeadChangedError}=await import('./github');const i=input();
+  const r=await run(i,async()=>{throw Error('must not call');},{readCurrentInput:async()=>{throw new GitHubPullRequestHeadChangedError(head,'d'.repeat(40),'initial','base');}});
+  expect(r.reviewCandidates.navigation.limitations).toContain('stale_snapshot');expect((intent.getReviewNavigationDiagnostics(r.reviewCandidates.navigation)[0] as any).lifecycle).toEqual(expect.arrayContaining([expect.objectContaining({kind:'freshness',outcome:'snapshot_changed'})]));
+ });
+ it('reports missing and invalid automatic reads and respects a shared eight-file read bound',async()=>{
+  const i=input();i.changedFiles=Array.from({length:10},(_,n)=>({path:`src/unit${n}.py`,status:'modified'}));let requested:string[]=[];
+  const r=await run(i,async(q:any)=>q.stage==='intent'?goals(q):{rankings:[],readPaths:['src/extra.py']},{readArtifacts:async(paths:string[])=>{requested.push(...paths);return [{path:paths[0],headSha:'d'.repeat(40),content:'private wrong revision'}];}});
+  expect(requested).toHaveLength(8);expect(r.reviewCandidates.navigation.limitations).toContain('requested_path_unread');expect(JSON.stringify(r)).not.toContain('private wrong revision');expect(r.reviewCandidates.navigation.limitations).toContain('retrieval_file_budget_exceeded');
+ });
+});
+it('preserves independent test anchors through signed storage without duplicate IDs',async()=>{
+ const i=input();i.changedFiles=[{path:'tests/test_transport.py',status:'modified',patch:'@@ -4 +4 @@\n+assert pending_small()\n@@ -64 +64 @@\n+assert pending_large()'}];
+ const r=await run(i,async(q:any)=>q.stage==='intent'?goals(q):{rankings:q.goals.map((g:any)=>({goalId:g.id,firstInspection:q.artifacts[1].id,candidates:[...q.artifacts,q.artifacts[1]].map((a:any)=>({artifactId:a.id,relevance:'possible',whyInspect:'Inspect the independent assertion',reviewQuestion:'Is pending work retained?',uncertainty:''})),uncertainty:[]})),readPaths:[]});
+ expect(validateRuntimeReportBoundary({boundary:'generated_private_full',input:i,report:r}).valid).toBe(true);
+ const saved=projectTenantPersistedReport(prepareTenantDetailReportForStorage(r,'verified_agentproof','test-key'),'test-key');const decoded=decodeTenantPersistedReport(saved,{signingSecret:'test-key',createdAt:r.createdAt});expect(decoded.status).toBe('valid');
+ if(decoded.status!=='valid')throw Error('invalid storage');const view=buildPrEvidenceReview(decoded.report);expect(view.objectives[0].tests.map(t=>t.line)).toEqual([64,4]);
+});
+it.each(['github_permission_denied','github_fetch_failed'])('keeps final authorization closed and diagnoses %s',async(code)=>{
+ const i=input();let calls=0;const r=await run(i,async(q:any)=>q.stage==='intent'?goals(q):ranks(q),{readCurrentInput:async()=>{if(++calls===1)return i;throw Object.assign(Error('sensitive message'),{code});}});
+ expect(r.reviewCandidates.navigation.goals[0].firstInspection).toBeNull();expect(r.reviewCandidates.navigation.limitations).not.toContain('stale_snapshot');
+ expect((intent.getReviewNavigationDiagnostics(r.reviewCandidates.navigation).at(-1) as any).lifecycle).toEqual(expect.arrayContaining([expect.objectContaining({kind:'freshness',phase:'final',outcome:code==='github_permission_denied'?'access_changed':'collection_failed',code})]));
+});
+it('uses the real summary compaction marker to recover exact code without raising the summary bound',async()=>{
+ const {compactText}=await import('./redact');const i=input();const content=['def pending(record):',...Array.from({length:25},(_,n)=>`    item${n} = "${'x'.repeat(45)}"`),'    return record'].join('\n');const patch='@@ -1,27 +1,27 @@\n'+content.split('\n').map(l=>' '+l).join('\n');
+ i.changedFiles=[{path:'lib/archive.py',status:'modified',patch:compactText(patch,1000)}];expect(i.changedFiles[0].patch!.length).toBeLessThan(1000);let packet:any;
+ const r=await run(i,async(q:any)=>{if(q.stage==='intent')return goals(q);packet=q;return ranks(q);},{readArtifacts:async()=>[{path:'lib/archive.py',headSha:head,content}]});
+ expect(packet.artifacts.some((a:any)=>a.content===content)).toBe(true);expect(r.reviewCandidates.navigation.limitations).toContain('diff_context_incomplete');
+});
+it('does not read deleted base files at head or private automatic context',async()=>{
+ const i=input();i.changedFiles=[{path:'lib/retired.py',status:'removed'}];let calls=0;
+ for(const repositoryPrivate of [false,true])await run({...i,repositoryPrivate},async(q:any)=>q.stage==='intent'?goals(q):ranks(q),{readArtifacts:async()=>{calls++;return [];}});
+ expect(calls).toBe(0);
+});
+it('deduplicates canonical ranges after refinement while retaining the earlier first choice on failure',async()=>{
+ const i=input();const content='function pending() {\n pending_small();\n pending_large();\n}';i.changedFiles=[{path:'src/delivery.ts',patch:'@@ -2 +2 @@\n+ pending_small();\n@@ -3 +3 @@\n+ pending_large();'}];let rounds=0;
+ const r=await run(i,async(q:any)=>{if(q.stage==='intent')return goals(q);if(++rounds>1)throw Error('unavailable');return {rankings:q.goals.map((g:any)=>({goalId:g.id,firstInspection:q.artifacts[1].id,candidates:q.artifacts.map((a:any)=>({artifactId:a.id,relevance:'possible',whyInspect:'Inspect work',reviewQuestion:'Retained?',uncertainty:''})),uncertainty:[]})),readPaths:['src/delivery.ts']};},{readArtifacts:async()=>[{path:'src/delivery.ts',headSha:head,content}]});
+ expect(r.reviewCandidates.navigation.goals[0].candidates).toHaveLength(1);expect(intent.validReviewNavigation(r.reviewCandidates.navigation)).toBe(true);expect(r.reviewCandidates.navigation.goals[0].firstInspection).not.toBeNull();
+});
+it('expands a clipped changed declaration even when the goal uses different vocabulary',async()=>{
+ const i=input();i.changedFiles=[{path:'lib/warehouse.py',status:'modified',patch:'@@ -1,20 +1,20 @@\n def calculate(x):\n     y =\n...[truncated for privacy and token control]'}];const content=['def calculate(x):',...Array.from({length:25},(_,n)=>`    x${n} = ${n}`),'    return x'].join('\n');let supplied=false;
+ await run(i,async(q:any)=>{if(q.stage==='intent')return goals(q);supplied=q.artifacts.some((a:any)=>a.content===content);return ranks(q);},{readArtifacts:async()=>[{path:'lib/warehouse.py',headSha:head,content}]});expect(supplied).toBe(true);
+});
+it('does not call unchanged missing revision metadata a changed snapshot',async()=>{
+ const i=input();i.sourceProvenance=undefined;
+ const r=await run(i,async(q:any)=>q.stage==='intent'?goals(q):ranks(q),{readCurrentInput:async()=>i});
+ expect(r.reviewCandidates.navigation.limitations).toContain('exact_snapshot_unavailable');expect(r.reviewCandidates.navigation.limitations).not.toContain('stale_snapshot');
 });

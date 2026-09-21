@@ -1,3 +1,4 @@
+import { recordNavigationTransport, type NavigationTransportDiagnostics } from './review-navigation-diagnostics';
 import { GoogleGenAI } from '@google/genai';
 import {
   OpenAISemanticError,
@@ -13,15 +14,17 @@ interface GeminiGenerateRequest {
   contents:string;
   config:{systemInstruction:string;responseMimeType:string;responseJsonSchema:unknown;maxOutputTokens:number};
 }
-type GeminiGenerateContent=(request:GeminiGenerateRequest)=>Promise<{text?:string}>;
+interface GeminiResponse {text?:string;modelVersion?:string;usageMetadata?:{promptTokenCount?:number;candidatesTokenCount?:number;thoughtsTokenCount?:number};candidates?:Array<{finishReason?:string}>}
+type GeminiGenerateContent=(request:GeminiGenerateRequest)=>Promise<GeminiResponse>;
 const directModel=(model:string)=>model.replace(/^google\//,'');
 
 export async function submitReviewNavigationWithGemini(
   request:ReviewNavigationRequest,
-  options:{apiKey:string;generateContent?:GeminiGenerateContent}
+  options:{apiKey:string;generateContent?:GeminiGenerateContent;onDiagnostics?:(data:NavigationTransportDiagnostics)=>void}
 ):Promise<unknown> {
   const generateContent=options.generateContent??(input=>new GoogleGenAI({apiKey:options.apiKey}).models.generateContent(input));
-  let response:{text?:string};
+  const started=Date.now();
+  let response:GeminiResponse;
   try {
     response=await generateContent({
       model:directModel(request.model),
@@ -34,9 +37,11 @@ export async function submitReviewNavigationWithGemini(
       }
     });
   } catch {
+    recordNavigationTransport(request,{provider:'google',started,finishReasons:['failed']},options.onDiagnostics);
     throw new OpenAISemanticError('openai_provider_unavailable',true,'Gemini navigation provider unavailable.');
   }
   const text=response.text;
+  recordNavigationTransport(request,{provider:'google',started,text,modelVersion:response.modelVersion,inputTokens:response.usageMetadata?.promptTokenCount,outputTokens:response.usageMetadata?.candidatesTokenCount,thoughtTokens:response.usageMetadata?.thoughtsTokenCount,finishReasons:response.candidates?.map(c=>c.finishReason)},options.onDiagnostics);
   if(!text||text.length>48000)throw new OpenAISemanticError('openai_output_invalid',false,'Navigation output unavailable.',undefined,undefined,undefined,'provider_output_unavailable');
   try{return JSON.parse(text);}catch{throw new OpenAISemanticError('openai_output_invalid',false,'Navigation output invalid.',undefined,undefined,undefined,'provider_invalid_json');}
 }

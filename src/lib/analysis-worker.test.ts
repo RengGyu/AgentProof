@@ -1928,7 +1928,7 @@ describe("analysis worker preflight", () => {
       const serialized = JSON.stringify({ result, job: getAnalysisJobsForTests()[0], audits: getAuditEventsForTests() });
 
       expect(result.status).toBe("completed");
-      expect(observationResult?.report.reviewCandidates?.navigation?.limitations).toContain("stale_snapshot");
+      expect(observationResult?.report.reviewCandidates?.navigation?.limitations).toContain("freshness_access_changed");
       expect(fetchMock.mock.calls.filter(([url]) => String(url) === "https://api.openai.com/v1/responses")).toHaveLength(0);
       expect(serialized).not.toContain("fetch_failed");
     } finally {
@@ -3206,10 +3206,10 @@ function validSemanticCandidateForInput(input: {
 
 it('runs Google navigation in the worker without an OpenAI key',async()=>{
  stubReadyWorkerEnv({grant:{saveReportsEnabled:false,commentEnabled:false}});
- vi.stubEnv('AGENTPROOF_GENERAL_PR_OBSERVATION_MODE','advisory');vi.stubEnv('AI_GATEWAY_API_KEY','test-google-key');vi.stubEnv('AGENTPROOF_LLM_MODEL','gemini-worker');vi.stubEnv('OPENAI_API_KEY','');vi.stubEnv('OPENAI_MODEL','');
+ vi.stubEnv('AGENTPROOF_GENERAL_PR_OBSERVATION_MODE','advisory');vi.stubEnv('GEMINI_API_KEY','test-google-key');vi.stubEnv('AGENTPROOF_LLM_MODEL','gemini-worker');vi.stubEnv('OPENAI_API_KEY','');vi.stubEnv('OPENAI_MODEL','');
  const googleRequests:Array<{url:string;model:string}>=[];
- const observation=vi.spyOn(generalPrObservationService,'runGeneralPrObservationNowV2');const githubFetch=mockWorkerFetch({repositoryPrivate:false,pullRequestBody:'Internal cleanup only.'});vi.stubGlobal('fetch',async(url:string|URL|Request,init?:RequestInit)=>{if(String(url)==='https://ai-gateway.vercel.sh/v1/responses'){const body=JSON.parse(String(init?.body));googleRequests.push({url:String(url),model:body.model});const q=JSON.parse(body.input[1].content[0].text);const result=q.stage==='intent'?{goals:[{summary:'Inspect internal cleanup',emphasis:'primary',sourceRefs:[q.sources[0].spans[0].id],facets:[],openQuestions:[]}],unprocessed:[]}:{rankings:[],readPaths:[]};return Response.json({output_text:JSON.stringify(result)});}return githubFetch(url,init);});
+ const observation=vi.spyOn(generalPrObservationService,'runGeneralPrObservationNowV2');const githubFetch=mockWorkerFetch({repositoryPrivate:false,pullRequestBody:'Internal cleanup only.'});vi.stubGlobal('fetch',async(url:string|URL|Request,init?:RequestInit)=>{if(String(url).includes('generativelanguage.googleapis.com/')){const body=JSON.parse(String(init?.body));googleRequests.push({url:String(url),model:String(url).match(/models\/([^:]+):generateContent/)?.[1]??''});const q=JSON.parse(body.contents[0].parts[0].text);const result=q.stage==='intent'?{goals:[{summary:'Inspect internal cleanup',emphasis:'primary',sourceRefs:[q.sources[0].spans[0].id],facets:[],openQuestions:[]}],unprocessed:[]}:{rankings:[],readPaths:[]};return Response.json({modelVersion:'gemini-test-version',usageMetadata:{promptTokenCount:100,candidatesTokenCount:30},candidates:[{content:{role:'model',parts:[{text:JSON.stringify(result)}]},finishReason:'STOP'}]});}return githubFetch(url,init);});
  await enqueueAnalysisJob(jobInput({saveReport:false,comment:false}));
- try{const result=await runNextAnalysisJob({requestUrl:'https://agentproof.test/api/ops/analysis-jobs/run',now:new Date('2026-06-30T00:01:00Z')});expect(result.status).toBe('completed');expect(googleRequests).toHaveLength(2);expect(googleRequests.every(request=>request.model==='google/gemini-worker')).toBe(true);const value=await observation.mock.results.at(-1)?.value;expect(value?.report.reviewCandidates?.navigation?.model).toBe('google/gemini-worker');}
+ try{const result=await runNextAnalysisJob({requestUrl:'https://agentproof.test/api/ops/analysis-jobs/run',now:new Date('2026-06-30T00:01:00Z')});expect(result.status).toBe('completed');expect(googleRequests).toHaveLength(2);expect(googleRequests.every(request=>request.model==='gemini-worker')).toBe(true);const value=await observation.mock.results.at(-1)?.value;expect(value?.report.reviewCandidates?.navigation?.model).toBe('gemini-worker');const diagnostics=(await import('./review-intent')).getReviewNavigationDiagnostics(value!.report.reviewCandidates!.navigation!);expect(diagnostics[0].transport).toMatchObject({provider:'google',modelVersion:'gemini-test-version',inputTokens:100,outputTokens:30,finishReasons:['STOP']});}
  finally{observation.mockRestore();}
 });

@@ -1,3 +1,7 @@
+import { createHash } from "node:crypto";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import type { ReviewNavigationDiagnostics, ReviewNavigationOptions } from "../src/lib/review-intent";
 import { cpus } from "node:os";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -48,17 +52,49 @@ export interface PrEvidenceReviewPrediction {
   sourceKind?: DisplayedSourceKind | null;
 }
 
+export interface NavigationEvaluationOptions {
+  navigation?: ReviewNavigationOptions;
+  /** Explicit local output root. Each public case execution gets a unique subdirectory. */
+  diagnosticsDirectory?: string;
+}
+
 export async function evaluatePrEvidenceReviewCase(
   fixture: Pick<PrEvidenceReviewEvaluationFixture, "id" | "input">,
-  profile: EvaluationProfile = "as_is"
+  profile: EvaluationProfile = "as_is",
+  options: NavigationEvaluationOptions = {}
 ) {
   const input = inputForProfile(fixture.input, profile);
-  const produced = await produceValidatedReport(input);
+  const events: ReviewNavigationDiagnostics[] = [];
+  const navigation = options.navigation ? { ...options.navigation, onDiagnostics: (event: ReviewNavigationDiagnostics) => {
+    events.push(structuredClone(event));
+    options.navigation?.onDiagnostics?.(event);
+  } } : undefined;
+  let navigationDiagnosticsPath: string | undefined;
+  if (navigation && options.diagnosticsDirectory && input.repositoryPrivate === false) {
+    const root = resolve(options.diagnosticsDirectory);
+    mkdirSync(root, { recursive: true });
+    navigationDiagnosticsPath = join(mkdtempSync(join(root, "navigation-run-")), "diagnostics.json");
+  }
+  let produced: Awaited<ReturnType<typeof produceValidatedReport>>;
+  let status = "failed";
+  try {
+    produced = await produceValidatedReport(input, navigation);
+    status = produced.valid ? "complete" : "invalid";
+  } finally {
+    // Write outside the fail-soft observer callback: a storage failure must fail the local run.
+    if (navigationDiagnosticsPath) writeFileSync(navigationDiagnosticsPath, JSON.stringify({
+      schema: "agentproof.navigation-diagnostics.v1",
+      caseIdHash: createHash("sha256").update(fixture.id).digest("hex"),
+      profile, status, completedAt: new Date().toISOString(), events
+    }, null, 2) + "\n", { flag: "wx", mode: 0o600 });
+  }
+  const diagnosticOutput = navigationDiagnosticsPath ? { navigationDiagnosticsPath } : {};
   if (!produced.valid) {
     return {
       id: fixture.id,
       profile,
       status: "invalid" as const,
+      ...diagnosticOutput,
       validationErrors: produced.errors,
       sourceLimitations: sourceLimitations(input)
     };
@@ -94,6 +130,7 @@ export async function evaluatePrEvidenceReviewCase(
     id: fixture.id,
     profile,
     status: "complete" as const,
+    ...diagnosticOutput,
     validationUsedDeterministicFallback: produced.usedDeterministicFallback,
     advisorySourceState: produced.advisorySourceState,
     validatedSourceState: isVerificationReportV2(report) ? report.generalPrAssessmentSummary?.sourceState ?? null : null,
@@ -158,7 +195,7 @@ export async function evaluatePrEvidenceReviewCase(
 
 export async function evaluatePrEvidenceReviewCorpus(
   fixtures: Array<Pick<PrEvidenceReviewEvaluationFixture, "id" | "input">>,
-  options: { warmupRuns?: number; measuredRuns?: number; profile?: EvaluationProfile } = {}
+  options: { warmupRuns?: number; measuredRuns?: number; profile?: EvaluationProfile } & NavigationEvaluationOptions = {}
 ) {
   const profile = options.profile ?? "as_is";
   const warmupRuns = options.warmupRuns ?? 1;
@@ -171,8 +208,9 @@ export async function evaluatePrEvidenceReviewCorpus(
   }) as typeof fetch;
   try {
     const cases = [];
-    for (const fixture of fixtures) cases.push(await evaluatePrEvidenceReviewCase(fixture, profile));
+    for (const fixture of fixtures) cases.push(await evaluatePrEvidenceReviewCase(fixture, profile, options));
 
+    // Existing latency samples stay deterministic; navigation runs once per case above.
     for (let run = 0; run < warmupRuns; run += 1) {
       for (const fixture of fixtures) await measureCase(fixture.input, profile);
     }
@@ -361,12 +399,13 @@ async function measureCase(input: PullRequestInput, profile: EvaluationProfile) 
   return { valid: true as const, pipelineMs: pipelineFinished - pipelineStarted, projectionAndSsrMs: performance.now() - projectionStarted };
 }
 
-async function produceValidatedReport(input: PullRequestInput): Promise<
+async function produceValidatedReport(input: PullRequestInput, navigation?: ReviewNavigationOptions): Promise<
   { valid: true; report: VerificationReport; usedDeterministicFallback: boolean; advisorySourceState: string | null; observationBundleObjectiveCount: number | null } | { valid: false; errors: string[] }
 > {
   const observed = await runGeneralPrObservationNowV2({
     policy: resolveGeneralPrAssessmentRuntimePolicyV1("advisory"),
     input,
+    ...(navigation ? { navigation } : {}),
     generateReport: generateVerificationReportV2FromInput,
     validateDeterministicReport: (candidateInput, report) => resolveRuntimeReportValidation({
       boundary: "generated_private_full",

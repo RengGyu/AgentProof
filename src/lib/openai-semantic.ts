@@ -1,3 +1,4 @@
+import { recordNavigationTransport, type NavigationTransportDiagnostics } from './review-navigation-diagnostics';
 import {
   buildLlmSemanticPackage,
   buildLlmSemanticPackageSubset,
@@ -722,7 +723,7 @@ function truncate(value: string, maxLength: number): string {
 /** Two logical navigation stages use the operator model; strict verification is untouched. */
 export async function submitReviewNavigationWithOpenAI(
   request:import('./review-intent').ReviewNavigationRequest,
-  options:Pick<OpenAISemanticOptions,'apiKey'|'fetchFn'> & {onUsage?:(usage:{model:string;inputTokens:number|null;outputTokens:number|null;latencyMs:number})=>void;onRawOutput?:(text:string)=>void}
+  options:Pick<OpenAISemanticOptions,'apiKey'|'fetchFn'> & {onDiagnostics?:(data:NavigationTransportDiagnostics)=>void;onUsage?:(usage:{model:string;inputTokens:number|null;outputTokens:number|null;latencyMs:number})=>void;onRawOutput?:(text:string)=>void}
 ):Promise<unknown> {
   const started=Date.now();
   const system=reviewNavigationSystemInstruction(request.stage);
@@ -735,8 +736,10 @@ export async function submitReviewNavigationWithOpenAI(
     const p=payload as {model?:unknown;usage?:{input_tokens?:unknown;output_tokens?:unknown}};
     options.onUsage?.({model:typeof p.model==='string'?p.model:request.model,inputTokens:typeof p.usage?.input_tokens==='number'?p.usage.input_tokens:null,outputTokens:typeof p.usage?.output_tokens==='number'?p.usage.output_tokens:null,latencyMs:Date.now()-started});
   }
-  if(openAIIncompleteReason(payload))throw new OpenAISemanticError('openai_output_invalid',false,'Navigation response incomplete.',undefined,undefined,'max_output_tokens');
   const text=extractOpenAIResponseText(payload);
+  const metadata=payload as {model?:unknown;status?:unknown;usage?:{input_tokens?:unknown;output_tokens?:unknown}};
+  recordNavigationTransport(request,{provider:'openai',started,text:text??undefined,modelVersion:metadata?.model,inputTokens:metadata?.usage?.input_tokens,outputTokens:metadata?.usage?.output_tokens,finishReasons:metadata?.status?[metadata.status]:[]},options.onDiagnostics);
+  if(openAIIncompleteReason(payload))throw new OpenAISemanticError('openai_output_invalid',false,'Navigation response incomplete.',undefined,undefined,'max_output_tokens');
   if(!text||text.length>48000)throw new OpenAISemanticError('openai_output_invalid',false,'Navigation output unavailable.',undefined,undefined,undefined,'provider_output_unavailable');
   options.onRawOutput?.(text);
   try{return JSON.parse(text);}catch{throw new OpenAISemanticError('openai_output_invalid',false,'Navigation output invalid.',undefined,undefined,undefined,'provider_invalid_json');}
