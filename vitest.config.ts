@@ -7,6 +7,7 @@ export default defineConfig({
     include: [
       "src/**/*.test.ts",
       "src/**/*.test.tsx",
+      "scripts/pr-evidence-review-projection.test.ts",
       "scripts/build-eval-pack.test.mjs",
       "scripts/promote-eval-fixture.test.mjs",
       "scripts/smoke-github-comment.test.mjs",

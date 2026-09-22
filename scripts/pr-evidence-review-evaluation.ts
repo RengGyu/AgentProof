@@ -1,3 +1,4 @@
+import { inspectObjectiveProjection } from "./pr-evidence-review-projection";
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -145,6 +146,12 @@ export async function evaluatePrEvidenceReviewCase(
     mode: review.mode,
     sourceKind: review.source?.kind ?? null,
     objectiveCount: review.objectives.length,
+    objectiveProjection: isVerificationReportV2(report) && report.reviewCandidates?.navigation
+      ? null
+      : inspectObjectiveProjection(
+          review, report.requirements.map(requirement => requirement.requirementId),
+          isVerificationReportV2(report) ? report.reviewCandidates?.intentGraph : undefined
+        ),
     reviewItemCount: allItems.length,
     objectiveEvidenceCounts: review.objectives.map((objective) => ({
       objectiveId: objective.id,

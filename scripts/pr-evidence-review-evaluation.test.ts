@@ -150,7 +150,16 @@ describe("PR-to-Evidence Review evaluation", () => {
       expect(item.assessmentTargetCount).toBe(0);
       expect(item.changeSummaryConditions).toEqual([]);
       expect(item.mode).toBe("objectives");
-      expect(item.objectiveCount).toBe(item.generatedRequirementCount);
+      expect(item.objectiveProjection).not.toBeNull();
+      expect(item.objectiveProjection?.representedRequirementIds).toHaveLength(item.generatedRequirementCount);
+      expect(item.objectiveProjection).toMatchObject({
+        missingRequirementIds: [],
+        unknownRequirementIds: [],
+        missingObjectiveIds: [],
+        unexpectedObjectiveIds: [],
+        duplicateObjectiveIds: [],
+        sourceReferenceMismatches: []
+      });
       expect(item.sourceLimitations).toEqual(expect.arrayContaining([
         "task_source_not_recorded",
         "pull_request_url_not_available",
@@ -192,7 +201,16 @@ describe("PR-to-Evidence Review evaluation", () => {
       expect(item.assessmentTargetCount).toBe(0);
       expect(item.changeSummaryConditions).toEqual([]);
       expect(item.mode).toBe("objectives");
-      expect(item.objectiveCount).toBe(item.generatedRequirementCount);
+      expect(item.objectiveProjection).not.toBeNull();
+      expect(item.objectiveProjection?.representedRequirementIds).toHaveLength(item.generatedRequirementCount);
+      expect(item.objectiveProjection).toMatchObject({
+        missingRequirementIds: [],
+        unknownRequirementIds: [],
+        missingObjectiveIds: [],
+        unexpectedObjectiveIds: [],
+        duplicateObjectiveIds: [],
+        sourceReferenceMismatches: []
+      });
       expect(item.sourceLimitations).not.toContain("task_source_not_recorded");
       expect(item.sourceLimitations).toEqual(expect.arrayContaining([
         "pull_request_url_not_available",

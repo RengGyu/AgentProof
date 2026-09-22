@@ -294,6 +294,16 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
         const h=hunks[n]!,body=patch.slice(h.index!+h[0].length,hunks[n+1]?.index??patch.length);
         const lines=body.split('\n').filter(line=>line.startsWith(' ')||line.startsWith(side==='head'?'+':'-')).map(line=>line.slice(1));
         add(file.path,revision,side,Number(h[side==='head'?2:1]),lines.join('\n'),'diff');
+        // A deletion in a modified file needs the old revision too. Head-only
+        // context cannot show what was removed, even when the file still exists.
+        if(side==='head'&&file.status!=='added'&&body.split('\n').some(line=>line.startsWith('-'))){
+          const basePath=file.status==='renamed'?file.previousPath:file.path;
+          if(!navigation.baseSha||!basePath||!safePath(basePath))navigation.limitations.push('invalid_reference');
+          else{
+            const baseLines=body.split('\n').filter(line=>line.startsWith(' ')||line.startsWith('-')).map(line=>line.slice(1));
+            add(basePath,navigation.baseSha,'base',Number(h[1]),baseLines.join('\n'),'diff');
+          }
+        }
       }
     }
     for(const b of input.verificationCriterionEvidenceV2?.artifactBlobs??[]){
@@ -400,10 +410,12 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
     let safe=redactSecrets(text).replace(/```[\s\S]*?(?:```|$)/g,'').replace(/[\r\n]+/g,' ').replace(/\s+/g,' ').trim();
     const sourceOverlap=sources.some(s=>s.spans.some(p=>p.text.trim().length>=24&&text.includes(p.text.trim())));
     const codeLines=[...artifacts,...suppliedSnapshots.filter(b=>Buffer.byteLength(b.content)<=REVIEW_FILE_BYTES)].flatMap(a=>a.content.split('\n').map(line=>line.replace(/\s+/g,' ').trim())).filter(line=>line.length>=12);
-    for(const line of codeLines)if(safe.includes(line))safe=safe.replaceAll(line,'the referenced code');
+    // Drop the affected field rather than splicing a guessed phrase into prose.
+    // Other fields and the validated inspection location remain independently usable.
+    const codeOverlap=codeLines.some(line=>safe.includes(line));
     safe=safe.slice(0,600);
-    if(safe!==text||sourceOverlap){recordFailure('invalid_json_or_shape','unsafe_summary');navigation.limitations.push('unsafe_summary_omitted');}
-    return safe&&safe!=='[redacted]'?safe:undefined;
+    if(safe!==text||sourceOverlap||codeOverlap){recordFailure('invalid_json_or_shape','unsafe_summary');navigation.limitations.push('unsafe_summary_omitted');}
+    return !codeOverlap&&safe&&safe!=='[redacted]'?safe:undefined;
   };
   const fresh=async(phase:'initial'|'final')=>{
     let outcome:Extract<NavigationLifecycleEvent,{kind:'freshness'}>['outcome']='not_checked',code:string|undefined;

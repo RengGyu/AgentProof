@@ -16,13 +16,16 @@ export async function extractReviewSnippets(files:ReadFile[],goals:GoalHint[]):P
  const candidates:Array<Snippet & {score:number}>=[];
  for(const file of files){
   if(Buffer.byteLength(file.content)>REVIEW_FILE_BYTES){limitations.add('retrieval_file_budget_exceeded');continue;}
-  const content=redactSecretsPreservingLines(file.content).replace(/\r\n?/g,'\n'),lines=content.split('\n');
+  // Masking can remove delimiters (for example password=password)), so use the
+  // transient original only for boundaries. Matching, budgets and output stay redacted.
+  const sourceContent=file.content.replace(/\r\n?/g,'\n'),sourceLines=sourceContent.split('\n');
+  const content=redactSecretsPreservingLines(sourceContent),lines=content.split('\n');
   let ranges:Range[]=[];
   if(/\.[cm]?[jt]sx?$/.test(file.path)){
    try{
     const ts=(await import('typescript')).default;
     const kind=/\.tsx$/.test(file.path)?ts.ScriptKind.TSX:/\.jsx$/.test(file.path)?ts.ScriptKind.JSX:/\.[cm]?js$/.test(file.path)?ts.ScriptKind.JS:ts.ScriptKind.TS;
-    const source=ts.createSourceFile(file.path,content,ts.ScriptTarget.Latest,true,kind);
+    const source=ts.createSourceFile(file.path,sourceContent,ts.ScriptTarget.Latest,true,kind);
     if((source as typeof source & {parseDiagnostics?:unknown[]}).parseDiagnostics?.length)limitations.add('retrieval_parse_failed');
     else{
      let nodes=0;
@@ -44,8 +47,8 @@ export async function extractReviewSnippets(files:ReadFile[],goals:GoalHint[]):P
    // Strip strings/comments before counting brackets; a colon inside a default is not a header end.
    const statements:Array<{start:number;end:number;text:string}>=[];
    let quote='',depth=0,start=-1,text='';
-   for(let lineIndex=0;lineIndex<lines.length;lineIndex++){
-    const line=lines[lineIndex]!;let clean='';
+   for(let lineIndex=0;lineIndex<sourceLines.length;lineIndex++){
+    const line=sourceLines[lineIndex]!;let clean='';
     for(let c=0;c<line.length;c++){
      if(quote){
       if(line[c]==='\\'){c++;continue;}
@@ -70,10 +73,10 @@ export async function extractReviewSnippets(files:ReadFile[],goals:GoalHint[]):P
     const statement=statements[n]!;
     if(!/^(?:async\s+)?(?:def|class)\s+\w+.*:\s*$/.test(statement.text))continue;
     if(ranges.length>=1024){limitations.add('retrieval_scan_budget_exceeded');break;}
-    let first=statement.start,end=lines.length;const level=indent(lines[first]!);
-    for(let prior=n-1;prior>=0;prior--){const decorator=statements[prior]!;if(!decorator.text.startsWith('@')||indent(lines[decorator.start]!)!==level)break;first=decorator.start;}
-    for(let next=n+1;next<statements.length;next++)if(indent(lines[statements[next]!.start]!)<=level){end=statements[next]!.start;break;}
-    while(end>statement.end+1&&!lines[end-1]!.trim())end--;
+    let first=statement.start,end=sourceLines.length;const level=indent(sourceLines[first]!);
+    for(let prior=n-1;prior>=0;prior--){const decorator=statements[prior]!;if(!decorator.text.startsWith('@')||indent(sourceLines[decorator.start]!)!==level)break;first=decorator.start;}
+    for(let next=n+1;next<statements.length;next++)if(indent(sourceLines[statements[next]!.start]!)<=level){end=statements[next]!.start;break;}
+    while(end>statement.end+1&&!sourceLines[end-1]!.trim())end--;
     if(end-first<=80&&Buffer.byteLength(lines.slice(first,end).join('\n'))<=8000)ranges.push({startLine:first+1,endLine:end,priority:3});
    }
   }else limitations.add('retrieval_language_unsupported');
