@@ -1,0 +1,1164 @@
+{
+  "deployment": "https://agentproof-hy1rvlmf2-renggyus-projects.vercel.app",
+  "id": "svelte-18839",
+  "group": "unused",
+  "url": "https://github.com/sveltejs/svelte/pull/18839",
+  "httpStatus": 200,
+  "elapsedMs": 18869,
+  "error": null,
+  "expectedHead": "e4c22c15d2143b63f1cb2f2d8c2d9f9bf9570bc4",
+  "expectedBase": "a72dc8eadbf63189d9ae12e9ea18711378f8f12f",
+  "sameRevision": true,
+  "navigation": {
+    "version": 1,
+    "model": "gemini-3.8-flash",
+    "state": "ranked",
+    "repository": "sveltejs/svelte",
+    "headSha": "e4c22c15d2143b63f1cb2f2d8c2d9f9bf9570bc4",
+    "baseSha": "a72dc8eadbf63189d9ae12e9ea18711378f8f12f",
+    "sources": [
+      {
+        "id": "description",
+        "authority": "pr_author_claim",
+        "hash": "18609000e4012f62e32ce02fcc57e6d922fdda7de16b42a05480714b494bb242",
+        "length": 314,
+        "processedLength": 314,
+        "url": "https://github.com/sveltejs/svelte/pull/18839"
+      },
+      {
+        "id": "title",
+        "authority": "pr_author_claim",
+        "hash": "24747dbf8a903341fd32a2f508309978ca0084e0721b4e71a25a4ce56c1adbdd",
+        "length": 66,
+        "processedLength": 66,
+        "url": "https://github.com/sveltejs/svelte/pull/18839"
+      }
+    ],
+    "goals": [
+      {
+        "id": "goal_1",
+        "summary": "Remove incorrect special handling of export pseudo-selectors.",
+        "emphasis": "primary",
+        "authority": "pr_author_claim",
+        "sourceRefs": [
+          {
+            "sourceId": "title",
+            "start": 0,
+            "end": 66,
+            "hash": "24747dbf8a903341fd32a2f508309978ca0084e0721b4e71a25a4ce56c1adbdd"
+          },
+          {
+            "sourceId": "description",
+            "start": 0,
+            "end": 314,
+            "hash": "18609000e4012f62e32ce02fcc57e6d922fdda7de16b42a05480714b494bb242"
+          }
+        ],
+        "facets": [
+          {
+            "kind": "motivation",
+            "summary": "Export selectors were added previously but belong to Interoperable CSS, which Svelte should not specifically handle.",
+            "sourceRefs": [
+              {
+                "sourceId": "description",
+                "start": 0,
+                "end": 314,
+                "hash": "18609000e4012f62e32ce02fcc57e6d922fdda7de16b42a05480714b494bb242"
+              }
+            ]
+          },
+          {
+            "kind": "context",
+            "summary": "A changeset is omitted because the prior change is unreleased and its changeset did not mention ICSS.",
+            "sourceRefs": [
+              {
+                "sourceId": "description",
+                "start": 0,
+                "end": 314,
+                "hash": "18609000e4012f62e32ce02fcc57e6d922fdda7de16b42a05480714b494bb242"
+              }
+            ]
+          }
+        ],
+        "openQuestions": [],
+        "firstInspection": "read_2f7d1d8bbb8f88a054a6efbe",
+        "candidates": [
+          {
+            "artifactId": "read_2f7d1d8bbb8f88a054a6efbe",
+            "relevance": "relevant",
+            "whyInspect": "Shows the implementation change removing ICSS export check from complex selector pruning in the CSS analysis phase.",
+            "reviewQuestion": "Does removing the ICSS export selector branch cleanly revert the behavior without leaving outdated comments or unhandled selector states?",
+            "uncertainty": "The comment above the condition still mentions 'and ICSS export rules'."
+          },
+          {
+            "artifactId": "read_8353cd3273e80368f6592a05",
+            "relevance": "relevant",
+            "whyInspect": "Shows the updated test fixture input removing the :export selector sample.",
+            "reviewQuestion": "Does removing :export from this test case accurately restore the test fixture to its intended scope?",
+            "uncertainty": "None."
+          },
+          {
+            "artifactId": "read_290d9e5f256e9e4e58cba8d9",
+            "relevance": "relevant",
+            "whyInspect": "Shows the expected CSS output after removing the :export rule from the test.",
+            "reviewQuestion": "Does the expected CSS output match the input changes and reflect expected compiler output?",
+            "uncertainty": "None."
+          },
+          {
+            "artifactId": "read_7d3531d39fcf0382b9defc1d",
+            "relevance": "possible",
+            "whyInspect": "Provides the base implementation context for what selector logic was previously applied to :export.",
+            "reviewQuestion": "Were any other parts of the codebase touching ICSS export handling outside css-prune.js?",
+            "uncertainty": "Repository-wide references outside the diff were not searched."
+          }
+        ],
+        "uncertainty": []
+      }
+    ],
+    "artifacts": [
+      {
+        "id": "read_2f7d1d8bbb8f88a054a6efbe",
+        "path": "packages/svelte/src/compiler/phases/2-analyze/css/css-prune.js",
+        "revision": "e4c22c15d2143b63f1cb2f2d8c2d9f9bf9570bc4",
+        "side": "head",
+        "startLine": 146,
+        "endLine": 153,
+        "hash": "4a4d953f288a55ceef1746ec6ad0b0b5b89a95828f440cafaccc4547c05e2245",
+        "kind": "code",
+        "origin": "diff"
+      },
+      {
+        "id": "read_7d3531d39fcf0382b9defc1d",
+        "path": "packages/svelte/src/compiler/phases/2-analyze/css/css-prune.js",
+        "revision": "a72dc8eadbf63189d9ae12e9ea18711378f8f12f",
+        "side": "base",
+        "startLine": 146,
+        "endLine": 160,
+        "hash": "8bd73e3e76439ddd8f2a02d72d786d641730f9b4368cf46c2b983bea57cd55e1",
+        "kind": "code",
+        "origin": "diff"
+      },
+      {
+        "id": "read_290d9e5f256e9e4e58cba8d9",
+        "path": "packages/svelte/tests/css/samples/global-head-only/expected.css",
+        "revision": "e4c22c15d2143b63f1cb2f2d8c2d9f9bf9570bc4",
+        "side": "head",
+        "startLine": 1,
+        "endLine": 1,
+        "hash": "89adb5166106d9b1afe7bf9eb2796c8ed54ef090519520dae7f4d2cc8e6aa1cc",
+        "kind": "test",
+        "origin": "diff"
+      },
+      {
+        "id": "read_b0eeecb6297488122aec4693",
+        "path": "packages/svelte/tests/css/samples/global-head-only/expected.css",
+        "revision": "a72dc8eadbf63189d9ae12e9ea18711378f8f12f",
+        "side": "base",
+        "startLine": 1,
+        "endLine": 2,
+        "hash": "5953052cf48d4f48dabbc1a4fe16b0421c375492ec7b32a2375b09ba30e5e611",
+        "kind": "test",
+        "origin": "diff"
+      },
+      {
+        "id": "read_8353cd3273e80368f6592a05",
+        "path": "packages/svelte/tests/css/samples/global-head-only/input.svelte",
+        "revision": "e4c22c15d2143b63f1cb2f2d8c2d9f9bf9570bc4",
+        "side": "head",
+        "startLine": 1,
+        "endLine": 5,
+        "hash": "836ddc37df4ad38149813b86391fbe553ae03bf485373e2beb2fae6ad655ce2c",
+        "kind": "test",
+        "origin": "diff"
+      },
+      {
+        "id": "read_13f9325c49d53cfcc9829b00",
+        "path": "packages/svelte/tests/css/samples/global-head-only/input.svelte",
+        "revision": "a72dc8eadbf63189d9ae12e9ea18711378f8f12f",
+        "side": "base",
+        "startLine": 1,
+        "endLine": 6,
+        "hash": "2c1f36a23350c4538a0016530b74a02460f10c0af421fd75a822e3b3f17f5ec0",
+        "kind": "test",
+        "origin": "diff"
+      }
+    ],
+    "unprocessed": [],
+    "limitations": [],
+    "failures": [],
+    "rankingStatus": "ready",
+    "coverageStatus": "complete"
+  },
+  "report": {
+    "analysisId": "ap_muc2dpnx_13cqgr",
+    "createdAt": "2026-09-22T02:37:53.325Z",
+    "source": {
+      "title": "fix: remove incorrect special handling of :export pseudo-selectors",
+      "url": "https://github.com/sveltejs/svelte/pull/18839",
+      "author": "Rich-Harris",
+      "baseBranch": "main",
+      "headBranch": "remove-icss-handling",
+      "provenance": {
+        "version": 1,
+        "origin": "github_snapshot",
+        "headSha": "e4c22c15d2143b63f1cb2f2d8c2d9f9bf9570bc4",
+        "baseSha": "a72dc8eadbf63189d9ae12e9ea18711378f8f12f",
+        "changedFileInventory": {
+          "version": 1,
+          "completeness": "complete",
+          "headSha": "e4c22c15d2143b63f1cb2f2d8c2d9f9bf9570bc4"
+        },
+        "evidenceCapturedAt": "2026-09-22T02:37:53.315Z",
+        "inputFingerprint": {
+          "version": 1,
+          "algorithm": "sha256",
+          "value": "fb7bdee2358e1c029692886686e098d771840d0f69efc5bdaa0343ce7f6dc8e0",
+          "coverage": "github_metadata"
+        }
+      }
+    },
+    "summary": {
+      "oneLine": "Some evidence is weak. Coverage 42%. Some requirements have only partial evidence.",
+      "confidence": 0.36,
+      "priority": "medium",
+      "evidenceCoverage": 42,
+      "topRisks": [
+        "Some requirements have only partial evidence.",
+        "Some changed files have broad test evidence, but no targeted test mapping."
+      ]
+    },
+    "requirements": [
+      {
+        "requirementId": "req_1",
+        "requirementText": "#18793 added special handling for `:export` selectors, but this is incorrect",
+        "status": "unclear",
+        "evidenceRefs": [
+          "ev_2"
+        ],
+        "gaps": [
+          "Implementation evidence exists, but no matching test, log, or check evidence verifies this criterion.",
+          "No deterministic test/build execution evidence was collected for this requirement."
+        ],
+        "reviewerNote": "Treat diff evidence as implementation evidence, not proof that behavior is verified.",
+        "confidence": 0.62,
+        "evidenceStatus": "partial",
+        "sourceAuthority": "pr_description",
+        "proofAxes": [
+          {
+            "subject": "execution",
+            "polarity": "present",
+            "state": "incomplete",
+            "evidenceRefs": [],
+            "axisId": "obs_req_1_execution_1",
+            "role": "observation"
+          },
+          {
+            "subject": "implementation",
+            "polarity": "present",
+            "state": "satisfied",
+            "evidenceRefs": [
+              "ev_2"
+            ],
+            "collectionBasis": "matching_artifact_evidence",
+            "axisId": "obs_req_1_implementation_1",
+            "role": "observation"
+          }
+        ]
+      },
+      {
+        "requirementId": "req_2",
+        "requirementText": "`:export` is (apparently) part of [Interoperable CSS](https://github.com/css-modules/icss) but Svelte doesn't (and shouldn't) know what that is",
+        "status": "unclear",
+        "evidenceRefs": [
+          "ev_2",
+          "ev_21",
+          "ev_22",
+          "ev_24",
+          "ev_25",
+          "ev_26",
+          "ev_27"
+        ],
+        "gaps": [
+          "A matching test artifact changed, but no passing test check or implementation diff proves this criterion.",
+          "Execution evidence was collected, but no validated requirement-local test-relation receipt authorizes promotion."
+        ],
+        "reviewerNote": "Treat test-file changes as reviewer leads until execution and implementation evidence are connected.",
+        "confidence": 0.48,
+        "evidenceStatus": "partial",
+        "sourceAuthority": "pr_description",
+        "proofAxes": [
+          {
+            "subject": "execution",
+            "polarity": "present",
+            "state": "incomplete",
+            "evidenceRefs": [
+              "ev_21",
+              "ev_22",
+              "ev_24",
+              "ev_25",
+              "ev_26",
+              "ev_27"
+            ],
+            "collectionBasis": "passing_execution",
+            "axisId": "obs_req_2_execution_1",
+            "role": "observation"
+          },
+          {
+            "subject": "implementation",
+            "polarity": "present",
+            "state": "satisfied",
+            "evidenceRefs": [
+              "ev_2"
+            ],
+            "collectionBasis": "matching_artifact_evidence",
+            "axisId": "obs_req_2_implementation_1",
+            "role": "observation"
+          }
+        ]
+      }
+    ],
+    "claims": [
+      {
+        "id": "claim_1",
+        "text": "#18793 added special handling for `:export` selectors, but this is incorrect",
+        "evidenceRefs": [
+          "ev_2",
+          "ev_3",
+          "ev_4"
+        ],
+        "supported": false
+      }
+    ],
+    "scope": {
+      "suspected": false,
+      "outOfScopeFiles": [],
+      "reasons": [],
+      "evidenceRefs": [],
+      "provenance": []
+    },
+    "testing": {
+      "ciStatus": "passed",
+      "lintStatus": "passed",
+      "typecheckStatus": "passed",
+      "missingTests": [
+        {
+          "path": "packages/svelte/src/compiler/phases/2-analyze/css/css-prune.js",
+          "why": "Passing test evidence exists, but no targeted test evidence clearly maps to this file.",
+          "evidenceRefs": [
+            "ev_2",
+            "ev_5",
+            "ev_6",
+            "ev_7",
+            "ev_8"
+          ],
+          "provenance": [
+            {
+              "evidenceRef": "ev_2",
+              "sourceType": "diff",
+              "locator": "packages/svelte/src/compiler/phases/2-analyze/css/css-prune.js",
+              "confidence": 0.85,
+              "evidenceText": "modified packages/svelte/src/compiler/phases/2-analyze/css/css-prune.js (+1/-8). Patch excerpt: @@ -146,16 +146,9 @@ export function prune(stylesheet, elements) { ComplexSelector(node) { const selectors = get_relative_selectors(node); co..."
+            },
+            {
+              "evidenceRef": "ev_5",
+              "sourceType": "check",
+              "locator": "https://github.com/sveltejs/svelte/actions/runs/35395416051/job/105763024568",
+              "confidence": 0.9,
+              "evidenceText": "Status: passed. Tests (20, macOS-latest)"
+            },
+            {
+              "evidenceRef": "ev_6",
+              "sourceType": "check",
+              "locator": "https://github.com/sveltejs/svelte/actions/runs/35395416051/job/105763024545",
+              "confidence": 0.9,
+              "evidenceText": "Status: passed. Tests (22, ubuntu-latest)"
+            },
+            {
+              "evidenceRef": "ev_7",
+              "sourceType": "check",
+              "locator": "https://github.com/sveltejs/svelte/actions/runs/35395416051/job/105763024456",
+              "confidence": 0.9,
+              "evidenceText": "Status: passed. Tests (20, windows-latest)"
+            },
+            {
+              "evidenceRef": "ev_8",
+              "sourceType": "check",
+              "locator": "https://github.com/sveltejs/svelte/actions/runs/35395416051/job/105763024450",
+              "confidence": 0.9,
+              "evidenceText": "Status: passed. Tests (24, ubuntu-latest)"
+            }
+          ]
+        }
+      ]
+    },
+    "reviewPriority": [
+      {
+        "path": "packages/svelte/src/compiler/phases/2-analyze/css/css-prune.js",
+        "reason": "2 requirement(s) have only partial evidence.",
+        "priority": "medium",
+        "evidenceRefs": [
+          "ev_2",
+          "ev_21",
+          "ev_22",
+          "ev_24",
+          "ev_25",
+          "ev_5",
+          "ev_6",
+          "ev_7",
+          "ev_8"
+        ]
+      }
+    ],
+    "proofGraph": {
+      "version": 1,
+      "nodes": [
+        {
+          "requirementId": "req_1",
+          "requirementText": "#18793 added special handling for `:export` selectors, but this is incorrect",
+          "sourceRole": "core_requirement",
+          "sourceQuality": "author_claim",
+          "sourceSection": null,
+          "contextRoles": [],
+          "status": "partial",
+          "confidence": 0.62,
+          "implementationEvidenceRefs": [
+            "ev_2"
+          ],
+          "targetedTestEvidenceRefs": [],
+          "executionEvidenceRefs": [],
+          "gapSignals": [
+            {
+              "kind": "missing_execution",
+              "severity": "medium",
+              "message": "No deterministic test/build execution evidence was collected for this requirement.",
+              "evidenceRefs": [
+                "ev_2"
+              ]
+            }
+          ],
+          "firstFiles": [
+            "packages/svelte/src/compiler/phases/2-analyze/css/css-prune.js"
+          ]
+        },
+        {
+          "requirementId": "req_2",
+          "requirementText": "`:export` is (apparently) part of [Interoperable CSS](https://github.com/css-modules/icss) but Svelte doesn't (and shouldn't) know what that is",
+          "sourceRole": "core_requirement",
+          "sourceQuality": "author_claim",
+          "sourceSection": null,
+          "contextRoles": [],
+          "status": "partial",
+          "confidence": 0.48,
+          "implementationEvidenceRefs": [
+            "ev_2"
+          ],
+          "targetedTestEvidenceRefs": [],
+          "executionEvidenceRefs": [
+            "ev_21",
+            "ev_22",
+            "ev_24",
+            "ev_25",
+            "ev_26",
+            "ev_27"
+          ],
+          "gapSignals": [
+            {
+              "kind": "missing_execution",
+              "severity": "medium",
+              "message": "Execution evidence was collected, but no validated requirement-local test-relation receipt authorizes promotion.",
+              "evidenceRefs": [
+                "ev_21",
+                "ev_22",
+                "ev_24",
+                "ev_25",
+                "ev_26",
+                "ev_27"
+              ]
+            }
+          ],
+          "firstFiles": [
+            "packages/svelte/src/compiler/phases/2-analyze/css/css-prune.js"
+          ]
+        }
+      ],
+      "context": [
+        {
+          "id": "ctx_1",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": null,
+          "text": "#18793 added special handling for `:export` selectors, but this is incorrect"
+        },
+        {
+          "id": "ctx_2",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": null,
+          "text": "`:export` is (apparently) part of [Interoperable CSS](https://github.com/css-modules/icss) but Svelte doesn't (and shouldn't) know what that is"
+        },
+        {
+          "id": "ctx_3",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": null,
+          "text": "No changeset because #18793 is unreleased, and the changeset in that PR didn't mention ICSS"
+        }
+      ],
+      "summary": {
+        "requirementCount": 2,
+        "requirementsWithImplementation": 2,
+        "requirementsWithTargetedTests": 0,
+        "requirementsWithExecution": 1,
+        "requirementsWithGaps": 2,
+        "gapCount": 2
+      }
+    },
+    "reprompt": {
+      "targetAgent": "codex",
+      "prompt": "You are revising an AI-generated PR for AgentProof verification.\nDo not broaden the PR. Make only changes tied to the original task.\n1. Address requirement \"#18793 added special handling for `:export` selectors, but this is incorrect\" and provide evidence for the implementation.\n2. Address requirement \"`:export` is (apparently) part of [Interoperable CSS](https://github.com/css-modules/icss) but Svelte doesn't (and shouldn't) know what that is\" and provide evidence for the implementation.\n3. Add or identify tests that cover: packages/svelte/src/compiler/phases/2-analyze/css/css-prune.js.\n4. Return requirement-by-requirement proof for: \"#18793 added special handling for `:export` selectors, but this is incorrect\", \"`:export` is (apparently) part of [Interoperable CSS](https://github.com/css-modules/icss) but Svelte doesn't (and shouldn't) know what that is\".\nReturn a concise summary with changed files, tests run, and remaining risks."
+    },
+    "evidenceIndex": [
+      {
+        "id": "ev_17",
+        "kind": "check",
+        "label": "vite-ecosystem-ci",
+        "locator": "https://github.com/sveltejs/svelte/runs/105763018690",
+        "summary": "Status: unknown. vite-ecosystem-ci - The \"needs-ecosystem-ci\" label is not present. Check is not required.",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_20",
+        "kind": "check",
+        "label": "svelte.dev / preview deployments",
+        "locator": "https://github.com/sveltejs/svelte.dev/commit/2645ff6f58f6cfd6d7a287b425ddf0929f54b08a",
+        "summary": "Status: pending. svelte.dev / preview deployments - Waiting on currently-running commit checks from svelte.dev",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_5",
+        "kind": "check",
+        "label": "Tests (20, macOS-latest)",
+        "locator": "https://github.com/sveltejs/svelte/actions/runs/35395416051/job/105763024568",
+        "summary": "Status: passed. Tests (20, macOS-latest)",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_6",
+        "kind": "check",
+        "label": "Tests (22, ubuntu-latest)",
+        "locator": "https://github.com/sveltejs/svelte/actions/runs/35395416051/job/105763024545",
+        "summary": "Status: passed. Tests (22, ubuntu-latest)",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_7",
+        "kind": "check",
+        "label": "Tests (20, windows-latest)",
+        "locator": "https://github.com/sveltejs/svelte/actions/runs/35395416051/job/105763024456",
+        "summary": "Status: passed. Tests (20, windows-latest)",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_8",
+        "kind": "check",
+        "label": "Tests (24, ubuntu-latest)",
+        "locator": "https://github.com/sveltejs/svelte/actions/runs/35395416051/job/105763024450",
+        "summary": "Status: passed. Tests (24, ubuntu-latest)",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_9",
+        "kind": "check",
+        "label": "Tests (20, ubuntu-latest)",
+        "locator": "https://github.com/sveltejs/svelte/actions/runs/35395416051/job/105763024327",
+        "summary": "Status: passed. Tests (20, ubuntu-latest)",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_10",
+        "kind": "check",
+        "label": "Vercel Agent Review",
+        "locator": "https://github.com/sveltejs/svelte/runs/105763800299",
+        "summary": "Status: passed. Vercel Agent Review - Analysis completed successfully.\n\n### Review Progress\n\n- [x] Getting PR details and context (0.1ms)\n- [x] Understanding the PR timeline (1.3s)\n- [x] Creating [Vercel Sandbox](https://vercel.com/docs/vercel-sandbox) (25.7s)\n- [x] Reading [code guidelines](https://vercel.\n...[truncated for privacy and token control]",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_11",
+        "kind": "check",
+        "label": "CodeQL",
+        "locator": "https://github.com/sveltejs/svelte/runs/105763447582",
+        "summary": "Status: passed. CodeQL - [View all branch alerts](/sveltejs/svelte/security/code-scanning?query=pr%3A18839+tool%3ACodeQL+is%3Aopen).",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_12",
+        "kind": "check",
+        "label": "Vercel Security Review",
+        "locator": "https://github.com/sveltejs/svelte/runs/105763040106",
+        "summary": "Status: passed. Vercel Security Review - No findings.",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_13",
+        "kind": "check",
+        "label": "Lint",
+        "locator": "https://github.com/sveltejs/svelte/actions/runs/35395416051/job/105763024413",
+        "summary": "Status: passed. Lint",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_14",
+        "kind": "check",
+        "label": "TestNoAsync",
+        "locator": "https://github.com/sveltejs/svelte/actions/runs/35395416051/job/105763024368",
+        "summary": "Status: passed. TestNoAsync",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_15",
+        "kind": "check",
+        "label": "TSGo",
+        "locator": "https://github.com/sveltejs/svelte/actions/runs/35395416051/job/105763024328",
+        "summary": "Status: passed. TSGo",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_16",
+        "kind": "check",
+        "label": "Benchmarks",
+        "locator": "https://github.com/sveltejs/svelte/actions/runs/35395416051/job/105763024059",
+        "summary": "Status: passed. Benchmarks",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_18",
+        "kind": "check",
+        "label": "Analyze (actions)",
+        "locator": "https://github.com/sveltejs/svelte/actions/runs/35395411798/job/105763014709",
+        "summary": "Status: passed. Analyze (actions)",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_19",
+        "kind": "check",
+        "label": "Analyze (javascript-typescript)",
+        "locator": "https://github.com/sveltejs/svelte/actions/runs/35395411798/job/105763014336",
+        "summary": "Status: passed. Analyze (javascript-typescript)",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_21",
+        "kind": "log",
+        "label": "GitHub Actions job: Tests (20, ubuntu-latest)",
+        "locator": "https://github.com/sveltejs/svelte/actions/runs/35395416051/job/105763024327",
+        "summary": "Status: passed. GitHub Actions job: Tests (20, ubuntu-latest): GitHub Actions job Tests (20, ubuntu-latest): passed. Reported conclusion: success; execution output not collected. Steps: Run pnpm playwright install chromium: passed; Run pnpm test: passed",
+        "confidence": 0.75
+      },
+      {
+        "id": "ev_22",
+        "kind": "log",
+        "label": "GitHub Actions job: TestNoAsync",
+        "locator": "https://github.com/sveltejs/svelte/actions/runs/35395416051/job/105763024368",
+        "summary": "Status: passed. GitHub Actions job: TestNoAsync: GitHub Actions job TestNoAsync: passed. Reported conclusion: success; execution output not collected. Steps: Run pnpm playwright install chromium: passed; Run pnpm test runtime-runes: passed",
+        "confidence": 0.75
+      },
+      {
+        "id": "ev_23",
+        "kind": "log",
+        "label": "GitHub Actions job: Lint",
+        "locator": "https://github.com/sveltejs/svelte/actions/runs/35395416051/job/105763024413",
+        "summary": "Status: passed. GitHub Actions job: Lint: GitHub Actions job Lint: passed. Reported conclusion: success; execution output not collected. Steps: build and check generated types: passed",
+        "confidence": 0.75
+      },
+      {
+        "id": "ev_24",
+        "kind": "log",
+        "label": "GitHub Actions job: Tests (24, ubuntu-latest)",
+        "locator": "https://github.com/sveltejs/svelte/actions/runs/35395416051/job/105763024450",
+        "summary": "Status: passed. GitHub Actions job: Tests (24, ubuntu-latest): GitHub Actions job Tests (24, ubuntu-latest): passed. Reported conclusion: success; execution output not collected. Steps: Run pnpm playwright install chromium: passed; Run pnpm test: passed",
+        "confidence": 0.75
+      },
+      {
+        "id": "ev_25",
+        "kind": "log",
+        "label": "GitHub Actions job: Tests (20, windows-latest)",
+        "locator": "https://github.com/sveltejs/svelte/actions/runs/35395416051/job/105763024456",
+        "summary": "Status: passed. GitHub Actions job: Tests (20, windows-latest): GitHub Actions job Tests (20, windows-latest): passed. Reported conclusion: success; execution output not collected. Steps: Run pnpm playwright install chromium: passed; Run pnpm test: passed",
+        "confidence": 0.75
+      },
+      {
+        "id": "ev_26",
+        "kind": "log",
+        "label": "GitHub Actions job: Tests (22, ubuntu-latest)",
+        "locator": "https://github.com/sveltejs/svelte/actions/runs/35395416051/job/105763024545",
+        "summary": "Status: passed. GitHub Actions job: Tests (22, ubuntu-latest): GitHub Actions job Tests (22, ubuntu-latest): passed. Reported conclusion: success; execution output not collected. Steps: Run pnpm playwright install chromium: passed; Run pnpm test: passed",
+        "confidence": 0.75
+      },
+      {
+        "id": "ev_27",
+        "kind": "log",
+        "label": "GitHub Actions job: Tests (20, macOS-latest)",
+        "locator": "https://github.com/sveltejs/svelte/actions/runs/35395416051/job/105763024568",
+        "summary": "Status: passed. GitHub Actions job: Tests (20, macOS-latest): GitHub Actions job Tests (20, macOS-latest): passed. Reported conclusion: success; execution output not collected. Steps: Run pnpm playwright install chromium: passed; Run pnpm test: passed",
+        "confidence": 0.75
+      },
+      {
+        "id": "ev_2",
+        "kind": "diff",
+        "label": "packages/svelte/src/compiler/phases/2-analyze/css/css-prune.js",
+        "locator": "packages/svelte/src/compiler/phases/2-analyze/css/css-prune.js",
+        "codeLocation": {
+          "path": "packages/svelte/src/compiler/phases/2-analyze/css/css-prune.js",
+          "side": "head",
+          "revisionSha": "e4c22c15d2143b63f1cb2f2d8c2d9f9bf9570bc4",
+          "line": 146
+        },
+        "summary": "modified packages/svelte/src/compiler/phases/2-analyze/css/css-prune.js (+1/-8). Patch excerpt: @@ -146,16 +146,9 @@ export function prune(stylesheet, elements) {\n \t\tComplexSelector(node) {\n \t\t\tconst selectors = get_relative_selectors(node);\n \t\t\tconst rule = /** @type {Compiler.AST.CSS.Rule} */ (node.metadata.rule);\n-\n...[middle truncated for privacy and token control]\ndepend on an element in this component\n-\t\t\tif (every_is_global(selectors, 0, selectors.length, rule) || is_icss_export) {\n+\t\t\tif (every_is_global(selectors, 0, selectors.length, rule)) {\n \t\t\t\tnode.metadata.used = true;\n \t\t\t}",
+        "confidence": 0.85
+      },
+      {
+        "id": "ev_3",
+        "kind": "test",
+        "label": "packages/svelte/tests/css/samples/global-head-only/expected.css",
+        "locator": "packages/svelte/tests/css/samples/global-head-only/expected.css",
+        "codeLocation": {
+          "path": "packages/svelte/tests/css/samples/global-head-only/expected.css",
+          "side": "head",
+          "revisionSha": "e4c22c15d2143b63f1cb2f2d8c2d9f9bf9570bc4",
+          "line": 1
+        },
+        "summary": "modified packages/svelte/tests/css/samples/global-head-only/expected.css (+0/-1). Test evidence file. Patch excerpt: @@ -1,2 +1 @@\n-:export { foo: red; }\n \t:is(td, th) { color: red; }",
+        "confidence": 0.85
+      },
+      {
+        "id": "ev_4",
+        "kind": "test",
+        "label": "packages/svelte/tests/css/samples/global-head-only/input.svelte",
+        "locator": "packages/svelte/tests/css/samples/global-head-only/input.svelte",
+        "codeLocation": {
+          "path": "packages/svelte/tests/css/samples/global-head-only/input.svelte",
+          "side": "head",
+          "revisionSha": "e4c22c15d2143b63f1cb2f2d8c2d9f9bf9570bc4",
+          "line": 1
+        },
+        "summary": "modified packages/svelte/tests/css/samples/global-head-only/input.svelte (+0/-1). Test evidence file. Patch excerpt: @@ -1,6 +1,5 @@\n <svelte:head><meta name=\"x\" content=\"y\" /></svelte:head>\n \n <style>\n-\t:export { foo: red; }\n \t:is(:global(td), :global(th)) { color: red; }\n </style>",
+        "confidence": 0.85
+      },
+      {
+        "id": "ev_1",
+        "kind": "pr_description",
+        "label": "PR description",
+        "summary": "#18793 added special handling for `:export` selectors, but this is incorrect. `:export` is (apparently) part of [Interoperable CSS](https://github.com/css-modules/icss) but Svelte doesn't (and shouldn't) know what that is. No changeset because #18793 is unreleased, and the changeset in that PR didn't mention ICSS",
+        "confidence": 0.7
+      }
+    ],
+    "limitations": [
+      "Public GitHub Actions metadata reported successful build/test jobs, but success remains unverified because execution output and raw log archives were not fetched or stored.",
+      "COLLECTOR_LIMITATION: GitHub workflow execution identity remained incomplete because no exact run-attempt/job/check/head join was available.",
+      "Public GitHub metadata reported successful test/build checks, but no execution output or raw logs were collected; success remains an unverified observation.",
+      "Raw CI logs were not fetched or stored.",
+      "No original task text was provided and no single valid linked issue was available; the PR description is retained only as unverified author context."
+    ],
+    "analysisContext": "unlinked_pr",
+    "reportSchemaVersion": "verification-report.v2",
+    "verificationContract": {
+      "version": 2,
+      "policy": "strict_typed_contract",
+      "state": "absent",
+      "source": null,
+      "gaps": [
+        {
+          "kind": "verification_contract_missing",
+          "message": "Approved verification contract is missing."
+        }
+      ],
+      "objectives": []
+    },
+    "reviewCandidates": {
+      "version": 1,
+      "intentGraph": {
+        "version": 1,
+        "source": {
+          "kind": "description",
+          "hash": "18609000e4012f62e32ce02fcc57e6d922fdda7de16b42a05480714b494bb242",
+          "length": 314,
+          "coordinates": "redacted_lf_utf16"
+        },
+        "repository": "sveltejs/svelte",
+        "goals": [
+          {
+            "id": "intent_8f1c3de77249c6c0",
+            "requirementIds": [
+              "req_2",
+              "req_1"
+            ],
+            "sourceRefs": [
+              {
+                "start": 0,
+                "end": 314,
+                "hash": "18609000e4012f62e32ce02fcc57e6d922fdda7de16b42a05480714b494bb242"
+              }
+            ],
+            "facets": []
+          }
+        ],
+        "chunks": [
+          {
+            "id": "chunk_7e7f3ec2d80ea247d8127441",
+            "pool": "changed",
+            "path": "packages/svelte/src/compiler/phases/2-analyze/css/css-prune.js",
+            "revision": "e4c22c15d2143b63f1cb2f2d8c2d9f9bf9570bc4",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 1,
+            "hash": "507f093c8e82606836e1daecf8fe5a52211249a7661483f01959a52c4ad460d4",
+            "evidenceId": "ev_2"
+          },
+          {
+            "id": "chunk_2399320891a7e848ee307077",
+            "pool": "changed",
+            "path": "packages/svelte/tests/css/samples/global-head-only/expected.css",
+            "revision": "e4c22c15d2143b63f1cb2f2d8c2d9f9bf9570bc4",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 1,
+            "hash": "625bcb13f1e64560ecba9d5bd575e9ab3e35d6368fe33136f92667c81a520dce",
+            "evidenceId": "ev_3"
+          },
+          {
+            "id": "chunk_edbed1bee975c8432c31790a",
+            "pool": "changed",
+            "path": "packages/svelte/tests/css/samples/global-head-only/input.svelte",
+            "revision": "e4c22c15d2143b63f1cb2f2d8c2d9f9bf9570bc4",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 1,
+            "hash": "32ed215e303eb696354153e5218180ce96c7ca7656d726814a15fafa005749e4",
+            "evidenceId": "ev_4"
+          }
+        ],
+        "edges": [
+          {
+            "goalId": "intent_8f1c3de77249c6c0",
+            "chunkId": "chunk_7e7f3ec2d80ea247d8127441",
+            "relation": "candidate",
+            "basis": [
+              "lexical"
+            ],
+            "score": 40
+          },
+          {
+            "goalId": "intent_8f1c3de77249c6c0",
+            "chunkId": "chunk_edbed1bee975c8432c31790a",
+            "relation": "candidate",
+            "basis": [
+              "lexical"
+            ],
+            "score": 26
+          }
+        ],
+        "capabilities": {
+          "wholeRepository": "unavailable",
+          "embeddings": "unavailable",
+          "symbolResolution": "unavailable",
+          "semantic": "existing_relations_only",
+          "snapshotChunks": 0,
+          "rejectedSnapshots": 0,
+          "truncated": false
+        }
+      },
+      "requirements": [
+        {
+          "requirementId": "req_1",
+          "sourceHash": "d76e888edd4fd9e2f6557a24fb5d55e61de1eadd4d8a4514f1d3d5193efc1eba",
+          "candidates": [
+            {
+              "evidenceId": "ev_2",
+              "basis": "changed_tokens",
+              "score": 40,
+              "evidenceHash": "507f093c8e82606836e1daecf8fe5a52211249a7661483f01959a52c4ad460d4"
+            },
+            {
+              "evidenceId": "ev_4",
+              "basis": "changed_tokens",
+              "score": 26,
+              "evidenceHash": "32ed215e303eb696354153e5218180ce96c7ca7656d726814a15fafa005749e4"
+            }
+          ]
+        },
+        {
+          "requirementId": "req_2",
+          "sourceHash": "d76e888edd4fd9e2f6557a24fb5d55e61de1eadd4d8a4514f1d3d5193efc1eba",
+          "candidates": [
+            {
+              "evidenceId": "ev_2",
+              "basis": "changed_tokens",
+              "score": 40,
+              "evidenceHash": "507f093c8e82606836e1daecf8fe5a52211249a7661483f01959a52c4ad460d4"
+            },
+            {
+              "evidenceId": "ev_4",
+              "basis": "changed_tokens",
+              "score": 26,
+              "evidenceHash": "32ed215e303eb696354153e5218180ce96c7ca7656d726814a15fafa005749e4"
+            }
+          ]
+        }
+      ],
+      "retainedRelations": [
+        {
+          "requirementId": "req_1",
+          "evidenceId": "ev_2",
+          "relation": "observed"
+        },
+        {
+          "requirementId": "req_2",
+          "evidenceId": "ev_2",
+          "relation": "observed"
+        }
+      ],
+      "navigation": {
+        "version": 1,
+        "model": "gemini-3.8-flash",
+        "state": "ranked",
+        "repository": "sveltejs/svelte",
+        "headSha": "e4c22c15d2143b63f1cb2f2d8c2d9f9bf9570bc4",
+        "baseSha": "a72dc8eadbf63189d9ae12e9ea18711378f8f12f",
+        "sources": [
+          {
+            "id": "description",
+            "authority": "pr_author_claim",
+            "hash": "18609000e4012f62e32ce02fcc57e6d922fdda7de16b42a05480714b494bb242",
+            "length": 314,
+            "processedLength": 314,
+            "url": "https://github.com/sveltejs/svelte/pull/18839"
+          },
+          {
+            "id": "title",
+            "authority": "pr_author_claim",
+            "hash": "24747dbf8a903341fd32a2f508309978ca0084e0721b4e71a25a4ce56c1adbdd",
+            "length": 66,
+            "processedLength": 66,
+            "url": "https://github.com/sveltejs/svelte/pull/18839"
+          }
+        ],
+        "goals": [
+          {
+            "id": "goal_1",
+            "summary": "Remove incorrect special handling of export pseudo-selectors.",
+            "emphasis": "primary",
+            "authority": "pr_author_claim",
+            "sourceRefs": [
+              {
+                "sourceId": "title",
+                "start": 0,
+                "end": 66,
+                "hash": "24747dbf8a903341fd32a2f508309978ca0084e0721b4e71a25a4ce56c1adbdd"
+              },
+              {
+                "sourceId": "description",
+                "start": 0,
+                "end": 314,
+                "hash": "18609000e4012f62e32ce02fcc57e6d922fdda7de16b42a05480714b494bb242"
+              }
+            ],
+            "facets": [
+              {
+                "kind": "motivation",
+                "summary": "Export selectors were added previously but belong to Interoperable CSS, which Svelte should not specifically handle.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 0,
+                    "end": 314,
+                    "hash": "18609000e4012f62e32ce02fcc57e6d922fdda7de16b42a05480714b494bb242"
+                  }
+                ]
+              },
+              {
+                "kind": "context",
+                "summary": "A changeset is omitted because the prior change is unreleased and its changeset did not mention ICSS.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 0,
+                    "end": 314,
+                    "hash": "18609000e4012f62e32ce02fcc57e6d922fdda7de16b42a05480714b494bb242"
+                  }
+                ]
+              }
+            ],
+            "openQuestions": [],
+            "firstInspection": "read_2f7d1d8bbb8f88a054a6efbe",
+            "candidates": [
+              {
+                "artifactId": "read_2f7d1d8bbb8f88a054a6efbe",
+                "relevance": "relevant",
+                "whyInspect": "Shows the implementation change removing ICSS export check from complex selector pruning in the CSS analysis phase.",
+                "reviewQuestion": "Does removing the ICSS export selector branch cleanly revert the behavior without leaving outdated comments or unhandled selector states?",
+                "uncertainty": "The comment above the condition still mentions 'and ICSS export rules'."
+              },
+              {
+                "artifactId": "read_8353cd3273e80368f6592a05",
+                "relevance": "relevant",
+                "whyInspect": "Shows the updated test fixture input removing the :export selector sample.",
+                "reviewQuestion": "Does removing :export from this test case accurately restore the test fixture to its intended scope?",
+                "uncertainty": "None."
+              },
+              {
+                "artifactId": "read_290d9e5f256e9e4e58cba8d9",
+                "relevance": "relevant",
+                "whyInspect": "Shows the expected CSS output after removing the :export rule from the test.",
+                "reviewQuestion": "Does the expected CSS output match the input changes and reflect expected compiler output?",
+                "uncertainty": "None."
+              },
+              {
+                "artifactId": "read_7d3531d39fcf0382b9defc1d",
+                "relevance": "possible",
+                "whyInspect": "Provides the base implementation context for what selector logic was previously applied to :export.",
+                "reviewQuestion": "Were any other parts of the codebase touching ICSS export handling outside css-prune.js?",
+                "uncertainty": "Repository-wide references outside the diff were not searched."
+              }
+            ],
+            "uncertainty": []
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "read_2f7d1d8bbb8f88a054a6efbe",
+            "path": "packages/svelte/src/compiler/phases/2-analyze/css/css-prune.js",
+            "revision": "e4c22c15d2143b63f1cb2f2d8c2d9f9bf9570bc4",
+            "side": "head",
+            "startLine": 146,
+            "endLine": 153,
+            "hash": "4a4d953f288a55ceef1746ec6ad0b0b5b89a95828f440cafaccc4547c05e2245",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_7d3531d39fcf0382b9defc1d",
+            "path": "packages/svelte/src/compiler/phases/2-analyze/css/css-prune.js",
+            "revision": "a72dc8eadbf63189d9ae12e9ea18711378f8f12f",
+            "side": "base",
+            "startLine": 146,
+            "endLine": 160,
+            "hash": "8bd73e3e76439ddd8f2a02d72d786d641730f9b4368cf46c2b983bea57cd55e1",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_290d9e5f256e9e4e58cba8d9",
+            "path": "packages/svelte/tests/css/samples/global-head-only/expected.css",
+            "revision": "e4c22c15d2143b63f1cb2f2d8c2d9f9bf9570bc4",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 1,
+            "hash": "89adb5166106d9b1afe7bf9eb2796c8ed54ef090519520dae7f4d2cc8e6aa1cc",
+            "kind": "test",
+            "origin": "diff"
+          },
+          {
+            "id": "read_b0eeecb6297488122aec4693",
+            "path": "packages/svelte/tests/css/samples/global-head-only/expected.css",
+            "revision": "a72dc8eadbf63189d9ae12e9ea18711378f8f12f",
+            "side": "base",
+            "startLine": 1,
+            "endLine": 2,
+            "hash": "5953052cf48d4f48dabbc1a4fe16b0421c375492ec7b32a2375b09ba30e5e611",
+            "kind": "test",
+            "origin": "diff"
+          },
+          {
+            "id": "read_8353cd3273e80368f6592a05",
+            "path": "packages/svelte/tests/css/samples/global-head-only/input.svelte",
+            "revision": "e4c22c15d2143b63f1cb2f2d8c2d9f9bf9570bc4",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 5,
+            "hash": "836ddc37df4ad38149813b86391fbe553ae03bf485373e2beb2fae6ad655ce2c",
+            "kind": "test",
+            "origin": "diff"
+          },
+          {
+            "id": "read_13f9325c49d53cfcc9829b00",
+            "path": "packages/svelte/tests/css/samples/global-head-only/input.svelte",
+            "revision": "a72dc8eadbf63189d9ae12e9ea18711378f8f12f",
+            "side": "base",
+            "startLine": 1,
+            "endLine": 6,
+            "hash": "2c1f36a23350c4538a0016530b74a02460f10c0af421fd75a822e3b3f17f5ec0",
+            "kind": "test",
+            "origin": "diff"
+          }
+        ],
+        "unprocessed": [],
+        "limitations": [],
+        "failures": [],
+        "rankingStatus": "ready",
+        "coverageStatus": "complete"
+      }
+    },
+    "generalPrAssessmentSummary": {
+      "version": 1,
+      "mode": "ordinary_pr",
+      "sourceState": "pr_author_claim",
+      "overallConclusion": "evidence_partial",
+      "counts": {
+        "evidence_supported": 0,
+        "evidence_partial": 1,
+        "not_demonstrated": 0,
+        "contradicted": 0,
+        "blocked": 0,
+        "not_assessable": 0
+      },
+      "reasonCodes": [
+        "author_claim_requires_confirmation",
+        "target_relation_unresolved",
+        "verified_relation_missing"
+      ],
+      "observations": {
+        "version": 1,
+        "inventory": {
+          "state": "complete",
+          "changedArtifacts": 3,
+          "changedTestCandidates": 2
+        },
+        "links": {
+          "state": "unavailable",
+          "linkedObjectives": 0,
+          "supports": 0,
+          "tests": 0,
+          "implements": 0,
+          "contradicts": 0
+        },
+        "coverage": {
+          "source": null,
+          "evidence": null
+        }
+      }
+    },
+    "ordinaryRequirementOutcomes": {
+      "version": 1,
+      "scope": "selected_source_requirements",
+      "requirements": [
+        {
+          "requirementId": "req_1",
+          "authority": "author_claim",
+          "interpretation": "unavailable",
+          "criterion": null,
+          "reason": "source_interpretation_unavailable"
+        },
+        {
+          "requirementId": "req_2",
+          "authority": "author_claim",
+          "interpretation": "unavailable",
+          "criterion": null,
+          "reason": "source_interpretation_unavailable"
+        }
+      ]
+    }
+  }
+}

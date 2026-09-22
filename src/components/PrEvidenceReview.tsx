@@ -51,7 +51,7 @@ function EvidenceGroup({ title, items }: { title: string; items: PrEvidenceRevie
       {item.uncertainty ? <p>{item.uncertainty}</p> : null}
       {item.candidateBasis ? <p>{item.candidateBasis}</p> : null}
       {item.executionMeaning ? <p>{item.executionMeaning}</p> : null}
-      {item.url ? <a href={item.url} target="_blank" rel="noreferrer">{item.kind === "execution" ? "Open check run" : item.line ? (item.whyInspect ? "Open referenced lines" : "Open first changed line") : "Open at analyzed commit"}</a> : null}
+      {item.url ? <a href={item.url} target="_blank" rel="noreferrer">{item.kind === "execution" ? "Open check run" : item.line ? (item.relation === "candidate" || item.whyInspect ? "Open referenced lines" : "Open first changed line") : "Open at analyzed commit"}</a> : null}
     </li>)}</ul> : <p className="muted small">Unconnected — no linked evidence. Not found does not mean not implemented.</p>}
   </section>;
 }

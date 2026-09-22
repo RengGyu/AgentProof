@@ -201,13 +201,12 @@ describe('navigation refinement resilience',()=>{
   let reads=0;rounds=0;const i=input();const stale=await run(i,provider,{readArtifacts:async()=>{throw Error();},readCurrentInput:async()=>++reads===1?i:null});
   expect(stale.reviewCandidates.navigation.goals[0].firstInspection).toBeNull();
  });
- it('retains independent same-file locations and the selected first artifact line',async()=>{
+ it('retains independent same-file locations on both revisions and the selected first artifact line',async()=>{
   const i=input();i.changedFiles[0].patch+='\n@@ -40 +40 @@\n-old\n+second_location();';
-  const r=await run(i,async(q:any)=>{if(q.stage==='intent')return goals(q);return {...ranks(q),rankings:q.goals.map((g:any)=>({goalId:g.id,firstInspection:q.artifacts[1].id,candidates:q.artifacts.map((a:any)=>({...ranks(q).rankings[0].candidates[0],artifactId:a.id})),uncertainty:[]}))};});
-  expect(r.reviewCandidates.navigation.goals[0].candidates).toHaveLength(2);
-  expect(intent.validReviewNavigation(r.reviewCandidates.navigation)).toBe(true);
-  expect(buildPrEvidenceReview(r).objectives[0].code).toHaveLength(2);
-  expect(buildPrEvidenceReview(r).objectives[0].firstInspection).toMatchObject({label:'src/queue.ts',line:40});
+  const r=await run(i,async(q:any)=>{if(q.stage==='intent')return goals(q);const first=q.artifacts.find((a:any)=>a.side==='head'&&a.startLine===40);return {...ranks(q),rankings:q.goals.map((g:any)=>({goalId:g.id,firstInspection:first.id,candidates:q.artifacts.map((a:any)=>({...ranks(q).rankings[0].candidates[0],artifactId:a.id})),uncertainty:[]}))};});
+  const n=r.reviewCandidates.navigation;expect(n.goals[0].candidates).toHaveLength(4);expect(intent.validReviewNavigation(n)).toBe(true);
+  expect(n.goals[0].candidates.map((c:any)=>{const a=n.artifacts.find((a:any)=>a.id===c.artifactId);return [a.side,a.revision,a.startLine];})).toEqual(expect.arrayContaining([['head',head,1],['base',base,1],['head',head,40],['base',base,40]]));
+  const view=buildPrEvidenceReview(r);expect(view.objectives[0].code).toHaveLength(4);expect(view.objectives[0].firstInspection).toMatchObject({label:'src/queue.ts',line:40,url:`https://github.com/acme/queue/blob/${head}/src/queue.ts#L40`});
  });
  it('separates primary ranking readiness from partial source coverage across signed surfaces',async()=>{
   const i=input();const r=await run(i,async(q:any)=>q.stage==='intent'?goals(q):({...ranks(q),rankings:ranks(q).rankings.slice(0,1)}));
@@ -255,7 +254,7 @@ it('keeps unverified intent context through signed storage and rejects missing r
  expect((decoded.report as any).reviewCandidates.navigation.goals[0].facets[0]).toMatchObject({kind:'implementation_claim',summary:'Author reports durable storage',sourceRefs:[{sourceId:'description',start:0}]});
  for(const field of [{sourceRefs:[]},{summary:i.description},{summary:'return queue.pending;'}]){
   const invalid=await run(i,async(q:any)=>{const result:any=await provider(q);if(q.stage==='intent')Object.assign(result.goals[0].facets[0],field);return result;});
-  expect(invalid.reviewCandidates.navigation.goals).toHaveLength(1);if('sourceRefs' in field)expect(invalid.reviewCandidates.navigation.goals[0].facets).toEqual([]);else expect(invalid.reviewCandidates.navigation.goals[0].facets[0].summary).toBe(field.summary===i.description?i.description:'the referenced code');expect(invalid.reviewCandidates.navigation.goals[0].firstInspection).not.toBeNull();
+  expect(invalid.reviewCandidates.navigation.goals).toHaveLength(1);if('sourceRefs' in field)expect(invalid.reviewCandidates.navigation.goals[0].facets).toEqual([]);else expect(invalid.reviewCandidates.navigation.goals[0].facets[0].summary).toBe(field.summary===i.description?i.description:'Summary omitted; inspect the referenced source.');expect(invalid.reviewCandidates.navigation.goals[0].firstInspection).not.toBeNull();
   expect(invalid.reviewCandidates.navigation.failures).toEqual(expect.arrayContaining([expect.objectContaining({stage:'intent',category:'invalid_json_or_shape'})]));
  }
  expect(JSON.stringify(sanitizeReportForShare(r))).not.toContain('Author reports durable storage');
@@ -340,13 +339,13 @@ describe('field-local navigation privacy filtering',()=>{
   expect(buildPrEvidenceReview(r).objectives[0].firstInspection?.label).toBe('src/queue.ts');expect(n.goals[0].summary).toBe(i.taskText.split('\n\n')[0]);expect(n.failures).toContainEqual({stage:'intent',category:'invalid_json_or_shape',reason:'unsafe_summary'});
   expect(validateRuntimeReportBoundary({boundary:'generated_private_full',input:i,report:r}).valid).toBe(true);
  });
- it('normalizes code facets and drops fenced questions while preserving safe siblings',async()=>{
+ it('keeps facet metadata and drops fenced questions while preserving safe siblings',async()=>{
   const r=await run(input(),async(q:any)=>{if(q.stage==='ranking')return ranks(q);const v:any=goals(q);v.goals[0].facets.push({kind:'context',summary:'return queue.pending;',sourceRefs:v.goals[0].sourceRefs});v.goals[0].openQuestions=['Safe reviewer question?','```PRIVATE_QUESTION```'];return v;});
-  const g=r.reviewCandidates.navigation.goals[0];expect(g.summary).toBe('Preserve pending work during reconnect');expect(g.facets).toHaveLength(2);expect(g.facets[1].summary).toBe('the referenced code');expect(g.openQuestions).toEqual(['Safe reviewer question?']);expect(g.firstInspection).not.toBeNull();expect(JSON.stringify(r.reviewCandidates.navigation)).not.toContain('PRIVATE_QUESTION');
+  const g=r.reviewCandidates.navigation.goals[0];expect(g.summary).toBe('Preserve pending work during reconnect');expect(g.facets).toHaveLength(2);expect(g.facets[1]).toMatchObject({kind:'context',summary:'Summary omitted; inspect the referenced source.',sourceRefs:g.sourceRefs});expect(g.facets[0].summary).toBe('During reconnection');expect(g.openQuestions).toEqual(['Safe reviewer question?']);expect(g.firstInspection).not.toBeNull();expect(JSON.stringify(r.reviewCandidates.navigation)).not.toContain('PRIVATE_QUESTION');
  });
  it('retains candidate links and safe explanations despite an unsafe explanation in the same ranking',async()=>{
   const r=await run(input(),async(q:any)=>{if(q.stage==='intent')return goals(q);const v=ranks(q);v.rankings[0].candidates[0].whyInspect='return queue.pending;';v.rankings[0].uncertainty=['```PRIVATE_UNCERTAINTY```','Execution is unmeasured'];return v;});
-  const n=r.reviewCandidates.navigation;expect(n.goals.filter((g:any)=>g.emphasis==='primary').every((g:any)=>g.firstInspection)).toBe(true);expect(n.goals[0].candidates[0]).toMatchObject({whyInspect:'the referenced code',reviewQuestion:'Does reconnect retain pending entries?'});expect(n.goals[0].uncertainty).toEqual(['Execution is unmeasured']);expect(JSON.stringify(n)).not.toContain('return queue.pending;');expect(JSON.stringify(n)).not.toContain('PRIVATE_');
+  const n=r.reviewCandidates.navigation;expect(n.goals.filter((g:any)=>g.emphasis==='primary').every((g:any)=>g.firstInspection)).toBe(true);expect(n.goals[0].candidates[0]).toMatchObject({whyInspect:'',reviewQuestion:'Does reconnect retain pending entries?',uncertainty:'Runtime behavior was not exercised'});expect(n.goals[0].uncertainty).toEqual(['Execution is unmeasured']);expect(JSON.stringify(n)).not.toContain('return queue.pending;');expect(JSON.stringify(n)).not.toContain('PRIVATE_');
  });
  it('keeps internal diagnostics in storage but omits partial status labels from reviewer surfaces',async()=>{
   const i=input(),r=await run(i,async(q:any)=>q.stage==='intent'?goals(q):ranks(q));expect(r.reviewCandidates.navigation.state).toBe('partial');expect(r.reviewCandidates.navigation.coverageStatus).toBe('partial');
@@ -428,9 +427,9 @@ describe('stable refinement comparison',()=>{
   const i=input();const r=await run(i,async(q:any)=>{if(q.stage==='intent'){const v=goals(q);v.goals[0].summary=i.taskText.split('\n\n')[0];return v;}const v=ranks(q);v.rankings[0].candidates[0].whyInspect='Inspect pending work.\nConfirm retention.';return v;});
   const n=r.reviewCandidates.navigation;expect(n.goals[0].summary).toBe(i.taskText.split('\n\n')[0]);expect(n.goals[0].candidates[0].whyInspect).toBe('Inspect pending work. Confirm retention.');expect(n.failures.some((f:any)=>f.reason==='unsafe_summary')).toBe(true);
  });
- it('redacts only secrets and code while preserving safe surrounding explanations',async()=>{
+ it('masks credentials while omitting code-bearing fields and retaining safe sibling explanations',async()=>{
   const secret='ghp_'+'z'.repeat(36);const r=await run(input(),async(q:any)=>{if(q.stage==='intent')return goals(q);const v=ranks(q);v.rankings[0].candidates[0].whyInspect=`Inspect pending work. ${secret}`;v.rankings[0].candidates[0].reviewQuestion='Check return queue.pending; for retention.';return v;});const n=r.reviewCandidates.navigation;
-  expect(n.goals[0].candidates[0].whyInspect).toContain('Inspect pending work.');expect(n.goals[0].candidates[0].reviewQuestion).toContain('for retention.');expect(JSON.stringify(n)).not.toContain(secret);expect(JSON.stringify(n)).not.toContain('return queue.pending;');
+  expect(n.goals[0].candidates[0].whyInspect).toContain('Inspect pending work.');expect(n.goals[0].candidates[0].reviewQuestion).toBe('');expect(n.goals[0].candidates[0].uncertainty).toBe('Runtime behavior was not exercised');expect(n.goals[0].firstInspection).toBe(n.goals[0].candidates[0].artifactId);expect(n.limitations).toContain('unsafe_summary_omitted');expect(JSON.stringify(n)).not.toContain(secret);expect(JSON.stringify(n)).not.toContain('return queue.pending;');
  });
  it('retains valid sibling goals and candidates when source and first IDs are invalid',async()=>{
   const r=await run(input(),async(q:any)=>{if(q.stage==='intent'){const v=goals(q);v.goals[1].sourceRefs=['invented'];return v;}const v=ranks(q);v.rankings[0].firstInspection='invented';v.rankings[0].candidates.push(edge('invented'));return v;});const n=r.reviewCandidates.navigation;
@@ -463,7 +462,7 @@ it('normalizes bounded text and retains safe siblings beside malformed optional 
 });
 it('does not retain copied source code after whitespace normalization',async()=>{
  const i=input();i.changedFiles[0].patch='@@ -1 +1 @@\n+return  queue.pending;';const r=await run(i,async(q:any)=>{if(q.stage==='intent')return goals(q);const v=ranks(q);v.rankings[0].candidates[0].whyInspect='Check return  queue.pending; for retention.';return v;});
- expect(r.reviewCandidates.navigation.goals[0].candidates[0].whyInspect).toBe('Check the referenced code for retention.');expect(JSON.stringify(r.reviewCandidates.navigation)).not.toContain('return queue.pending;');
+ const g=r.reviewCandidates.navigation.goals[0];expect(g.candidates[0]).toMatchObject({whyInspect:'',reviewQuestion:'Does reconnect retain pending entries?',uncertainty:'Runtime behavior was not exercised'});expect(g.firstInspection).toBe(g.candidates[0].artifactId);expect(r.reviewCandidates.navigation.limitations).toContain('unsafe_summary_omitted');expect(JSON.stringify(r.reviewCandidates.navigation)).not.toContain('return queue.pending;');
 });
 it('accepts shared supplied evidence across goal hints but rejects unsupplied IDs',async()=>{
  const i=input();i.changedFiles.push({path:'src/retire.ts',patch:'@@ -1 +1 @@\n+retire();'});const events:any[]=[];
@@ -548,4 +547,36 @@ it('does not call unchanged missing revision metadata a changed snapshot',async(
  const i=input();i.sourceProvenance=undefined;
  const r=await run(i,async(q:any)=>q.stage==='intent'?goals(q):ranks(q),{readCurrentInput:async()=>i});
  expect(r.reviewCandidates.navigation.limitations).toContain('exact_snapshot_unavailable');expect(r.reviewCandidates.navigation.limitations).not.toContain('stale_snapshot');
+});
+
+it.each(['condition','exception','motivation','implementation_claim'])('preserves source-linked %s metadata when its unsafe summary is omitted across consumers',async(kind)=>{
+ const i=input();i.taskText='Retain queued work when reconnecting.\n\nOnly when capacity is available.\n\nExclude suspended deliveries.';
+ let rankedFacets:any[]=[];
+ const r=await run(i,async(q:any)=>{
+  if(q.stage==='intent')return {goals:[{summary:'Retain eligible deliveries',emphasis:'primary',sourceRefs:[q.sources[0].spans[0].id],facets:[{kind,summary:'return queue.pending;',sourceRefs:[q.sources[0].spans[1].id]},{kind:'exception',summary:'Exclude suspended deliveries',sourceRefs:[q.sources[0].spans[2].id]}],openQuestions:['Is capacity enforced?']}],unprocessed:[]};
+  rankedFacets=q.goals[0].facets;return ranks(q);
+ });
+ const n=r.reviewCandidates.navigation,g=n.goals[0];
+ expect(g.facets).toHaveLength(2);expect(g.facets[0]).toMatchObject({kind,summary:'Summary omitted; inspect the referenced source.',sourceRefs:[{sourceId:'task',start:i.taskText.indexOf('Only when'),end:i.taskText.indexOf('\n\nExclude'),hash:createHash('sha256').update('Only when capacity is available.').digest('hex')}]});
+ expect(rankedFacets).toEqual(g.facets);expect(g.facets[1].summary).toBe('Exclude suspended deliveries');expect(g.openQuestions).toEqual(['Is capacity enforced?']);expect(g.firstInspection).not.toBeNull();
+ expect(n.unprocessed).not.toContain(`task:${i.taskText.indexOf('Only when')}`);expect(validateRuntimeReportBoundary({boundary:'generated_private_full',input:i,report:r}).valid).toBe(true);
+ const saved=projectTenantPersistedReport(prepareTenantDetailReportForStorage(r,'verified_agentproof','test-key'),'test-key');const decoded=decodeTenantPersistedReport(saved,{signingSecret:'test-key',createdAt:r.createdAt});expect(decoded.status).toBe('valid');if(decoded.status!=='valid')throw Error('decode failed');
+ expect((decoded.report as any).reviewCandidates.navigation.goals[0]).toEqual(g);
+ for(const surface of [reportToMarkdown(decoded.report),renderToStaticMarkup(createElement(PrEvidenceReview,{review:buildDashboardPrEvidenceReview({report:decoded.report,repositoryFullName:'acme/queue',headSha:head})!}))]){
+  expect(surface).toContain('Summary omitted; inspect the referenced source.');expect(surface).toContain(`task ${i.taskText.indexOf('Only when')}`);expect(surface).toContain('Exclude suspended deliveries');expect(surface).toContain('Is capacity enforced?');expect(surface).toContain('Does reconnect retain pending entries?');expect(surface).not.toContain('return queue.pending;');
+ }
+ expect(JSON.stringify(saved)).not.toContain('return queue.pending;');expect(JSON.stringify(sanitizeReportForShare(r))).not.toContain('Retain eligible deliveries');
+ const malformed=structuredClone(n);malformed.goals[0].facets[0].sourceRefs=[];expect(intent.validReviewNavigation(malformed)).toBe(false);
+});
+it.each(['base','head'])('keeps the exact %s recommendation and safe descriptions across storage when whyInspect is omitted',async(side)=>{
+ const i=input();const r=await run(i,async(q:any)=>{
+  if(q.stage==='intent')return goals(q);
+  const a=q.artifacts.find((x:any)=>x.side===side),v=ranks({...q,artifacts:[a]});v.rankings[0].candidates[0].whyInspect='return queue.pending;';return v;
+ });
+ const n=r.reviewCandidates.navigation,g=n.goals[0],a=n.artifacts.find((x:any)=>x.id===g.firstInspection);expect(a).toMatchObject({side,revision:side==='base'?base:head,startLine:1});
+ expect(g.candidates[0]).toMatchObject({whyInspect:'',reviewQuestion:'Does reconnect retain pending entries?',uncertainty:'Runtime behavior was not exercised'});
+ const saved=projectTenantPersistedReport(prepareTenantDetailReportForStorage(r,'verified_agentproof','test-key'),'test-key');const decoded=decodeTenantPersistedReport(saved,{signingSecret:'test-key',createdAt:r.createdAt});expect(decoded.status).toBe('valid');if(decoded.status!=='valid')throw Error('decode failed');
+ const review=buildPrEvidenceReview(decoded.report),first=review.objectives[0].firstInspection!;expect(first.evidenceId).toBe(g.firstInspection);expect(first.url).toBe(`https://github.com/acme/queue/blob/${side==='base'?base:head}/src/queue.ts#L1`);
+ const html=renderToStaticMarkup(createElement(PrEvidenceReview,{review:{...review,changes:[]}}));expect(html).toContain('Open referenced lines');expect(html).not.toContain('Open first changed line');
+ for(const surface of [html,reportToMarkdown(decoded.report)]){expect(surface).toContain('Does reconnect retain pending entries?');expect(surface).toContain('Runtime behavior was not exercised');expect(surface).not.toContain('return queue.pending;');}
 });

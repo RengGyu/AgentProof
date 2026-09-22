@@ -476,7 +476,8 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
       return [{id:`goal_${index+1}`,summary:summary??'Review source-linked goal',emphasis:g.emphasis as ReviewNavigation['goals'][number]['emphasis'],authority:authorities.length===1?authorities[0]!:'mixed_sources',sourceRefs,facets:g.facets.flatMap(f=>{
         if(!navRecord(f)||!navigationFacetKinds.includes(String(f.kind))){recordFailure('invalid_json_or_shape','local_shape');return [];}
         const sourceRefs=refs(f.sourceRefs),summary=safeSummary(f.summary);
-        return summary===undefined||!sourceRefs.length?[]:[{kind:String(f.kind),summary,sourceRefs}];
+        // A withheld description must not erase the validated condition kind or its source.
+        return !sourceRefs.length?[]:[{kind:String(f.kind),summary:summary??'Summary omitted; inspect the referenced source.',sourceRefs}];
       }),openQuestions:g.openQuestions.flatMap(text=>safeSummary(text)??[]),firstInspection:null,candidates:[],uncertainty:[]}];
     });
     for(const id of result.unprocessed){if(typeof id!=='string'||!sources.some(s=>s.spans.some(p=>p.id===id))){recordFailure('invalid_json_or_shape','unknown_source_ref');continue;}navigation.unprocessed.push(id);}

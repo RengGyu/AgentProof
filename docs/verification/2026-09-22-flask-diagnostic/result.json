@@ -1,0 +1,9 @@
+{
+  "deployment": "https://agentproof-hy1rvlmf2-renggyus-projects.vercel.app",
+  "httpStatus": 401,
+  "elapsedMs": 3909,
+  "expectedBase": "d8eaaba824655046958d1a97f11780de460c3271",
+  "expectedHead": "a82e942870b6472bb40017349cca772c242eb1ad",
+  "error": "Invalid operator diagnostics token.",
+  "code": "ops_diagnostics_unauthorized"
+}

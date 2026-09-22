@@ -1,0 +1,320 @@
+{
+  "deployment": "https://agentproof-hy1rvlmf2-renggyus-projects.vercel.app",
+  "id": "express-7477",
+  "group": "unused",
+  "url": "https://github.com/expressjs/express/pull/7477",
+  "httpStatus": 200,
+  "elapsedMs": 14743,
+  "error": null,
+  "expectedHead": "b8e0273646a2fd14d2a74899251919ea0d705315",
+  "expectedBase": "9a34acf03cb818ff3f8bc40e44176e277a25cbb9",
+  "sameRevision": true,
+  "navigation": {
+    "version": 1,
+    "model": "gemini-3.8-flash",
+    "state": "fallback",
+    "repository": "expressjs/express",
+    "headSha": "b8e0273646a2fd14d2a74899251919ea0d705315",
+    "baseSha": "9a34acf03cb818ff3f8bc40e44176e277a25cbb9",
+    "sources": [
+      {
+        "id": "description",
+        "authority": "pr_author_claim",
+        "hash": "cfbc4a168cdd076bdffb718228a0c9dad5c8dd5e4dfd9c3f73e0d39ee9a76b1d",
+        "length": 1257,
+        "processedLength": 1256,
+        "url": "https://github.com/expressjs/express/pull/7477"
+      },
+      {
+        "id": "title",
+        "authority": "pr_author_claim",
+        "hash": "dc8e56229f2c028fd9f95300a9322e3a7f55f69eff132b295911dfa01f5a53be",
+        "length": 10,
+        "processedLength": 10,
+        "url": "https://github.com/expressjs/express/pull/7477"
+      }
+    ],
+    "goals": [],
+    "artifacts": [],
+    "unprocessed": [
+      "description:0",
+      "description:112",
+      "description:117",
+      "description:161",
+      "description:220",
+      "description:378",
+      "description:787",
+      "description:924",
+      "title:0"
+    ],
+    "limitations": [
+      "no_interpreted_goal"
+    ],
+    "failures": [],
+    "rankingStatus": "unavailable",
+    "coverageStatus": "partial"
+  },
+  "report": {
+    "analysisId": "ap_muc2e35l_hvcpr8",
+    "createdAt": "2026-09-22T02:38:10.809Z",
+    "source": {
+      "title": "My changes",
+      "url": "https://github.com/expressjs/express/pull/7477",
+      "author": "hatch12",
+      "baseBranch": "master",
+      "headBranch": "subbranch",
+      "provenance": {
+        "version": 1,
+        "origin": "github_snapshot",
+        "headSha": "b8e0273646a2fd14d2a74899251919ea0d705315",
+        "baseSha": "9a34acf03cb818ff3f8bc40e44176e277a25cbb9",
+        "changedFileInventory": {
+          "version": 1,
+          "completeness": "complete",
+          "headSha": "b8e0273646a2fd14d2a74899251919ea0d705315"
+        },
+        "evidenceCapturedAt": "2026-09-22T02:38:10.807Z",
+        "inputFingerprint": {
+          "version": 1,
+          "algorithm": "sha256",
+          "value": "4aebdd24634cbd551b82da625d6e8933f731c852c2903600502cc2ab1804e484",
+          "coverage": "github_metadata"
+        }
+      }
+    },
+    "summary": {
+      "oneLine": "Evidence looks mostly aligned. Coverage 0%.",
+      "confidence": 0.2,
+      "priority": "low",
+      "evidenceCoverage": 0,
+      "topRisks": [
+        "No major evidence gap found from available evidence."
+      ]
+    },
+    "requirements": [],
+    "claims": [
+      {
+        "id": "claim_1",
+        "text": "(a) The contribution was created in whole or in part by me and I",
+        "evidenceRefs": [],
+        "supported": false
+      },
+      {
+        "id": "claim_2",
+        "text": "work with modifications, whether created in whole or in part",
+        "evidenceRefs": [],
+        "supported": false
+      }
+    ],
+    "scope": {
+      "suspected": false,
+      "outOfScopeFiles": [],
+      "reasons": [],
+      "evidenceRefs": []
+    },
+    "testing": {
+      "ciStatus": "unknown",
+      "lintStatus": "unknown",
+      "typecheckStatus": "unknown",
+      "missingTests": []
+    },
+    "reviewPriority": [
+      {
+        "path": "Changed files",
+        "reason": "No blocker found from deterministic evidence; spot-check requirement mapping.",
+        "priority": "low",
+        "evidenceRefs": [
+          "ev_2"
+        ]
+      }
+    ],
+    "proofGraph": {
+      "version": 1,
+      "nodes": [],
+      "context": [],
+      "summary": {
+        "requirementCount": 0,
+        "requirementsWithImplementation": 0,
+        "requirementsWithTargetedTests": 0,
+        "requirementsWithExecution": 0,
+        "requirementsWithGaps": 0,
+        "gapCount": 0
+      }
+    },
+    "reprompt": {
+      "targetAgent": "codex",
+      "prompt": "You are revising an AI-generated PR for AgentProof verification.\nDo not broaden the PR. Make only changes tied to the original task.\n1. Summarize how each acceptance criterion maps to the changed files and test evidence.\nReturn a concise summary with changed files, tests run, and remaining risks."
+    },
+    "evidenceIndex": [
+      {
+        "id": "ev_3",
+        "kind": "check",
+        "label": "Socket Security: Pull Request Alerts",
+        "locator": "https://github.com/expressjs/express/runs/105509397644",
+        "summary": "Status: passed. Socket Security: Pull Request Alerts - |Report|Status|Message|\n|---|---|---|\n|PR #7477 Alerts|✅|Pull request contains no net changes to dependencies|\n\nPull request alerts notify when new issues are detected between the diff of the pull request and it's target branch.",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_4",
+        "kind": "check",
+        "label": "Socket Security: Project Report",
+        "locator": "https://github.com/expressjs/express/runs/105509347774",
+        "summary": "Status: passed. Socket Security: Project Report - |Report|Status|Message|\n|---|---|---|\n|Project report|✅|[View full report](https://socket.dev/dashboard/org/expressjs/sbom/76d24cec-d871-47b7-a898-b8b41ca6a046)|\n\nClick through to the see the full socket security project report page for this commit to see information about every dependency in this project.",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_2",
+        "kind": "diff",
+        "label": "Readme.md",
+        "locator": "Readme.md",
+        "codeLocation": {
+          "path": "Readme.md",
+          "side": "head",
+          "revisionSha": "b8e0273646a2fd14d2a74899251919ea0d705315",
+          "line": 1
+        },
+        "summary": "modified Readme.md (+1/-0). Patch excerpt: @@ -1,3 +1,4 @@\n+This is the readme file for new developers \n <a href=\"https://expressjs.com/\">\n   <picture>\n     <source media=\"(prefers-color-scheme: dark)\" srcset=\"https://expressjs.com/images/logos/logo-express-white.svg\">",
+        "confidence": 0.85
+      },
+      {
+        "id": "ev_1",
+        "kind": "pr_description",
+        "label": "PR description",
+        "summary": "<!--\nThank you for your pull request. Please provide a description and \nnote the Certificate of Origin below. \n\n-->\n\n<!--\nDeveloper's Certificate of Origin 1.1\n\nBy making a contribution to this project, I certify that:\n\n(a) The contribution was created in whole or in part by me and I\n    have the right to submit it under the open source license\n    indicated in the file; or\n\n(b) The contribution is based upon previous work that, to the best\n    of my knowledge, is covered under an appropriate open source\n    license and I have the right under that license to submit that\n    work with modifications, whether create\n...[truncated for privacy and token control]",
+        "confidence": 0.7
+      }
+    ],
+    "limitations": [
+      "No public test/build workflow run, check, or raw CI log was available from the collected metadata. No verified execution evidence was established.",
+      "Raw CI logs were not fetched or stored.",
+      "No original task text was provided and no single valid linked issue was available; the PR description is retained only as unverified author context.",
+      "Confidence is based only on issue, diff, and test-artifact evidence because no public test/build execution evidence was found."
+    ],
+    "analysisContext": "provided_requirement",
+    "reportSchemaVersion": "verification-report.v2",
+    "verificationContract": {
+      "version": 2,
+      "policy": "strict_typed_contract",
+      "state": "absent",
+      "source": null,
+      "gaps": [
+        {
+          "kind": "verification_contract_missing",
+          "message": "Approved verification contract is missing."
+        }
+      ],
+      "objectives": []
+    },
+    "reviewCandidates": {
+      "version": 1,
+      "intentGraph": {
+        "version": 1,
+        "source": {
+          "kind": "description",
+          "hash": "cfbc4a168cdd076bdffb718228a0c9dad5c8dd5e4dfd9c3f73e0d39ee9a76b1d",
+          "length": 1257,
+          "coordinates": "redacted_lf_utf16"
+        },
+        "repository": "expressjs/express",
+        "goals": [],
+        "chunks": [],
+        "edges": [],
+        "capabilities": {
+          "wholeRepository": "unavailable",
+          "embeddings": "unavailable",
+          "symbolResolution": "unavailable",
+          "semantic": "existing_relations_only",
+          "snapshotChunks": 0,
+          "rejectedSnapshots": 0,
+          "truncated": false
+        }
+      },
+      "requirements": [],
+      "retainedRelations": [],
+      "navigation": {
+        "version": 1,
+        "model": "gemini-3.8-flash",
+        "state": "fallback",
+        "repository": "expressjs/express",
+        "headSha": "b8e0273646a2fd14d2a74899251919ea0d705315",
+        "baseSha": "9a34acf03cb818ff3f8bc40e44176e277a25cbb9",
+        "sources": [
+          {
+            "id": "description",
+            "authority": "pr_author_claim",
+            "hash": "cfbc4a168cdd076bdffb718228a0c9dad5c8dd5e4dfd9c3f73e0d39ee9a76b1d",
+            "length": 1257,
+            "processedLength": 1256,
+            "url": "https://github.com/expressjs/express/pull/7477"
+          },
+          {
+            "id": "title",
+            "authority": "pr_author_claim",
+            "hash": "dc8e56229f2c028fd9f95300a9322e3a7f55f69eff132b295911dfa01f5a53be",
+            "length": 10,
+            "processedLength": 10,
+            "url": "https://github.com/expressjs/express/pull/7477"
+          }
+        ],
+        "goals": [],
+        "artifacts": [],
+        "unprocessed": [
+          "description:0",
+          "description:112",
+          "description:117",
+          "description:161",
+          "description:220",
+          "description:378",
+          "description:787",
+          "description:924",
+          "title:0"
+        ],
+        "limitations": [
+          "no_interpreted_goal"
+        ],
+        "failures": [],
+        "rankingStatus": "unavailable",
+        "coverageStatus": "partial"
+      }
+    },
+    "generalPrAssessmentSummary": {
+      "version": 1,
+      "mode": "ordinary_pr",
+      "sourceState": "pr_author_claim",
+      "overallConclusion": "no_assessable_claims",
+      "counts": {
+        "evidence_supported": 0,
+        "evidence_partial": 0,
+        "not_demonstrated": 0,
+        "contradicted": 0,
+        "blocked": 0,
+        "not_assessable": 0
+      },
+      "reasonCodes": [
+        "author_claim_requires_confirmation",
+        "deterministic_candidate_missing",
+        "semantic_observer_unavailable"
+      ],
+      "observations": {
+        "version": 1,
+        "inventory": {
+          "state": "complete",
+          "changedArtifacts": 1,
+          "changedTestCandidates": 0
+        },
+        "links": {
+          "state": "unavailable",
+          "linkedObjectives": 0,
+          "supports": 0,
+          "tests": 0,
+          "implements": 0,
+          "contradicts": 0
+        },
+        "coverage": {
+          "source": null,
+          "evidence": null
+        }
+      }
+    }
+  }
+}

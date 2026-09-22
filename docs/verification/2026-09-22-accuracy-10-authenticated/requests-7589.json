@@ -1,0 +1,2901 @@
+{
+  "deployment": "https://agentproof-hy1rvlmf2-renggyus-projects.vercel.app",
+  "id": "requests-7589",
+  "group": "unused",
+  "url": "https://github.com/psf/requests/pull/7589",
+  "httpStatus": 200,
+  "elapsedMs": 33850,
+  "error": null,
+  "expectedHead": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+  "expectedBase": "f361ead047be5cb873174218582f7d8b9fcd9f49",
+  "sameRevision": true,
+  "navigation": {
+    "version": 1,
+    "model": "gemini-3.8-flash",
+    "state": "partial",
+    "repository": "psf/requests",
+    "headSha": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+    "baseSha": "f361ead047be5cb873174218582f7d8b9fcd9f49",
+    "sources": [
+      {
+        "id": "description",
+        "authority": "pr_author_claim",
+        "hash": "9fb8cbba7ebbf4dcbb9717d77b921bffa3c52c672fe333feee156adf2e69ecac",
+        "length": 2957,
+        "processedLength": 2956,
+        "url": "https://github.com/psf/requests/pull/7589"
+      },
+      {
+        "id": "title",
+        "authority": "pr_author_claim",
+        "hash": "958456d295c5d6bd109c9c217c4827ffbdb31e9fc51eb9e9af4a2703bf88007c",
+        "length": 38,
+        "processedLength": 38,
+        "url": "https://github.com/psf/requests/pull/7589"
+      }
+    ],
+    "goals": [
+      {
+        "id": "goal_1",
+        "summary": "Implement performance optimizations and clock timing improvements across requests core components.",
+        "emphasis": "primary",
+        "authority": "pr_author_claim",
+        "sourceRefs": [
+          {
+            "sourceId": "title",
+            "start": 0,
+            "end": 38,
+            "hash": "958456d295c5d6bd109c9c217c4827ffbdb31e9fc51eb9e9af4a2703bf88007c"
+          },
+          {
+            "sourceId": "description",
+            "start": 16,
+            "end": 212,
+            "hash": "485333860eb016e53d52afad751444a16a03159c5970499f197030c3ec9c5f70"
+          },
+          {
+            "sourceId": "description",
+            "start": 214,
+            "end": 539,
+            "hash": "8d9f09534fb31d919dabdc1e33c45e7b97a6785b8626429344c304ddc707ed7a"
+          }
+        ],
+        "facets": [
+          {
+            "kind": "motivation",
+            "summary": "Aims to lower CPU and memory overhead on large responses, speed up cookie and ASCII checks, prevent non-monotonic timing inaccuracies, and avoid redundant proxy checks.",
+            "sourceRefs": [
+              {
+                "sourceId": "description",
+                "start": 214,
+                "end": 539,
+                "hash": "8d9f09534fb31d919dabdc1e33c45e7b97a6785b8626429344c304ddc707ed7a"
+              }
+            ]
+          },
+          {
+            "kind": "implementation_claim",
+            "summary": "Limits character encoding auto-detection in Response.apparent_encoding to the first 32 KB of response content.",
+            "sourceRefs": [
+              {
+                "sourceId": "description",
+                "start": 567,
+                "end": 1135,
+                "hash": "7c9c02d0528a5596b0ca5ba158c42a94ab0c5785baf3e1c4898b89ca62b9ff5e"
+              }
+            ]
+          },
+          {
+            "kind": "implementation_claim",
+            "summary": "Replaces exception-based encoding checks with native str.isascii() in unicode_is_ascii.",
+            "sourceRefs": [
+              {
+                "sourceId": "description",
+                "start": 1137,
+                "end": 1529,
+                "hash": "6614ac114857e9aa4da70a7e097734d6bba030c2feccb860b03b17af08daedc6"
+              }
+            ]
+          },
+          {
+            "kind": "implementation_claim",
+            "summary": "Converts cookie name lookup collection in cookiejar_from_dict from a list to a set comprehension for O(1) checks.",
+            "sourceRefs": [
+              {
+                "sourceId": "description",
+                "start": 1531,
+                "end": 1904,
+                "hash": "d0ae0b4c5a8d8f271ac702de46b9b875375081af13b79787a447f58109ab3f8b"
+              }
+            ]
+          },
+          {
+            "kind": "implementation_claim",
+            "summary": "Eliminates duplicate proxy-bypass evaluation in resolve_proxies by directly calling getproxies() when bypass evaluates to False.",
+            "sourceRefs": [
+              {
+                "sourceId": "description",
+                "start": 1906,
+                "end": 2369,
+                "hash": "fc520c074fbfb22c58f08b6542237b23423430c8d71f6d0aef0c5b487bdffbbd"
+              }
+            ]
+          },
+          {
+            "kind": "implementation_claim",
+            "summary": "Sets preferred_clock to time.perf_counter universally across platforms in sessions.py to ensure monotonic timing.",
+            "sourceRefs": [
+              {
+                "sourceId": "description",
+                "start": 2371,
+                "end": 2739,
+                "hash": "1002f5f70a555d7ab286f2952bfce0538666d26b9d3472f3cf5e08c7fb8e65ec"
+              }
+            ]
+          },
+          {
+            "kind": "test_claim",
+            "summary": "Reports running pytest with all component-specific tests and the full suite passing as expected.",
+            "sourceRefs": [
+              {
+                "sourceId": "description",
+                "start": 2763,
+                "end": 2956,
+                "hash": "7d7597e601f5569b3cf64db458352a9b1b06bacfe915504fb553753cc3698a3f"
+              }
+            ]
+          }
+        ],
+        "openQuestions": [],
+        "firstInspection": "read_089b4a2d085fa5a453964e5a",
+        "candidates": [
+          {
+            "artifactId": "read_089b4a2d085fa5a453964e5a",
+            "relevance": "relevant",
+            "whyInspect": "Shows the updated proxy resolution logic in resolve_proxies that avoids redundant proxy bypass checks by directly querying system proxies.",
+            "reviewQuestion": "Does replacing get_environ_proxies with getproxies preserve identical environment proxy retrieval and scheme matching semantics?",
+            "uncertainty": "Behavior on platforms with custom proxy bypass configurations requires checking how getproxies behaves compared to get_environ_proxies."
+          },
+          {
+            "artifactId": "read_01f6f101ccffc866e28af178",
+            "relevance": "relevant",
+            "whyInspect": "Implements the 32 KB slice limit for character encoding detection on response content in apparent_encoding.",
+            "reviewQuestion": "Could truncating content at 32 KB degrade charset detection accuracy on HTML or XML documents where charset declarations appear later?",
+            "uncertainty": "None regarding the code change itself; chardet/charset_normalizer accuracy on sliced content depends on input length."
+          },
+          {
+            "artifactId": "read_b0f5d4521830ad61076481c6",
+            "relevance": "relevant",
+            "whyInspect": "Contains the conversion of cookiejar name inspection to a set comprehension for constant-time membership lookups.",
+            "reviewQuestion": "Does the set comprehension correctly match the previous behavior without altering cookie overwrite rules or order?",
+            "uncertainty": "None."
+          },
+          {
+            "artifactId": "read_a73897c2be9b9063e2234518",
+            "relevance": "relevant",
+            "whyInspect": "Contains the replacement of codec encoding trial logic with the native str.isascii method in unicode_is_ascii.",
+            "reviewQuestion": "Are there any edge cases or type assertions where u_string.isascii differs from the previous ascii encode trial?",
+            "uncertainty": "None."
+          },
+          {
+            "artifactId": "read_9f0e7ca2443715f8023a5cb2",
+            "relevance": "relevant",
+            "whyInspect": "Shows the assignment of preferred_clock to time.perf_counter across all platforms.",
+            "reviewQuestion": "Does standardizing on time.perf_counter avoid time drifting or backwards adjustments across all supported operating systems?",
+            "uncertainty": "None."
+          },
+          {
+            "artifactId": "read_700dd479a09a48362baa72d1",
+            "relevance": "possible",
+            "whyInspect": "Defines should_bypass_proxies, which interacts with resolve_proxies when determining whether environment proxies should be bypassed.",
+            "reviewQuestion": "Is should_bypass_proxies still functioning properly when resolve_proxies consumes its return value?",
+            "uncertainty": "None."
+          },
+          {
+            "artifactId": "read_e03d00b81b05f10c53a7ea1e",
+            "relevance": "possible",
+            "whyInspect": "Tests environment proxy bypass logic against various no_proxy fixtures and configurations.",
+            "reviewQuestion": "Do existing proxy test suites sufficiently cover resolve_proxies and getproxies pathways?",
+            "uncertainty": "Existing tests test get_environ_proxies rather than resolve_proxies directly."
+          }
+        ],
+        "uncertainty": []
+      }
+    ],
+    "artifacts": [
+      {
+        "id": "read_a73897c2be9b9063e2234518",
+        "path": "src/requests/_internal_utils.py",
+        "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+        "side": "head",
+        "startLine": 44,
+        "endLine": 47,
+        "hash": "22739a41d8930ec56f2836523059648e6a2a977d21c9adac4624a451c2ae4863",
+        "kind": "code",
+        "origin": "diff"
+      },
+      {
+        "id": "read_e3eb4fb1dfe6a09283f354c7",
+        "path": "src/requests/_internal_utils.py",
+        "revision": "f361ead047be5cb873174218582f7d8b9fcd9f49",
+        "side": "base",
+        "startLine": 44,
+        "endLine": 51,
+        "hash": "a5fe1494dad5641f33906317e8c571a9de348a5c84c39bddca61eb1db127a8fa",
+        "kind": "code",
+        "origin": "diff"
+      },
+      {
+        "id": "read_b0f5d4521830ad61076481c6",
+        "path": "src/requests/cookies.py",
+        "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+        "side": "head",
+        "startLine": 593,
+        "endLine": 599,
+        "hash": "d0ee0ebadb6f07734c61dfc25a0a64f7aa5a4d602c378fe7af6428e763b08efb",
+        "kind": "code",
+        "origin": "diff"
+      },
+      {
+        "id": "read_867e3a08fad1adef9395b0e3",
+        "path": "src/requests/cookies.py",
+        "revision": "f361ead047be5cb873174218582f7d8b9fcd9f49",
+        "side": "base",
+        "startLine": 593,
+        "endLine": 599,
+        "hash": "73013eb1d4d6a20029cbf4f3b3db72aab6a2a96edf74f79e10eefdedd2dddce0",
+        "kind": "code",
+        "origin": "diff"
+      },
+      {
+        "id": "read_01f6f101ccffc866e28af178",
+        "path": "src/requests/models.py",
+        "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+        "side": "head",
+        "startLine": 897,
+        "endLine": 903,
+        "hash": "7409b326afdb63e9919b92948457b85a880195cc626a63a6d9af44608da45038",
+        "kind": "code",
+        "origin": "diff"
+      },
+      {
+        "id": "read_e12b819dbdaeffea08077417",
+        "path": "src/requests/models.py",
+        "revision": "f361ead047be5cb873174218582f7d8b9fcd9f49",
+        "side": "base",
+        "startLine": 897,
+        "endLine": 903,
+        "hash": "561a31a31d19d2bc913ec457005b3188b0ae757018c71da5db3738bc4a3e6d94",
+        "kind": "code",
+        "origin": "diff"
+      },
+      {
+        "id": "read_9f0e7ca2443715f8023a5cb2",
+        "path": "src/requests/sessions.py",
+        "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+        "side": "head",
+        "startLine": 67,
+        "endLine": 73,
+        "hash": "c265219c2f2cd58415297928f35dd53c176defa5917cf431e9094e827b060c43",
+        "kind": "code",
+        "origin": "diff"
+      },
+      {
+        "id": "read_7c287e3501ef0a3cde845e0a",
+        "path": "src/requests/sessions.py",
+        "revision": "f361ead047be5cb873174218582f7d8b9fcd9f49",
+        "side": "base",
+        "startLine": 67,
+        "endLine": 76,
+        "hash": "fe1ffc61a3f7cd8f2cedb3fee6d7fb48947367105c793d5f8d182334db298a2f",
+        "kind": "code",
+        "origin": "diff"
+      },
+      {
+        "id": "read_fef0c366d7161a57f60e4ee5",
+        "path": "src/requests/utils.py",
+        "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+        "side": "head",
+        "startLine": 930,
+        "endLine": 935,
+        "hash": "a5c01dc68fbf4089b46fbf9b06aa89f37315f18de70a4e8fc601e0233b2b0355",
+        "kind": "code",
+        "origin": "diff"
+      },
+      {
+        "id": "read_d6c6e45a82c3a4344d35fb49",
+        "path": "src/requests/utils.py",
+        "revision": "f361ead047be5cb873174218582f7d8b9fcd9f49",
+        "side": "base",
+        "startLine": 930,
+        "endLine": 935,
+        "hash": "265ef2325107aa49df1b2be9b1708528606d792e5a233b7d01303a7d1d6871a4",
+        "kind": "code",
+        "origin": "diff"
+      },
+      {
+        "id": "read_fd1e365ef8f378bf233fe49e",
+        "path": "src/requests/utils.py",
+        "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+        "side": "head",
+        "startLine": 99,
+        "endLine": 135,
+        "hash": "e5496d2ce8db2e16aab534d0c9a677a87113d58d6e9e80556bc7aa9d4b8b159d",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_3ee465ca107c814468709468",
+        "path": "src/requests/utils.py",
+        "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+        "side": "head",
+        "startLine": 376,
+        "endLine": 407,
+        "hash": "d92453a5adbfe87cb23f34dc9373e2cd31ba241386f7a00b4ad29859e68c5f63",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_a460b7dc641386df3abb63ec",
+        "path": "src/requests/utils.py",
+        "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+        "side": "head",
+        "startLine": 408,
+        "endLine": 439,
+        "hash": "7a016ebe88e80a697d57b371d7c3277c9c6d45db1ef5eafb06befc3eeb27ff28",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_2368a6715465e2d6695245e3",
+        "path": "src/requests/utils.py",
+        "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+        "side": "head",
+        "startLine": 522,
+        "endLine": 544,
+        "hash": "13933e6bbc3131d0e3460100604a9c696ada8fd795000ffb18649c76ba4d97f8",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_90aa11ad4b0626d4d2fee471",
+        "path": "src/requests/utils.py",
+        "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+        "side": "head",
+        "startLine": 569,
+        "endLine": 591,
+        "hash": "fd2b35a406ecd6393d5893a70fd9c964459d09410cd6162b0060e6d190ac3867",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_20750be6986f8e751ea72cb6",
+        "path": "src/requests/utils.py",
+        "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+        "side": "head",
+        "startLine": 633,
+        "endLine": 674,
+        "hash": "e37162a2f3c98bc8844ac9e16c278c4f5fd5d5ac2a10d0cf78765d4e35fb7f5a",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_b5f84a99eb1220221d021634",
+        "path": "src/requests/utils.py",
+        "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+        "side": "head",
+        "startLine": 763,
+        "endLine": 784,
+        "hash": "a1e8abe31b8fcc070b5f4c654c3f8edfbaaccbcdaa1a611cc5e5d1fa69556325",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_9a68dce8f75fe4d2e3a9e853",
+        "path": "src/requests/utils.py",
+        "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+        "side": "head",
+        "startLine": 787,
+        "endLine": 807,
+        "hash": "b144f4e19866ee76c48d7d798ae930a5d5841de025b64a8ffa2d3082d3c9d5f8",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_700dd479a09a48362baa72d1",
+        "path": "src/requests/utils.py",
+        "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+        "side": "head",
+        "startLine": 810,
+        "endLine": 870,
+        "hash": "1113a55be201c3063bb5f9cf3eb7e1cd0ffeb21fe78a3f0dcdb9b2215a86bd2b",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_9a08040818eaaade6ce0da73",
+        "path": "src/requests/utils.py",
+        "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+        "side": "head",
+        "startLine": 885,
+        "endLine": 908,
+        "hash": "f9f2837a7033b2c936cf225258dc44ae3fda5f0b889fed8c3ea10d9b53f54996",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_089b4a2d085fa5a453964e5a",
+        "path": "src/requests/utils.py",
+        "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+        "side": "head",
+        "startLine": 911,
+        "endLine": 939,
+        "hash": "796e9876a50377c7e9bffb9203c03d742e8e5871646f392cb609782e1aa6a61e",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_e03d00b81b05f10c53a7ea1e",
+        "path": "tests/test_utils.py",
+        "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+        "side": "head",
+        "startLine": 220,
+        "endLine": 282,
+        "hash": "08e900fca5575146becbf380441b8961591101f2166b5439586c405db587cf0b",
+        "kind": "test",
+        "origin": "snapshot"
+      }
+    ],
+    "unprocessed": [
+      "description:0",
+      "description:541",
+      "description:546",
+      "description:2741",
+      "description:2746",
+      "description:0",
+      "description:541",
+      "description:546",
+      "description:2741",
+      "description:2746"
+    ],
+    "limitations": [
+      "retrieval_python_indentation",
+      "retrieval_scan_budget_exceeded",
+      "retrieval_unverified_fallback",
+      "retrieval_budget_exceeded"
+    ],
+    "failures": [],
+    "rankingStatus": "ready",
+    "coverageStatus": "partial"
+  },
+  "report": {
+    "analysisId": "ap_muc2cye8_s3aytn",
+    "createdAt": "2026-09-22T02:37:17.984Z",
+    "source": {
+      "title": "perf: optimizations in core components",
+      "url": "https://github.com/psf/requests/pull/7589",
+      "author": "salvatorecorvaglia",
+      "baseBranch": "main",
+      "headBranch": "main",
+      "provenance": {
+        "version": 1,
+        "origin": "github_snapshot",
+        "headSha": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+        "baseSha": "f361ead047be5cb873174218582f7d8b9fcd9f49",
+        "changedFileInventory": {
+          "version": 1,
+          "completeness": "complete",
+          "headSha": "1e2517e537eb5483771aefc72ca1aeb1f6b99962"
+        },
+        "evidenceCapturedAt": "2026-09-22T02:37:17.970Z",
+        "inputFingerprint": {
+          "version": 1,
+          "algorithm": "sha256",
+          "value": "b9d4aa060033a74b34986d4a6d795d542e9b3cdadff3e32f4fda2a4107d62ac3",
+          "coverage": "github_metadata"
+        }
+      }
+    },
+    "summary": {
+      "oneLine": "High-priority verification needed. Coverage 18%. Some requirements have only partial evidence.",
+      "confidence": 0.2,
+      "priority": "high",
+      "evidenceCoverage": 18,
+      "topRisks": [
+        "Some requirements have only partial evidence.",
+        "Behavior changed without strong test evidence.",
+        "Potential scope creep in changed files."
+      ]
+    },
+    "requirements": [
+      {
+        "requirementId": "req_1",
+        "requirementText": "This PR implements several low-risk, high-impact performance optimizations across the core components of `requests` (response models, cookies, internal utilities, sessions, and proxy resolution)",
+        "status": "unclear",
+        "evidenceRefs": [
+          "ev_5"
+        ],
+        "gaps": [
+          "A related file changed, but no diff, test, or log evidence proves this criterion.",
+          "No deterministic test/build execution evidence was collected for this requirement."
+        ],
+        "reviewerNote": "Treat this as a lead for human review, not proof of satisfaction.",
+        "confidence": 0.5,
+        "evidenceStatus": "partial",
+        "sourceAuthority": "pr_description",
+        "proofAxes": [
+          {
+            "subject": "execution",
+            "polarity": "present",
+            "state": "incomplete",
+            "evidenceRefs": [],
+            "axisId": "obs_req_1_execution_1",
+            "role": "observation"
+          },
+          {
+            "subject": "implementation",
+            "polarity": "present",
+            "state": "satisfied",
+            "evidenceRefs": [
+              "ev_5"
+            ],
+            "collectionBasis": "matching_artifact_evidence",
+            "axisId": "obs_req_1_implementation_1",
+            "role": "observation"
+          }
+        ]
+      },
+      {
+        "requirementId": "req_2",
+        "requirementText": "**Prevent non-monotonic timing bugs** in response duration measurement",
+        "status": "unclear",
+        "evidenceRefs": [
+          "ev_3",
+          "ev_4"
+        ],
+        "gaps": [
+          "A related file changed, but no diff, test, or log evidence proves this criterion.",
+          "No deterministic test/build execution evidence was collected for this requirement."
+        ],
+        "reviewerNote": "Treat this as a lead for human review, not proof of satisfaction.",
+        "confidence": 0.5,
+        "evidenceStatus": "partial",
+        "sourceAuthority": "pr_description",
+        "proofAxes": [
+          {
+            "subject": "execution",
+            "polarity": "present",
+            "state": "incomplete",
+            "evidenceRefs": [],
+            "axisId": "obs_req_2_execution_1",
+            "role": "observation"
+          },
+          {
+            "subject": "implementation",
+            "polarity": "present",
+            "state": "satisfied",
+            "evidenceRefs": [
+              "ev_3",
+              "ev_4"
+            ],
+            "collectionBasis": "matching_artifact_evidence",
+            "axisId": "obs_req_2_implementation_1",
+            "role": "observation"
+          }
+        ]
+      },
+      {
+        "requirementId": "req_3",
+        "requirementText": "**Solution**: Limited the detection payload to the first 32 KB (`self.content[:32768]`). This is more than sufficient to detect any charset (usually present in headers, XML tags, or prefix character frequencies) while keeping execution time bounded",
+        "status": "unclear",
+        "evidenceRefs": [
+          "ev_4",
+          "ev_5"
+        ],
+        "gaps": [
+          "Implementation evidence exists, but no matching test, log, or check evidence verifies this criterion.",
+          "No deterministic test/build execution evidence was collected for this requirement."
+        ],
+        "reviewerNote": "Treat diff evidence as implementation evidence, not proof that behavior is verified.",
+        "confidence": 0.62,
+        "evidenceStatus": "partial",
+        "sourceAuthority": "pr_description",
+        "proofAxes": [
+          {
+            "subject": "execution",
+            "polarity": "present",
+            "state": "incomplete",
+            "evidenceRefs": [],
+            "axisId": "obs_req_3_execution_1",
+            "role": "observation"
+          },
+          {
+            "subject": "implementation",
+            "polarity": "present",
+            "state": "satisfied",
+            "evidenceRefs": [
+              "ev_4",
+              "ev_5"
+            ],
+            "collectionBasis": "matching_artifact_evidence",
+            "axisId": "obs_req_3_implementation_1",
+            "role": "observation"
+          }
+        ]
+      },
+      {
+        "requirementId": "req_4",
+        "requirementText": "**Problem**: Validating whether a string is ASCII by attempting to encode it and catching `UnicodeEncodeError` incurs substantial exception-handling and byte-allocation overhead",
+        "status": "unclear",
+        "evidenceRefs": [
+          "ev_2"
+        ],
+        "gaps": [
+          "Implementation evidence exists, but no matching test, log, or check evidence verifies this criterion.",
+          "No deterministic test/build execution evidence was collected for this requirement."
+        ],
+        "reviewerNote": "Treat diff evidence as implementation evidence, not proof that behavior is verified.",
+        "confidence": 0.62,
+        "evidenceStatus": "partial",
+        "sourceAuthority": "pr_description",
+        "proofAxes": [
+          {
+            "subject": "execution",
+            "polarity": "present",
+            "state": "incomplete",
+            "evidenceRefs": [],
+            "axisId": "obs_req_4_execution_1",
+            "role": "observation"
+          },
+          {
+            "subject": "implementation",
+            "polarity": "present",
+            "state": "satisfied",
+            "evidenceRefs": [
+              "ev_2"
+            ],
+            "collectionBasis": "matching_artifact_evidence",
+            "axisId": "obs_req_4_implementation_1",
+            "role": "observation"
+          }
+        ]
+      },
+      {
+        "requirementId": "req_5",
+        "requirementText": "**Solution**: Swapped with the native string method `.isascii()` (supported natively in Python 3.7+ / 3.10+)",
+        "status": "unclear",
+        "evidenceRefs": [
+          "ev_2",
+          "ev_4"
+        ],
+        "gaps": [
+          "Implementation evidence exists, but no matching test, log, or check evidence verifies this criterion.",
+          "No deterministic test/build execution evidence was collected for this requirement."
+        ],
+        "reviewerNote": "Treat diff evidence as implementation evidence, not proof that behavior is verified.",
+        "confidence": 0.62,
+        "evidenceStatus": "partial",
+        "sourceAuthority": "pr_description",
+        "proofAxes": [
+          {
+            "subject": "execution",
+            "polarity": "present",
+            "state": "incomplete",
+            "evidenceRefs": [],
+            "axisId": "obs_req_5_execution_1",
+            "role": "observation"
+          },
+          {
+            "subject": "implementation",
+            "polarity": "present",
+            "state": "satisfied",
+            "evidenceRefs": [
+              "ev_2",
+              "ev_4"
+            ],
+            "collectionBasis": "matching_artifact_evidence",
+            "axisId": "obs_req_5_implementation_1",
+            "role": "observation"
+          }
+        ]
+      },
+      {
+        "requirementId": "req_6",
+        "requirementText": "**Solution**: Directly call `getproxies()` when the bypass condition check has already returned `False`",
+        "status": "unclear",
+        "evidenceRefs": [
+          "ev_6"
+        ],
+        "gaps": [
+          "Implementation evidence exists, but no matching test, log, or check evidence verifies this criterion.",
+          "No deterministic test/build execution evidence was collected for this requirement."
+        ],
+        "reviewerNote": "Treat diff evidence as implementation evidence, not proof that behavior is verified.",
+        "confidence": 0.62,
+        "evidenceStatus": "partial",
+        "sourceAuthority": "pr_description",
+        "proofAxes": [
+          {
+            "subject": "execution",
+            "polarity": "present",
+            "state": "incomplete",
+            "evidenceRefs": [],
+            "axisId": "obs_req_6_execution_1",
+            "role": "observation"
+          },
+          {
+            "subject": "implementation",
+            "polarity": "present",
+            "state": "satisfied",
+            "evidenceRefs": [
+              "ev_6"
+            ],
+            "collectionBasis": "matching_artifact_evidence",
+            "axisId": "obs_req_6_implementation_1",
+            "role": "observation"
+          }
+        ]
+      },
+      {
+        "requirementId": "req_7",
+        "requirementText": "All tests were executed using `pytest`:",
+        "status": "unclear",
+        "evidenceRefs": [
+          "ev_4",
+          "ev_6"
+        ],
+        "gaps": [
+          "A related file changed, but no diff, test, or log evidence proves this criterion.",
+          "No deterministic test/build execution evidence was collected for this requirement."
+        ],
+        "reviewerNote": "Treat this as a lead for human review, not proof of satisfaction.",
+        "confidence": 0.5,
+        "evidenceStatus": "partial",
+        "sourceAuthority": "pr_description",
+        "proofAxes": [
+          {
+            "subject": "execution",
+            "polarity": "present",
+            "state": "incomplete",
+            "evidenceRefs": [],
+            "axisId": "obs_req_7_execution_1",
+            "role": "observation"
+          },
+          {
+            "subject": "implementation",
+            "polarity": "present",
+            "state": "satisfied",
+            "evidenceRefs": [
+              "ev_4",
+              "ev_6"
+            ],
+            "collectionBasis": "matching_artifact_evidence",
+            "axisId": "obs_req_7_implementation_1",
+            "role": "observation"
+          }
+        ]
+      },
+      {
+        "requirementId": "req_8",
+        "requirementText": "Component-specific tests for cookies, proxy resolution, apparent encoding, and ASCII validation passed successfully",
+        "status": "unclear",
+        "evidenceRefs": [
+          "ev_2",
+          "ev_3",
+          "ev_4",
+          "ev_6"
+        ],
+        "gaps": [
+          "Implementation evidence exists, but no matching test, log, or check evidence verifies this criterion.",
+          "No deterministic test/build execution evidence was collected for this requirement."
+        ],
+        "reviewerNote": "Treat diff evidence as implementation evidence, not proof that behavior is verified.",
+        "confidence": 0.62,
+        "evidenceStatus": "partial",
+        "sourceAuthority": "pr_description",
+        "proofAxes": [
+          {
+            "subject": "execution",
+            "polarity": "present",
+            "state": "incomplete",
+            "evidenceRefs": [],
+            "axisId": "obs_req_8_execution_1",
+            "role": "observation"
+          },
+          {
+            "subject": "implementation",
+            "polarity": "present",
+            "state": "satisfied",
+            "evidenceRefs": [
+              "ev_2",
+              "ev_3",
+              "ev_4",
+              "ev_6"
+            ],
+            "collectionBasis": "matching_artifact_evidence",
+            "axisId": "obs_req_8_implementation_1",
+            "role": "observation"
+          }
+        ]
+      }
+    ],
+    "claims": [
+      {
+        "id": "claim_1",
+        "text": "- **Solution**: Changed the list comprehension to a set comprehension (`{cookie.name for cookie in cookiejar}`), reducing lookup checks to $O(1)$",
+        "evidenceRefs": [
+          "ev_3",
+          "ev_4",
+          "ev_5"
+        ],
+        "supported": false
+      },
+      {
+        "id": "claim_2",
+        "text": "Remove Double Proxy-Bypass Evaluation",
+        "evidenceRefs": [
+          "ev_6"
+        ],
+        "supported": false
+      },
+      {
+        "id": "claim_3",
+        "text": "* Component-specific tests for cookies, proxy resolution, apparent encoding, and ASCII validation passed successfully",
+        "evidenceRefs": [],
+        "supported": false
+      }
+    ],
+    "scope": {
+      "suspected": true,
+      "outOfScopeFiles": [
+        "src/requests/_internal_utils.py",
+        "src/requests/models.py",
+        "src/requests/sessions.py",
+        "src/requests/utils.py"
+      ],
+      "reasons": [
+        "src/requests/_internal_utils.py does not clearly map to the stated criteria.",
+        "src/requests/models.py does not clearly map to the stated criteria.",
+        "src/requests/sessions.py is risk-sensitive and does not clearly map to the stated criteria.",
+        "src/requests/utils.py does not clearly map to the stated criteria."
+      ],
+      "evidenceRefs": [
+        "ev_2",
+        "ev_4",
+        "ev_5",
+        "ev_6"
+      ],
+      "provenance": [
+        {
+          "evidenceRef": "ev_2",
+          "sourceType": "diff",
+          "locator": "src/requests/_internal_utils.py",
+          "confidence": 0.85,
+          "evidenceText": "modified src/requests/_internal_utils.py (+1/-5). Patch excerpt: @@ -44,8 +44,4 @@ def unicode_is_ascii(u_string: str) -> bool: :rtype: bool \"\"\" assert isinstance(u_string, str) - try: - u_string.encode(\"ascii\") - return True - except Un..."
+        },
+        {
+          "evidenceRef": "ev_4",
+          "sourceType": "diff",
+          "locator": "src/requests/models.py",
+          "confidence": 0.85,
+          "evidenceText": "modified src/requests/models.py (+1/-1). Patch excerpt: @@ -897,7 +897,7 @@ def next(self) -> PreparedRequest | None: def apparent_encoding(self) -> str | None: \"\"\"The apparent encoding, provided by the charset_normalizer or chardet libr..."
+        },
+        {
+          "evidenceRef": "ev_5",
+          "sourceType": "diff",
+          "locator": "src/requests/sessions.py",
+          "confidence": 0.85,
+          "evidenceText": "modified src/requests/sessions.py (+1/-4). Risk-sensitive path. Patch excerpt: @@ -67,10 +67,7 @@ from .adapters import BaseAdapter # Preferred clock, based on which one is more accurate on a given system. -if sys.platform == \"win32\": -..."
+        },
+        {
+          "evidenceRef": "ev_6",
+          "sourceType": "diff",
+          "locator": "src/requests/utils.py",
+          "confidence": 0.85,
+          "evidenceText": "modified src/requests/utils.py (+1/-1). Patch excerpt: @@ -930,7 +930,7 @@ def resolve_proxies( new_proxies = proxies.copy() if trust_env and not should_bypass_proxies(url, no_proxy=no_proxy): - environ_proxies = get_environ_proxies(url,..."
+        }
+      ]
+    },
+    "testing": {
+      "ciStatus": "unknown",
+      "lintStatus": "unknown",
+      "typecheckStatus": "unknown",
+      "missingTests": [
+        {
+          "path": "src/requests/_internal_utils.py",
+          "why": "Behavior-affecting file changed without matching test-file evidence.",
+          "evidenceRefs": [
+            "ev_2"
+          ],
+          "provenance": [
+            {
+              "evidenceRef": "ev_2",
+              "sourceType": "diff",
+              "locator": "src/requests/_internal_utils.py",
+              "confidence": 0.85,
+              "evidenceText": "modified src/requests/_internal_utils.py (+1/-5). Patch excerpt: @@ -44,8 +44,4 @@ def unicode_is_ascii(u_string: str) -> bool: :rtype: bool \"\"\" assert isinstance(u_string, str) - try: - u_string.encode(\"ascii\") - return True - except Un..."
+            }
+          ]
+        },
+        {
+          "path": "src/requests/cookies.py",
+          "why": "Behavior-affecting file changed without matching test-file evidence.",
+          "evidenceRefs": [
+            "ev_3"
+          ],
+          "provenance": [
+            {
+              "evidenceRef": "ev_3",
+              "sourceType": "diff",
+              "locator": "src/requests/cookies.py",
+              "confidence": 0.85,
+              "evidenceText": "modified src/requests/cookies.py (+1/-1). Patch excerpt: @@ -593,7 +593,7 @@ def cookiejar_from_dict( cookiejar = RequestsCookieJar() if cookie_dict is not None: - names_from_jar = [cookie.name for cookie in cookiejar] + names_from_jar =..."
+            }
+          ]
+        },
+        {
+          "path": "src/requests/models.py",
+          "why": "Behavior-affecting file changed without matching test-file evidence.",
+          "evidenceRefs": [
+            "ev_4"
+          ],
+          "provenance": [
+            {
+              "evidenceRef": "ev_4",
+              "sourceType": "diff",
+              "locator": "src/requests/models.py",
+              "confidence": 0.85,
+              "evidenceText": "modified src/requests/models.py (+1/-1). Patch excerpt: @@ -897,7 +897,7 @@ def next(self) -> PreparedRequest | None: def apparent_encoding(self) -> str | None: \"\"\"The apparent encoding, provided by the charset_normalizer or chardet libr..."
+            }
+          ]
+        },
+        {
+          "path": "src/requests/sessions.py",
+          "why": "Behavior-affecting file changed without matching test-file evidence.",
+          "evidenceRefs": [
+            "ev_5"
+          ],
+          "provenance": [
+            {
+              "evidenceRef": "ev_5",
+              "sourceType": "diff",
+              "locator": "src/requests/sessions.py",
+              "confidence": 0.85,
+              "evidenceText": "modified src/requests/sessions.py (+1/-4). Risk-sensitive path. Patch excerpt: @@ -67,10 +67,7 @@ from .adapters import BaseAdapter # Preferred clock, based on which one is more accurate on a given system. -if sys.platform == \"win32\": -..."
+            }
+          ]
+        },
+        {
+          "path": "src/requests/utils.py",
+          "why": "Behavior-affecting file changed without matching test-file evidence.",
+          "evidenceRefs": [
+            "ev_6"
+          ],
+          "provenance": [
+            {
+              "evidenceRef": "ev_6",
+              "sourceType": "diff",
+              "locator": "src/requests/utils.py",
+              "confidence": 0.85,
+              "evidenceText": "modified src/requests/utils.py (+1/-1). Patch excerpt: @@ -930,7 +930,7 @@ def resolve_proxies( new_proxies = proxies.copy() if trust_env and not should_bypass_proxies(url, no_proxy=no_proxy): - environ_proxies = get_environ_proxies(url,..."
+            }
+          ]
+        }
+      ]
+    },
+    "reviewPriority": [
+      {
+        "path": "src/requests/sessions.py",
+        "reason": "Risk-sensitive file appears outside the stated requirement.",
+        "priority": "high",
+        "evidenceRefs": [
+          "ev_5",
+          "ev_3",
+          "ev_4",
+          "ev_2",
+          "ev_6"
+        ]
+      },
+      {
+        "path": "src/requests/_internal_utils.py",
+        "reason": "Changed file does not clearly map to acceptance criteria.",
+        "priority": "medium",
+        "evidenceRefs": [
+          "ev_2"
+        ]
+      },
+      {
+        "path": "src/requests/models.py",
+        "reason": "Changed file does not clearly map to acceptance criteria.",
+        "priority": "medium",
+        "evidenceRefs": [
+          "ev_4"
+        ]
+      },
+      {
+        "path": "src/requests/utils.py",
+        "reason": "Changed file does not clearly map to acceptance criteria.",
+        "priority": "medium",
+        "evidenceRefs": [
+          "ev_6"
+        ]
+      },
+      {
+        "path": "src/requests/cookies.py",
+        "reason": "Behavior-affecting file changed without matching test-file evidence.",
+        "priority": "medium",
+        "evidenceRefs": [
+          "ev_3"
+        ]
+      }
+    ],
+    "proofGraph": {
+      "version": 1,
+      "nodes": [
+        {
+          "requirementId": "req_1",
+          "requirementText": "This PR implements several low-risk, high-impact performance optimizations across the core components of `requests` (response models, cookies, internal utilities, sessions, and proxy resolution)",
+          "sourceRole": "core_requirement",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Description",
+          "contextRoles": [],
+          "status": "partial",
+          "confidence": 0.5,
+          "implementationEvidenceRefs": [
+            "ev_5"
+          ],
+          "targetedTestEvidenceRefs": [],
+          "executionEvidenceRefs": [],
+          "gapSignals": [
+            {
+              "kind": "missing_execution",
+              "severity": "medium",
+              "message": "No deterministic test/build execution evidence was collected for this requirement.",
+              "evidenceRefs": [
+                "ev_5"
+              ]
+            }
+          ],
+          "firstFiles": [
+            "src/requests/sessions.py"
+          ]
+        },
+        {
+          "requirementId": "req_2",
+          "requirementText": "**Prevent non-monotonic timing bugs** in response duration measurement",
+          "sourceRole": "core_requirement",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Description",
+          "contextRoles": [],
+          "status": "partial",
+          "confidence": 0.5,
+          "implementationEvidenceRefs": [
+            "ev_3",
+            "ev_4"
+          ],
+          "targetedTestEvidenceRefs": [],
+          "executionEvidenceRefs": [],
+          "gapSignals": [
+            {
+              "kind": "missing_execution",
+              "severity": "medium",
+              "message": "No deterministic test/build execution evidence was collected for this requirement.",
+              "evidenceRefs": [
+                "ev_3",
+                "ev_4"
+              ]
+            }
+          ],
+          "firstFiles": [
+            "src/requests/cookies.py",
+            "src/requests/models.py"
+          ]
+        },
+        {
+          "requirementId": "req_3",
+          "requirementText": "**Solution**: Limited the detection payload to the first 32 KB (`self.content[:32768]`). This is more than sufficient to detect any charset (usually present in headers, XML tags, or prefix character frequencies) while keeping execution time bounded",
+          "sourceRole": "core_requirement",
+          "sourceQuality": "author_claim",
+          "sourceSection": "1. Optimize Character Encoding Auto-Detection",
+          "contextRoles": [],
+          "status": "partial",
+          "confidence": 0.62,
+          "implementationEvidenceRefs": [
+            "ev_4",
+            "ev_5"
+          ],
+          "targetedTestEvidenceRefs": [],
+          "executionEvidenceRefs": [],
+          "gapSignals": [
+            {
+              "kind": "missing_execution",
+              "severity": "medium",
+              "message": "No deterministic test/build execution evidence was collected for this requirement.",
+              "evidenceRefs": [
+                "ev_4",
+                "ev_5"
+              ]
+            }
+          ],
+          "firstFiles": [
+            "src/requests/models.py",
+            "src/requests/sessions.py"
+          ]
+        },
+        {
+          "requirementId": "req_4",
+          "requirementText": "**Problem**: Validating whether a string is ASCII by attempting to encode it and catching `UnicodeEncodeError` incurs substantial exception-handling and byte-allocation overhead",
+          "sourceRole": "core_requirement",
+          "sourceQuality": "author_claim",
+          "sourceSection": "2. Fast Built-in ASCII Check",
+          "contextRoles": [],
+          "status": "partial",
+          "confidence": 0.62,
+          "implementationEvidenceRefs": [
+            "ev_2"
+          ],
+          "targetedTestEvidenceRefs": [],
+          "executionEvidenceRefs": [],
+          "gapSignals": [
+            {
+              "kind": "missing_execution",
+              "severity": "medium",
+              "message": "No deterministic test/build execution evidence was collected for this requirement.",
+              "evidenceRefs": [
+                "ev_2"
+              ]
+            }
+          ],
+          "firstFiles": [
+            "src/requests/_internal_utils.py"
+          ]
+        },
+        {
+          "requirementId": "req_5",
+          "requirementText": "**Solution**: Swapped with the native string method `.isascii()` (supported natively in Python 3.7+ / 3.10+)",
+          "sourceRole": "core_requirement",
+          "sourceQuality": "author_claim",
+          "sourceSection": "2. Fast Built-in ASCII Check",
+          "contextRoles": [],
+          "status": "partial",
+          "confidence": 0.62,
+          "implementationEvidenceRefs": [
+            "ev_2",
+            "ev_4"
+          ],
+          "targetedTestEvidenceRefs": [],
+          "executionEvidenceRefs": [],
+          "gapSignals": [
+            {
+              "kind": "missing_execution",
+              "severity": "medium",
+              "message": "No deterministic test/build execution evidence was collected for this requirement.",
+              "evidenceRefs": [
+                "ev_2",
+                "ev_4"
+              ]
+            }
+          ],
+          "firstFiles": [
+            "src/requests/_internal_utils.py",
+            "src/requests/models.py"
+          ]
+        },
+        {
+          "requirementId": "req_6",
+          "requirementText": "**Solution**: Directly call `getproxies()` when the bypass condition check has already returned `False`",
+          "sourceRole": "core_requirement",
+          "sourceQuality": "author_claim",
+          "sourceSection": "4. Remove Double Proxy-Bypass Evaluation",
+          "contextRoles": [],
+          "status": "partial",
+          "confidence": 0.62,
+          "implementationEvidenceRefs": [
+            "ev_6"
+          ],
+          "targetedTestEvidenceRefs": [],
+          "executionEvidenceRefs": [],
+          "gapSignals": [
+            {
+              "kind": "missing_execution",
+              "severity": "medium",
+              "message": "No deterministic test/build execution evidence was collected for this requirement.",
+              "evidenceRefs": [
+                "ev_6"
+              ]
+            }
+          ],
+          "firstFiles": [
+            "src/requests/utils.py"
+          ]
+        },
+        {
+          "requirementId": "req_7",
+          "requirementText": "All tests were executed using `pytest`:",
+          "sourceRole": "core_requirement",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Verification",
+          "contextRoles": [],
+          "status": "partial",
+          "confidence": 0.5,
+          "implementationEvidenceRefs": [
+            "ev_4",
+            "ev_6"
+          ],
+          "targetedTestEvidenceRefs": [],
+          "executionEvidenceRefs": [],
+          "gapSignals": [
+            {
+              "kind": "missing_execution",
+              "severity": "medium",
+              "message": "No deterministic test/build execution evidence was collected for this requirement.",
+              "evidenceRefs": [
+                "ev_4",
+                "ev_6"
+              ]
+            }
+          ],
+          "firstFiles": [
+            "src/requests/models.py",
+            "src/requests/utils.py"
+          ]
+        },
+        {
+          "requirementId": "req_8",
+          "requirementText": "Component-specific tests for cookies, proxy resolution, apparent encoding, and ASCII validation passed successfully",
+          "sourceRole": "core_requirement",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Verification",
+          "contextRoles": [],
+          "status": "partial",
+          "confidence": 0.62,
+          "implementationEvidenceRefs": [
+            "ev_2",
+            "ev_3",
+            "ev_4",
+            "ev_6"
+          ],
+          "targetedTestEvidenceRefs": [],
+          "executionEvidenceRefs": [],
+          "gapSignals": [
+            {
+              "kind": "missing_execution",
+              "severity": "medium",
+              "message": "No deterministic test/build execution evidence was collected for this requirement.",
+              "evidenceRefs": [
+                "ev_2",
+                "ev_3",
+                "ev_4",
+                "ev_6"
+              ]
+            }
+          ],
+          "firstFiles": [
+            "src/requests/_internal_utils.py",
+            "src/requests/cookies.py",
+            "src/requests/models.py",
+            "src/requests/utils.py"
+          ]
+        }
+      ],
+      "context": [
+        {
+          "id": "ctx_1",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Description",
+          "text": "This PR implements several low-risk, high-impact performance optimizations across the core components of `requests` (response models, cookies, internal utilities, sessions, and proxy resolution)"
+        },
+        {
+          "id": "ctx_2",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Description",
+          "text": "These modifications aim to:"
+        },
+        {
+          "id": "ctx_3",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Description",
+          "text": "*Reduce CPU and memory overhead** when parsing large responses"
+        },
+        {
+          "id": "ctx_4",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Description",
+          "text": "*Accelerate internal dictionary lookups and checks** (cookies, ASCII validation)"
+        },
+        {
+          "id": "ctx_5",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Description",
+          "text": "*Prevent non-monotonic timing bugs** in response duration measurement"
+        },
+        {
+          "id": "ctx_6",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Description",
+          "text": "*Eliminate redundant network settings checks** on every request"
+        },
+        {
+          "id": "ctx_7",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Description",
+          "text": "-"
+        },
+        {
+          "id": "ctx_8",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "1. Optimize Character Encoding Auto-Detection",
+          "text": "*File**: `src/requests/models.py` (`Response.apparent_encoding`)"
+        },
+        {
+          "id": "ctx_9",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "1. Optimize Character Encoding Auto-Detection",
+          "text": "*Problem**: Passing the entire response body (`self.content`) to character auto-detection (`chardet` or `charset_normalizer`) is very slow for large payloads (e.g"
+        },
+        {
+          "id": "ctx_10",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "1. Optimize Character Encoding Auto-Detection",
+          "text": "multi-megabyte JSONs or files)"
+        },
+        {
+          "id": "ctx_11",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "1. Optimize Character Encoding Auto-Detection",
+          "text": "*Solution**: Limited the detection payload to the first 32 KB (`self.content[:32768]`)"
+        },
+        {
+          "id": "ctx_12",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "1. Optimize Character Encoding Auto-Detection",
+          "text": "This is more than sufficient to detect any charset (usually present in headers, XML tags, or prefix character frequencies) while keeping execution time bounded"
+        },
+        {
+          "id": "ctx_13",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "2. Fast Built-in ASCII Check",
+          "text": "*File**: `src/requests/_internal_utils.py` (`unicode_is_ascii`)"
+        },
+        {
+          "id": "ctx_14",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "2. Fast Built-in ASCII Check",
+          "text": "*Problem**: Validating whether a string is ASCII by attempting to encode it and catching `UnicodeEncodeError` incurs substantial exception-handling and byte-allocation overhead"
+        },
+        {
+          "id": "ctx_15",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "2. Fast Built-in ASCII Check",
+          "text": "*Solution**: Swapped with the native string method `.isascii()` (supported natively in Python 3.7+ / 3.10+)"
+        },
+        {
+          "id": "ctx_16",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "3. $O(1)$ Cookie Name Lookups in CookieJar Bootstrapping",
+          "text": "*File**: `src/requests/cookies.py` (`cookiejar_from_dict`)"
+        },
+        {
+          "id": "ctx_17",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "3. $O(1)$ Cookie Name Lookups in CookieJar Bootstrapping",
+          "text": "*Problem**: Checking names via `names_from_jar` constructed as a list leads to $O(N)$ lookup checks"
+        },
+        {
+          "id": "ctx_18",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "3. $O(1)$ Cookie Name Lookups in CookieJar Bootstrapping",
+          "text": "*Solution**: Changed the list comprehension to a set comprehension (`{cookie.name for cookie in cookiejar}`), reducing lookup checks to $O(1)$"
+        },
+        {
+          "id": "ctx_19",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "4. Remove Double Proxy-Bypass Evaluation",
+          "text": "*File**: `src/requests/utils.py` (`resolve_proxies`)"
+        },
+        {
+          "id": "ctx_20",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "4. Remove Double Proxy-Bypass Evaluation",
+          "text": "*Problem**: When environment proxies are used, `resolve_proxies` calls `should_bypass_proxies` and then calls `get_environ_proxies`, which immediately evaluates `should_bypass_proxies` a second time"
+        },
+        {
+          "id": "ctx_21",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "4. Remove Double Proxy-Bypass Evaluation",
+          "text": "This causes duplicate URL parsing and CIDR checking"
+        },
+        {
+          "id": "ctx_22",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "4. Remove Double Proxy-Bypass Evaluation",
+          "text": "*Solution**: Directly call `getproxies()` when the bypass condition check has already returned `False`"
+        },
+        {
+          "id": "ctx_23",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "5. Universal Monotonic Performance Counter for timing",
+          "text": "*File**: `src/requests/sessions.py` (`preferred_clock`)"
+        },
+        {
+          "id": "ctx_24",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "5. Universal Monotonic Performance Counter for timing",
+          "text": "*Problem**: On non-Windows platforms, `preferred_clock` was configured to use `time.time()`, which is subject to system clock adjustments (non-monotonic) and coarser resolution"
+        },
+        {
+          "id": "ctx_25",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "5. Universal Monotonic Performance Counter for timing",
+          "text": "*Solution**: Set `preferred_clock = time.perf_counter` universally"
+        },
+        {
+          "id": "ctx_26",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "5. Universal Monotonic Performance Counter for timing",
+          "text": "-"
+        },
+        {
+          "id": "ctx_27",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Verification",
+          "text": "All tests were executed using `pytest`:"
+        },
+        {
+          "id": "ctx_28",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Verification",
+          "text": "Component-specific tests for cookies, proxy resolution, apparent encoding, and ASCII validation passed successfully"
+        },
+        {
+          "id": "ctx_29",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Verification",
+          "text": "Complete suite runs as expected"
+        }
+      ],
+      "summary": {
+        "requirementCount": 8,
+        "requirementsWithImplementation": 8,
+        "requirementsWithTargetedTests": 0,
+        "requirementsWithExecution": 0,
+        "requirementsWithGaps": 8,
+        "gapCount": 8
+      }
+    },
+    "reprompt": {
+      "targetAgent": "codex",
+      "prompt": "You are revising an AI-generated PR for AgentProof verification.\nDo not broaden the PR. Make only changes tied to the original task.\n1. Address requirement \"This PR implements several low-risk, high-impact performance optimizations across the core components of `requests` (response models, cookies, internal utilities, sessions, and proxy resolution)\" and provide evidence for the implementation.\n2. Address requirement \"**Prevent non-monotonic timing bugs** in response duration measurement\" and provide evidence for the implementation.\n3. Address requirement \"**Solution**: Limited the detection payload to the first 32 KB (`self.content[:32768]`). This is more than sufficient to detect any charset (usually present in headers, XML tags, or prefix character frequencies) while keeping execution time bounded\" and provide evidence for the implementation.\n4. Address requirement \"**Problem**: Validating whether a string is ASCII by attempting to encode it and catching `UnicodeEncodeError` incurs substantial exception-handling and byte-allocation overhead\" and provide evidence for the implementation.\n5. Explain or revert out-of-scope changes in: src/requests/_internal_utils.py, src/requests/models.py, src/requests/sessions.py, src/requests/utils.py.\n6. Add or identify tests that cover: src/requests/_internal_utils.py, src/requests/cookies.py, src/requests/models.py, src/requests/sessions.py, src/requests/utils.py.\n7. Return requirement-by-requirement proof for: \"This PR implements several low-risk, high-impact performance optimizations across the core components of `requests` (response models, cookies, internal utilities, sessions, and proxy resolution)\", \"**Prevent non-monotonic timing bugs** in response duration measurement\", \"**Solution**: Limited the detection payload to the first 32 KB (`self.content[:32768]`). This is more than sufficient to detect any charset (usually present in headers, XML tags, or prefix character frequencies) while keeping execution time bounded\", \"**Problem**: Validating whether a string is ASCII by attempting to encode it and catching `UnicodeEncodeError` incurs substantial exception-handling and byte-allocation overhead\".\nReturn a concise summary with changed files, tests run, and remaining risks."
+    },
+    "evidenceIndex": [
+      {
+        "id": "ev_7",
+        "kind": "check",
+        "label": "docs/readthedocs.org:requests",
+        "locator": "https://requests--7589.org.readthedocs.build/en/7589/",
+        "summary": "Status: passed. docs/readthedocs.org:requests - Read the Docs build succeeded!",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_2",
+        "kind": "diff",
+        "label": "src/requests/_internal_utils.py",
+        "locator": "src/requests/_internal_utils.py",
+        "codeLocation": {
+          "path": "src/requests/_internal_utils.py",
+          "side": "head",
+          "revisionSha": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+          "line": 44
+        },
+        "summary": "modified src/requests/_internal_utils.py (+1/-5). Patch excerpt: @@ -44,8 +44,4 @@ def unicode_is_ascii(u_string: str) -> bool:\n     :rtype: bool\n     \"\"\"\n     assert isinstance(u_string, str)\n-    try:\n-        u_string.encode(\"ascii\")\n-        return True\n-    except UnicodeEncodeError:\n-        return False\n+    return u_string.isascii()",
+        "confidence": 0.85
+      },
+      {
+        "id": "ev_3",
+        "kind": "diff",
+        "label": "src/requests/cookies.py",
+        "locator": "src/requests/cookies.py",
+        "codeLocation": {
+          "path": "src/requests/cookies.py",
+          "side": "head",
+          "revisionSha": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+          "line": 593
+        },
+        "summary": "modified src/requests/cookies.py (+1/-1). Patch excerpt: @@ -593,7 +593,7 @@ def cookiejar_from_dict(\n         cookiejar = RequestsCookieJar()\n \n     if cookie_dict is not None:\n-        names_from_jar = [cookie.name for cookie in cookiejar]\n+        names_from_jar = {cookie.name for cookie in cookiejar}\n         for name in cookie_dict:\n             if overwrite or (name not in names_from_jar):\n                 cookiejar.set_cookie(create_cookie(name, cookie_dict[name]))",
+        "confidence": 0.85
+      },
+      {
+        "id": "ev_4",
+        "kind": "diff",
+        "label": "src/requests/models.py",
+        "locator": "src/requests/models.py",
+        "codeLocation": {
+          "path": "src/requests/models.py",
+          "side": "head",
+          "revisionSha": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+          "line": 897
+        },
+        "summary": "modified src/requests/models.py (+1/-1). Patch excerpt: @@ -897,7 +897,7 @@ def next(self) -> PreparedRequest | None:\n     def apparent_encoding(self) -> str | None:\n         \"\"\"The apparent encoding, provided by the charset_normalizer or chardet libraries.\"\"\"\n         if charde\n...[middle truncated for privacy and token control]\nt)[\"encoding\"]\n+            return chardet.detect(self.content[:32768])[\"encoding\"]\n         else:\n             # If no character detection library is available, we'll fall back\n             # to a standard Python utf-8 str.",
+        "confidence": 0.85
+      },
+      {
+        "id": "ev_5",
+        "kind": "diff",
+        "label": "src/requests/sessions.py",
+        "locator": "src/requests/sessions.py",
+        "codeLocation": {
+          "path": "src/requests/sessions.py",
+          "side": "head",
+          "revisionSha": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+          "line": 67
+        },
+        "summary": "modified src/requests/sessions.py (+1/-4). Risk-sensitive path. Patch excerpt: @@ -67,10 +67,7 @@\n     from .adapters import BaseAdapter\n \n # Preferred clock, based on which one is more accurate on a given system.\n-if sys.platform == \"win32\":\n-    preferred_clock = time.perf_counter\n-else:\n-    preferred_clock = time.time\n+preferred_clock = time.perf_counter\n \n \n def merge_setting(",
+        "confidence": 0.85
+      },
+      {
+        "id": "ev_6",
+        "kind": "diff",
+        "label": "src/requests/utils.py",
+        "locator": "src/requests/utils.py",
+        "codeLocation": {
+          "path": "src/requests/utils.py",
+          "side": "head",
+          "revisionSha": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+          "line": 930
+        },
+        "summary": "modified src/requests/utils.py (+1/-1). Patch excerpt: @@ -930,7 +930,7 @@ def resolve_proxies(\n     new_proxies = proxies.copy()\n \n     if trust_env and not should_bypass_proxies(url, no_proxy=no_proxy):\n-        environ_proxies = get_environ_proxies(url, no_proxy=no_proxy)\n+        environ_proxies = getproxies()\n \n         proxy = environ_proxies.get(scheme, environ_proxies.get(\"all\"))",
+        "confidence": 0.85
+      },
+      {
+        "id": "ev_1",
+        "kind": "pr_description",
+        "label": "PR description",
+        "summary": "## Description\n\nThis PR implements several low-risk, high-impact performance optimizations across the core components of `requests` (response models, cookies, internal utilities, sessions, and proxy resolution). \n\nThese modifications aim to:\n1. **Reduce CPU and memory overhead** when parsing large responses.\n2. **Accelerate internal dictionary lookups and checks** (cookies, ASCII validation).\n3. **Prevent non-monotonic timing bugs** in response duration measurement.\n4. **Eliminate redundant network settings checks** on every request.\n\n---\n\n## Detailed Changes\n\n### 1. Optimize Character Encoding Auto-Detection\n- *\n...[truncated for privacy and token control]",
+        "confidence": 0.7
+      }
+    ],
+    "limitations": [
+      "Public commit status metadata was available, but only non-execution statuses were found.",
+      "No public test/build workflow run, check, or raw CI log was available from the collected metadata. No verified execution evidence was established.",
+      "Raw CI logs were not fetched or stored.",
+      "No original task text was provided and no single valid linked issue was available; the PR description is retained only as unverified author context.",
+      "Confidence is based only on issue, diff, and test-artifact evidence because no public test/build execution evidence was found."
+    ],
+    "analysisContext": "unlinked_pr",
+    "reportSchemaVersion": "verification-report.v2",
+    "verificationContract": {
+      "version": 2,
+      "policy": "strict_typed_contract",
+      "state": "absent",
+      "source": null,
+      "gaps": [
+        {
+          "kind": "verification_contract_missing",
+          "message": "Approved verification contract is missing."
+        }
+      ],
+      "objectives": []
+    },
+    "reviewCandidates": {
+      "version": 1,
+      "intentGraph": {
+        "version": 1,
+        "source": {
+          "kind": "description",
+          "hash": "9fb8cbba7ebbf4dcbb9717d77b921bffa3c52c672fe333feee156adf2e69ecac",
+          "length": 2957,
+          "coordinates": "redacted_lf_utf16"
+        },
+        "repository": "psf/requests",
+        "goals": [
+          {
+            "id": "intent_446860678423d915",
+            "requirementIds": [
+              "req_1"
+            ],
+            "sourceRefs": [
+              {
+                "start": 16,
+                "end": 212,
+                "hash": "485333860eb016e53d52afad751444a16a03159c5970499f197030c3ec9c5f70"
+              },
+              {
+                "start": 214,
+                "end": 241,
+                "hash": "fb1c8dd55a52662a97c2b5f48b1d50b9118dcec6c59cbc2565c18e56233f96f2"
+              },
+              {
+                "start": 242,
+                "end": 309,
+                "hash": "85cf47ce3310a349c5bd0749b58b8771e95ca3611b02d94510de639491371f65"
+              },
+              {
+                "start": 310,
+                "end": 395,
+                "hash": "39e106b625d4cedbb8d1cb8c2e553b83f2a96beca8e31b3c2e50933287f2b4f0"
+              }
+            ],
+            "facets": [
+              {
+                "kind": "condition",
+                "sourceRef": {
+                  "start": 280,
+                  "end": 309,
+                  "hash": "4488ab62eff233fe3ba3bb8950cffb3b6b5ae27f450781860f7f03a260cc65c9"
+                }
+              }
+            ]
+          },
+          {
+            "id": "intent_43a2a3f4aa734bc5",
+            "requirementIds": [
+              "req_2",
+              "req_3",
+              "req_4",
+              "req_5",
+              "req_6",
+              "req_7",
+              "req_8"
+            ],
+            "sourceRefs": [
+              {
+                "start": 396,
+                "end": 470,
+                "hash": "215d35199268455486844aa7720ca2aac756258d08205d77eb6674cccceeb5fd"
+              },
+              {
+                "start": 471,
+                "end": 539,
+                "hash": "172b2a0c29ef38ffdc322666b66c05b439f4a65adde55a62fb8951b8af9bdd86"
+              },
+              {
+                "start": 685,
+                "end": 883,
+                "hash": "898197d57c1e85f433ec455f85c4bd0be5ecda5c2275331ae1dab8724a0200bf"
+              },
+              {
+                "start": 884,
+                "end": 1135,
+                "hash": "cdefdbb63ee8758af1343b389af859449f215625e0b35ac1d68f68f34f51abb1"
+              },
+              {
+                "start": 1237,
+                "end": 1417,
+                "hash": "b971352a59d78119efa2fd3ad4a1cb68e4d012e4dcb1e8c831def761b1817890"
+              },
+              {
+                "start": 1418,
+                "end": 1529,
+                "hash": "456011e804dd80cfc34c411e234f833e06f5b1c6fe1b8417cfeb5e8b84044333"
+              },
+              {
+                "start": 1654,
+                "end": 1757,
+                "hash": "98e9d91f2de649ee4ed40649763a7737a11a52a3397fb6327ea86150e7d05019"
+              },
+              {
+                "start": 1758,
+                "end": 1904,
+                "hash": "245972f470f05b351bfac890cee166a98d3ddf521ad40c60bcc0809db7af1d73"
+              },
+              {
+                "start": 2007,
+                "end": 2262,
+                "hash": "727952a61cf366d7706b99d528746b14d126fc419721d3b94a064ba33150f1df"
+              },
+              {
+                "start": 2263,
+                "end": 2369,
+                "hash": "dc979ddd3bb0f1bafa632a551ad0b3d49c71a72b477e93a68fc7c7cac287a611"
+              },
+              {
+                "start": 2488,
+                "end": 2668,
+                "hash": "bf44ce8267ce10da6f20cd58649bd876a6c84963a25cc33029918926b2ccb8ac"
+              },
+              {
+                "start": 2669,
+                "end": 2739,
+                "hash": "c683c25e495111f28cc65e2fb4f69b3d8f9d1dbcc6a280a480b089f44cf5bfd1"
+              },
+              {
+                "start": 2763,
+                "end": 2802,
+                "hash": "ef5b34c3c7424089405087f8f5f8e2233ff88a32119958229e0cb627674705cb"
+              },
+              {
+                "start": 2803,
+                "end": 2921,
+                "hash": "e3a6ee49ea1950cddce53bfbea2f8133d43d064623db3926ca383539040c674e"
+              },
+              {
+                "start": 2922,
+                "end": 2956,
+                "hash": "5cd0746a2b0f2d39b76aa2dd68813eb8723714e902e0118effb1c8d0a22b7683"
+              }
+            ],
+            "facets": [
+              {
+                "kind": "artifact_hint",
+                "sourceRef": {
+                  "start": 617,
+                  "end": 684,
+                  "hash": "85f426ae0fdfe8a25e9dbb0befec1ca22726e9eb76d60980b3a0b9331c89d122"
+                }
+              },
+              {
+                "kind": "artifact_hint",
+                "sourceRef": {
+                  "start": 617,
+                  "end": 684,
+                  "hash": "85f426ae0fdfe8a25e9dbb0befec1ca22726e9eb76d60980b3a0b9331c89d122"
+                }
+              },
+              {
+                "kind": "artifact_hint",
+                "sourceRef": {
+                  "start": 1170,
+                  "end": 1236,
+                  "hash": "d3d34562951ad025743a2cf83a4a942a0429a5cf12f7543e934eedb197ad6480"
+                }
+              },
+              {
+                "kind": "artifact_hint",
+                "sourceRef": {
+                  "start": 1170,
+                  "end": 1236,
+                  "hash": "d3d34562951ad025743a2cf83a4a942a0429a5cf12f7543e934eedb197ad6480"
+                }
+              },
+              {
+                "kind": "artifact_hint",
+                "sourceRef": {
+                  "start": 1592,
+                  "end": 1653,
+                  "hash": "c515e31a349ab15cc3a3968356e0d9356c10928a11f7eeebe5027db0230e2059"
+                }
+              },
+              {
+                "kind": "artifact_hint",
+                "sourceRef": {
+                  "start": 1592,
+                  "end": 1653,
+                  "hash": "c515e31a349ab15cc3a3968356e0d9356c10928a11f7eeebe5027db0230e2059"
+                }
+              },
+              {
+                "kind": "artifact_hint",
+                "sourceRef": {
+                  "start": 1951,
+                  "end": 2006,
+                  "hash": "b2bff9018a6d501d414be60923e77f2877bd572571d89267d92a1a2f2a789183"
+                }
+              },
+              {
+                "kind": "artifact_hint",
+                "sourceRef": {
+                  "start": 1951,
+                  "end": 2006,
+                  "hash": "b2bff9018a6d501d414be60923e77f2877bd572571d89267d92a1a2f2a789183"
+                }
+              },
+              {
+                "kind": "condition",
+                "sourceRef": {
+                  "start": 2022,
+                  "end": 2262,
+                  "hash": "c2eb7c72b6c163f587ad829ecd9e920418b09ca768af94f3ae43661f803d9aca"
+                }
+              },
+              {
+                "kind": "condition",
+                "sourceRef": {
+                  "start": 2308,
+                  "end": 2369,
+                  "hash": "107016eb83842befae1e5da350c0a0b579f5c818dd3b602de190f2cdb58994a8"
+                }
+              },
+              {
+                "kind": "artifact_hint",
+                "sourceRef": {
+                  "start": 2429,
+                  "end": 2487,
+                  "hash": "df896bb36ba14d47a566811fb021a678677a9dbf6d00f240cacdd66ff69cd33a"
+                }
+              },
+              {
+                "kind": "artifact_hint",
+                "sourceRef": {
+                  "start": 2429,
+                  "end": 2487,
+                  "hash": "df896bb36ba14d47a566811fb021a678677a9dbf6d00f240cacdd66ff69cd33a"
+                }
+              }
+            ]
+          }
+        ],
+        "chunks": [
+          {
+            "id": "chunk_fa36593467fb782fc3df4dce",
+            "pool": "changed",
+            "path": "src/requests/_internal_utils.py",
+            "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 1,
+            "hash": "84df3e738028a42a75342bbf6682da19dcef0f534f3bfe864d235fe481690dd7",
+            "evidenceId": "ev_2"
+          },
+          {
+            "id": "chunk_c8ec299a9af3c055530e84cc",
+            "pool": "changed",
+            "path": "src/requests/cookies.py",
+            "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 1,
+            "hash": "cfc16f3def4a4e42ef1a644abc313dad3521d721886b5d394e32a0f1bf73680f",
+            "evidenceId": "ev_3"
+          },
+          {
+            "id": "chunk_0d5452ec8bdf0fcd17900c5b",
+            "pool": "changed",
+            "path": "src/requests/models.py",
+            "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 1,
+            "hash": "0b7397765f60c178ec65f8a41cb71fc01dbae89eca5a4a2f6bec84e433ac7eb3",
+            "evidenceId": "ev_4"
+          },
+          {
+            "id": "chunk_73534cf08584a7f1212d8c97",
+            "pool": "changed",
+            "path": "src/requests/sessions.py",
+            "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 1,
+            "hash": "cae666971c697f977978acbb8cc2030ee1449b990bf431c7a530d3c9e4286965",
+            "evidenceId": "ev_5"
+          },
+          {
+            "id": "chunk_69bde308269d904d693d654e",
+            "pool": "changed",
+            "path": "src/requests/utils.py",
+            "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 1,
+            "hash": "4c2dbc40369371797633b9958f0f5d233e5f7a70fd8ebeb95bede1622a8dab81",
+            "evidenceId": "ev_6"
+          }
+        ],
+        "edges": [
+          {
+            "goalId": "intent_43a2a3f4aa734bc5",
+            "chunkId": "chunk_0d5452ec8bdf0fcd17900c5b",
+            "relation": "candidate",
+            "basis": [
+              "source_path",
+              "identifier",
+              "lexical",
+              "changed_declaration"
+            ],
+            "score": 713
+          },
+          {
+            "goalId": "intent_43a2a3f4aa734bc5",
+            "chunkId": "chunk_69bde308269d904d693d654e",
+            "relation": "candidate",
+            "basis": [
+              "source_path",
+              "identifier",
+              "lexical",
+              "changed_declaration"
+            ],
+            "score": 623
+          },
+          {
+            "goalId": "intent_43a2a3f4aa734bc5",
+            "chunkId": "chunk_fa36593467fb782fc3df4dce",
+            "relation": "candidate",
+            "basis": [
+              "source_path",
+              "identifier",
+              "lexical",
+              "changed_declaration"
+            ],
+            "score": 623
+          },
+          {
+            "goalId": "intent_43a2a3f4aa734bc5",
+            "chunkId": "chunk_73534cf08584a7f1212d8c97",
+            "relation": "candidate",
+            "basis": [
+              "source_path",
+              "identifier",
+              "lexical"
+            ],
+            "score": 611
+          },
+          {
+            "goalId": "intent_43a2a3f4aa734bc5",
+            "chunkId": "chunk_c8ec299a9af3c055530e84cc",
+            "relation": "candidate",
+            "basis": [
+              "source_path",
+              "identifier",
+              "lexical",
+              "changed_declaration"
+            ],
+            "score": 605
+          }
+        ],
+        "capabilities": {
+          "wholeRepository": "unavailable",
+          "embeddings": "unavailable",
+          "symbolResolution": "unavailable",
+          "semantic": "existing_relations_only",
+          "snapshotChunks": 0,
+          "rejectedSnapshots": 0,
+          "truncated": false
+        }
+      },
+      "requirements": [
+        {
+          "requirementId": "req_1",
+          "sourceHash": "dd9f1d6241ab93ff80792c74f9881a6300c3c1f728b097e1c7aa49e7e44b5100",
+          "candidates": []
+        },
+        {
+          "requirementId": "req_2",
+          "sourceHash": "a530b5d9306e24cf5efb1163cb050c2bb8d6aba1f9b478ccf6a3b022fab1d85d",
+          "candidates": [
+            {
+              "evidenceId": "ev_4",
+              "basis": "source_path",
+              "score": 713,
+              "evidenceHash": "0b7397765f60c178ec65f8a41cb71fc01dbae89eca5a4a2f6bec84e433ac7eb3"
+            },
+            {
+              "evidenceId": "ev_2",
+              "basis": "source_path",
+              "score": 623,
+              "evidenceHash": "84df3e738028a42a75342bbf6682da19dcef0f534f3bfe864d235fe481690dd7"
+            },
+            {
+              "evidenceId": "ev_6",
+              "basis": "source_path",
+              "score": 623,
+              "evidenceHash": "4c2dbc40369371797633b9958f0f5d233e5f7a70fd8ebeb95bede1622a8dab81"
+            },
+            {
+              "evidenceId": "ev_5",
+              "basis": "source_path",
+              "score": 611,
+              "evidenceHash": "cae666971c697f977978acbb8cc2030ee1449b990bf431c7a530d3c9e4286965"
+            },
+            {
+              "evidenceId": "ev_3",
+              "basis": "source_path",
+              "score": 605,
+              "evidenceHash": "cfc16f3def4a4e42ef1a644abc313dad3521d721886b5d394e32a0f1bf73680f"
+            }
+          ]
+        },
+        {
+          "requirementId": "req_3",
+          "sourceHash": "a530b5d9306e24cf5efb1163cb050c2bb8d6aba1f9b478ccf6a3b022fab1d85d",
+          "candidates": [
+            {
+              "evidenceId": "ev_4",
+              "basis": "source_path",
+              "score": 713,
+              "evidenceHash": "0b7397765f60c178ec65f8a41cb71fc01dbae89eca5a4a2f6bec84e433ac7eb3"
+            },
+            {
+              "evidenceId": "ev_2",
+              "basis": "source_path",
+              "score": 623,
+              "evidenceHash": "84df3e738028a42a75342bbf6682da19dcef0f534f3bfe864d235fe481690dd7"
+            },
+            {
+              "evidenceId": "ev_6",
+              "basis": "source_path",
+              "score": 623,
+              "evidenceHash": "4c2dbc40369371797633b9958f0f5d233e5f7a70fd8ebeb95bede1622a8dab81"
+            },
+            {
+              "evidenceId": "ev_5",
+              "basis": "source_path",
+              "score": 611,
+              "evidenceHash": "cae666971c697f977978acbb8cc2030ee1449b990bf431c7a530d3c9e4286965"
+            },
+            {
+              "evidenceId": "ev_3",
+              "basis": "source_path",
+              "score": 605,
+              "evidenceHash": "cfc16f3def4a4e42ef1a644abc313dad3521d721886b5d394e32a0f1bf73680f"
+            }
+          ]
+        },
+        {
+          "requirementId": "req_4",
+          "sourceHash": "a530b5d9306e24cf5efb1163cb050c2bb8d6aba1f9b478ccf6a3b022fab1d85d",
+          "candidates": [
+            {
+              "evidenceId": "ev_4",
+              "basis": "source_path",
+              "score": 713,
+              "evidenceHash": "0b7397765f60c178ec65f8a41cb71fc01dbae89eca5a4a2f6bec84e433ac7eb3"
+            },
+            {
+              "evidenceId": "ev_2",
+              "basis": "source_path",
+              "score": 623,
+              "evidenceHash": "84df3e738028a42a75342bbf6682da19dcef0f534f3bfe864d235fe481690dd7"
+            },
+            {
+              "evidenceId": "ev_6",
+              "basis": "source_path",
+              "score": 623,
+              "evidenceHash": "4c2dbc40369371797633b9958f0f5d233e5f7a70fd8ebeb95bede1622a8dab81"
+            },
+            {
+              "evidenceId": "ev_5",
+              "basis": "source_path",
+              "score": 611,
+              "evidenceHash": "cae666971c697f977978acbb8cc2030ee1449b990bf431c7a530d3c9e4286965"
+            },
+            {
+              "evidenceId": "ev_3",
+              "basis": "source_path",
+              "score": 605,
+              "evidenceHash": "cfc16f3def4a4e42ef1a644abc313dad3521d721886b5d394e32a0f1bf73680f"
+            }
+          ]
+        },
+        {
+          "requirementId": "req_5",
+          "sourceHash": "a530b5d9306e24cf5efb1163cb050c2bb8d6aba1f9b478ccf6a3b022fab1d85d",
+          "candidates": [
+            {
+              "evidenceId": "ev_4",
+              "basis": "source_path",
+              "score": 713,
+              "evidenceHash": "0b7397765f60c178ec65f8a41cb71fc01dbae89eca5a4a2f6bec84e433ac7eb3"
+            },
+            {
+              "evidenceId": "ev_2",
+              "basis": "source_path",
+              "score": 623,
+              "evidenceHash": "84df3e738028a42a75342bbf6682da19dcef0f534f3bfe864d235fe481690dd7"
+            },
+            {
+              "evidenceId": "ev_6",
+              "basis": "source_path",
+              "score": 623,
+              "evidenceHash": "4c2dbc40369371797633b9958f0f5d233e5f7a70fd8ebeb95bede1622a8dab81"
+            },
+            {
+              "evidenceId": "ev_5",
+              "basis": "source_path",
+              "score": 611,
+              "evidenceHash": "cae666971c697f977978acbb8cc2030ee1449b990bf431c7a530d3c9e4286965"
+            },
+            {
+              "evidenceId": "ev_3",
+              "basis": "source_path",
+              "score": 605,
+              "evidenceHash": "cfc16f3def4a4e42ef1a644abc313dad3521d721886b5d394e32a0f1bf73680f"
+            }
+          ]
+        },
+        {
+          "requirementId": "req_6",
+          "sourceHash": "a530b5d9306e24cf5efb1163cb050c2bb8d6aba1f9b478ccf6a3b022fab1d85d",
+          "candidates": [
+            {
+              "evidenceId": "ev_4",
+              "basis": "source_path",
+              "score": 713,
+              "evidenceHash": "0b7397765f60c178ec65f8a41cb71fc01dbae89eca5a4a2f6bec84e433ac7eb3"
+            },
+            {
+              "evidenceId": "ev_2",
+              "basis": "source_path",
+              "score": 623,
+              "evidenceHash": "84df3e738028a42a75342bbf6682da19dcef0f534f3bfe864d235fe481690dd7"
+            },
+            {
+              "evidenceId": "ev_6",
+              "basis": "source_path",
+              "score": 623,
+              "evidenceHash": "4c2dbc40369371797633b9958f0f5d233e5f7a70fd8ebeb95bede1622a8dab81"
+            },
+            {
+              "evidenceId": "ev_5",
+              "basis": "source_path",
+              "score": 611,
+              "evidenceHash": "cae666971c697f977978acbb8cc2030ee1449b990bf431c7a530d3c9e4286965"
+            },
+            {
+              "evidenceId": "ev_3",
+              "basis": "source_path",
+              "score": 605,
+              "evidenceHash": "cfc16f3def4a4e42ef1a644abc313dad3521d721886b5d394e32a0f1bf73680f"
+            }
+          ]
+        },
+        {
+          "requirementId": "req_7",
+          "sourceHash": "a530b5d9306e24cf5efb1163cb050c2bb8d6aba1f9b478ccf6a3b022fab1d85d",
+          "candidates": [
+            {
+              "evidenceId": "ev_4",
+              "basis": "source_path",
+              "score": 713,
+              "evidenceHash": "0b7397765f60c178ec65f8a41cb71fc01dbae89eca5a4a2f6bec84e433ac7eb3"
+            },
+            {
+              "evidenceId": "ev_2",
+              "basis": "source_path",
+              "score": 623,
+              "evidenceHash": "84df3e738028a42a75342bbf6682da19dcef0f534f3bfe864d235fe481690dd7"
+            },
+            {
+              "evidenceId": "ev_6",
+              "basis": "source_path",
+              "score": 623,
+              "evidenceHash": "4c2dbc40369371797633b9958f0f5d233e5f7a70fd8ebeb95bede1622a8dab81"
+            },
+            {
+              "evidenceId": "ev_5",
+              "basis": "source_path",
+              "score": 611,
+              "evidenceHash": "cae666971c697f977978acbb8cc2030ee1449b990bf431c7a530d3c9e4286965"
+            },
+            {
+              "evidenceId": "ev_3",
+              "basis": "source_path",
+              "score": 605,
+              "evidenceHash": "cfc16f3def4a4e42ef1a644abc313dad3521d721886b5d394e32a0f1bf73680f"
+            }
+          ]
+        },
+        {
+          "requirementId": "req_8",
+          "sourceHash": "a530b5d9306e24cf5efb1163cb050c2bb8d6aba1f9b478ccf6a3b022fab1d85d",
+          "candidates": [
+            {
+              "evidenceId": "ev_4",
+              "basis": "source_path",
+              "score": 713,
+              "evidenceHash": "0b7397765f60c178ec65f8a41cb71fc01dbae89eca5a4a2f6bec84e433ac7eb3"
+            },
+            {
+              "evidenceId": "ev_2",
+              "basis": "source_path",
+              "score": 623,
+              "evidenceHash": "84df3e738028a42a75342bbf6682da19dcef0f534f3bfe864d235fe481690dd7"
+            },
+            {
+              "evidenceId": "ev_6",
+              "basis": "source_path",
+              "score": 623,
+              "evidenceHash": "4c2dbc40369371797633b9958f0f5d233e5f7a70fd8ebeb95bede1622a8dab81"
+            },
+            {
+              "evidenceId": "ev_5",
+              "basis": "source_path",
+              "score": 611,
+              "evidenceHash": "cae666971c697f977978acbb8cc2030ee1449b990bf431c7a530d3c9e4286965"
+            },
+            {
+              "evidenceId": "ev_3",
+              "basis": "source_path",
+              "score": 605,
+              "evidenceHash": "cfc16f3def4a4e42ef1a644abc313dad3521d721886b5d394e32a0f1bf73680f"
+            }
+          ]
+        }
+      ],
+      "retainedRelations": [
+        {
+          "requirementId": "req_1",
+          "evidenceId": "ev_5",
+          "relation": "observed"
+        },
+        {
+          "requirementId": "req_2",
+          "evidenceId": "ev_3",
+          "relation": "observed"
+        },
+        {
+          "requirementId": "req_2",
+          "evidenceId": "ev_4",
+          "relation": "observed"
+        },
+        {
+          "requirementId": "req_3",
+          "evidenceId": "ev_4",
+          "relation": "observed"
+        },
+        {
+          "requirementId": "req_3",
+          "evidenceId": "ev_5",
+          "relation": "observed"
+        },
+        {
+          "requirementId": "req_4",
+          "evidenceId": "ev_2",
+          "relation": "observed"
+        },
+        {
+          "requirementId": "req_5",
+          "evidenceId": "ev_2",
+          "relation": "observed"
+        },
+        {
+          "requirementId": "req_5",
+          "evidenceId": "ev_4",
+          "relation": "observed"
+        },
+        {
+          "requirementId": "req_6",
+          "evidenceId": "ev_6",
+          "relation": "observed"
+        },
+        {
+          "requirementId": "req_7",
+          "evidenceId": "ev_4",
+          "relation": "observed"
+        },
+        {
+          "requirementId": "req_7",
+          "evidenceId": "ev_6",
+          "relation": "observed"
+        },
+        {
+          "requirementId": "req_8",
+          "evidenceId": "ev_2",
+          "relation": "observed"
+        },
+        {
+          "requirementId": "req_8",
+          "evidenceId": "ev_3",
+          "relation": "observed"
+        },
+        {
+          "requirementId": "req_8",
+          "evidenceId": "ev_4",
+          "relation": "observed"
+        },
+        {
+          "requirementId": "req_8",
+          "evidenceId": "ev_6",
+          "relation": "observed"
+        }
+      ],
+      "navigation": {
+        "version": 1,
+        "model": "gemini-3.8-flash",
+        "state": "partial",
+        "repository": "psf/requests",
+        "headSha": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+        "baseSha": "f361ead047be5cb873174218582f7d8b9fcd9f49",
+        "sources": [
+          {
+            "id": "description",
+            "authority": "pr_author_claim",
+            "hash": "9fb8cbba7ebbf4dcbb9717d77b921bffa3c52c672fe333feee156adf2e69ecac",
+            "length": 2957,
+            "processedLength": 2956,
+            "url": "https://github.com/psf/requests/pull/7589"
+          },
+          {
+            "id": "title",
+            "authority": "pr_author_claim",
+            "hash": "958456d295c5d6bd109c9c217c4827ffbdb31e9fc51eb9e9af4a2703bf88007c",
+            "length": 38,
+            "processedLength": 38,
+            "url": "https://github.com/psf/requests/pull/7589"
+          }
+        ],
+        "goals": [
+          {
+            "id": "goal_1",
+            "summary": "Implement performance optimizations and clock timing improvements across requests core components.",
+            "emphasis": "primary",
+            "authority": "pr_author_claim",
+            "sourceRefs": [
+              {
+                "sourceId": "title",
+                "start": 0,
+                "end": 38,
+                "hash": "958456d295c5d6bd109c9c217c4827ffbdb31e9fc51eb9e9af4a2703bf88007c"
+              },
+              {
+                "sourceId": "description",
+                "start": 16,
+                "end": 212,
+                "hash": "485333860eb016e53d52afad751444a16a03159c5970499f197030c3ec9c5f70"
+              },
+              {
+                "sourceId": "description",
+                "start": 214,
+                "end": 539,
+                "hash": "8d9f09534fb31d919dabdc1e33c45e7b97a6785b8626429344c304ddc707ed7a"
+              }
+            ],
+            "facets": [
+              {
+                "kind": "motivation",
+                "summary": "Aims to lower CPU and memory overhead on large responses, speed up cookie and ASCII checks, prevent non-monotonic timing inaccuracies, and avoid redundant proxy checks.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 214,
+                    "end": 539,
+                    "hash": "8d9f09534fb31d919dabdc1e33c45e7b97a6785b8626429344c304ddc707ed7a"
+                  }
+                ]
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "Limits character encoding auto-detection in Response.apparent_encoding to the first 32 KB of response content.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 567,
+                    "end": 1135,
+                    "hash": "7c9c02d0528a5596b0ca5ba158c42a94ab0c5785baf3e1c4898b89ca62b9ff5e"
+                  }
+                ]
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "Replaces exception-based encoding checks with native str.isascii() in unicode_is_ascii.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 1137,
+                    "end": 1529,
+                    "hash": "6614ac114857e9aa4da70a7e097734d6bba030c2feccb860b03b17af08daedc6"
+                  }
+                ]
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "Converts cookie name lookup collection in cookiejar_from_dict from a list to a set comprehension for O(1) checks.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 1531,
+                    "end": 1904,
+                    "hash": "d0ae0b4c5a8d8f271ac702de46b9b875375081af13b79787a447f58109ab3f8b"
+                  }
+                ]
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "Eliminates duplicate proxy-bypass evaluation in resolve_proxies by directly calling getproxies() when bypass evaluates to False.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 1906,
+                    "end": 2369,
+                    "hash": "fc520c074fbfb22c58f08b6542237b23423430c8d71f6d0aef0c5b487bdffbbd"
+                  }
+                ]
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "Sets preferred_clock to time.perf_counter universally across platforms in sessions.py to ensure monotonic timing.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 2371,
+                    "end": 2739,
+                    "hash": "1002f5f70a555d7ab286f2952bfce0538666d26b9d3472f3cf5e08c7fb8e65ec"
+                  }
+                ]
+              },
+              {
+                "kind": "test_claim",
+                "summary": "Reports running pytest with all component-specific tests and the full suite passing as expected.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 2763,
+                    "end": 2956,
+                    "hash": "7d7597e601f5569b3cf64db458352a9b1b06bacfe915504fb553753cc3698a3f"
+                  }
+                ]
+              }
+            ],
+            "openQuestions": [],
+            "firstInspection": "read_089b4a2d085fa5a453964e5a",
+            "candidates": [
+              {
+                "artifactId": "read_089b4a2d085fa5a453964e5a",
+                "relevance": "relevant",
+                "whyInspect": "Shows the updated proxy resolution logic in resolve_proxies that avoids redundant proxy bypass checks by directly querying system proxies.",
+                "reviewQuestion": "Does replacing get_environ_proxies with getproxies preserve identical environment proxy retrieval and scheme matching semantics?",
+                "uncertainty": "Behavior on platforms with custom proxy bypass configurations requires checking how getproxies behaves compared to get_environ_proxies."
+              },
+              {
+                "artifactId": "read_01f6f101ccffc866e28af178",
+                "relevance": "relevant",
+                "whyInspect": "Implements the 32 KB slice limit for character encoding detection on response content in apparent_encoding.",
+                "reviewQuestion": "Could truncating content at 32 KB degrade charset detection accuracy on HTML or XML documents where charset declarations appear later?",
+                "uncertainty": "None regarding the code change itself; chardet/charset_normalizer accuracy on sliced content depends on input length."
+              },
+              {
+                "artifactId": "read_b0f5d4521830ad61076481c6",
+                "relevance": "relevant",
+                "whyInspect": "Contains the conversion of cookiejar name inspection to a set comprehension for constant-time membership lookups.",
+                "reviewQuestion": "Does the set comprehension correctly match the previous behavior without altering cookie overwrite rules or order?",
+                "uncertainty": "None."
+              },
+              {
+                "artifactId": "read_a73897c2be9b9063e2234518",
+                "relevance": "relevant",
+                "whyInspect": "Contains the replacement of codec encoding trial logic with the native str.isascii method in unicode_is_ascii.",
+                "reviewQuestion": "Are there any edge cases or type assertions where u_string.isascii differs from the previous ascii encode trial?",
+                "uncertainty": "None."
+              },
+              {
+                "artifactId": "read_9f0e7ca2443715f8023a5cb2",
+                "relevance": "relevant",
+                "whyInspect": "Shows the assignment of preferred_clock to time.perf_counter across all platforms.",
+                "reviewQuestion": "Does standardizing on time.perf_counter avoid time drifting or backwards adjustments across all supported operating systems?",
+                "uncertainty": "None."
+              },
+              {
+                "artifactId": "read_700dd479a09a48362baa72d1",
+                "relevance": "possible",
+                "whyInspect": "Defines should_bypass_proxies, which interacts with resolve_proxies when determining whether environment proxies should be bypassed.",
+                "reviewQuestion": "Is should_bypass_proxies still functioning properly when resolve_proxies consumes its return value?",
+                "uncertainty": "None."
+              },
+              {
+                "artifactId": "read_e03d00b81b05f10c53a7ea1e",
+                "relevance": "possible",
+                "whyInspect": "Tests environment proxy bypass logic against various no_proxy fixtures and configurations.",
+                "reviewQuestion": "Do existing proxy test suites sufficiently cover resolve_proxies and getproxies pathways?",
+                "uncertainty": "Existing tests test get_environ_proxies rather than resolve_proxies directly."
+              }
+            ],
+            "uncertainty": []
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "read_a73897c2be9b9063e2234518",
+            "path": "src/requests/_internal_utils.py",
+            "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+            "side": "head",
+            "startLine": 44,
+            "endLine": 47,
+            "hash": "22739a41d8930ec56f2836523059648e6a2a977d21c9adac4624a451c2ae4863",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_e3eb4fb1dfe6a09283f354c7",
+            "path": "src/requests/_internal_utils.py",
+            "revision": "f361ead047be5cb873174218582f7d8b9fcd9f49",
+            "side": "base",
+            "startLine": 44,
+            "endLine": 51,
+            "hash": "a5fe1494dad5641f33906317e8c571a9de348a5c84c39bddca61eb1db127a8fa",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_b0f5d4521830ad61076481c6",
+            "path": "src/requests/cookies.py",
+            "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+            "side": "head",
+            "startLine": 593,
+            "endLine": 599,
+            "hash": "d0ee0ebadb6f07734c61dfc25a0a64f7aa5a4d602c378fe7af6428e763b08efb",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_867e3a08fad1adef9395b0e3",
+            "path": "src/requests/cookies.py",
+            "revision": "f361ead047be5cb873174218582f7d8b9fcd9f49",
+            "side": "base",
+            "startLine": 593,
+            "endLine": 599,
+            "hash": "73013eb1d4d6a20029cbf4f3b3db72aab6a2a96edf74f79e10eefdedd2dddce0",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_01f6f101ccffc866e28af178",
+            "path": "src/requests/models.py",
+            "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+            "side": "head",
+            "startLine": 897,
+            "endLine": 903,
+            "hash": "7409b326afdb63e9919b92948457b85a880195cc626a63a6d9af44608da45038",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_e12b819dbdaeffea08077417",
+            "path": "src/requests/models.py",
+            "revision": "f361ead047be5cb873174218582f7d8b9fcd9f49",
+            "side": "base",
+            "startLine": 897,
+            "endLine": 903,
+            "hash": "561a31a31d19d2bc913ec457005b3188b0ae757018c71da5db3738bc4a3e6d94",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_9f0e7ca2443715f8023a5cb2",
+            "path": "src/requests/sessions.py",
+            "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+            "side": "head",
+            "startLine": 67,
+            "endLine": 73,
+            "hash": "c265219c2f2cd58415297928f35dd53c176defa5917cf431e9094e827b060c43",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_7c287e3501ef0a3cde845e0a",
+            "path": "src/requests/sessions.py",
+            "revision": "f361ead047be5cb873174218582f7d8b9fcd9f49",
+            "side": "base",
+            "startLine": 67,
+            "endLine": 76,
+            "hash": "fe1ffc61a3f7cd8f2cedb3fee6d7fb48947367105c793d5f8d182334db298a2f",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_fef0c366d7161a57f60e4ee5",
+            "path": "src/requests/utils.py",
+            "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+            "side": "head",
+            "startLine": 930,
+            "endLine": 935,
+            "hash": "a5c01dc68fbf4089b46fbf9b06aa89f37315f18de70a4e8fc601e0233b2b0355",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_d6c6e45a82c3a4344d35fb49",
+            "path": "src/requests/utils.py",
+            "revision": "f361ead047be5cb873174218582f7d8b9fcd9f49",
+            "side": "base",
+            "startLine": 930,
+            "endLine": 935,
+            "hash": "265ef2325107aa49df1b2be9b1708528606d792e5a233b7d01303a7d1d6871a4",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_fd1e365ef8f378bf233fe49e",
+            "path": "src/requests/utils.py",
+            "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+            "side": "head",
+            "startLine": 99,
+            "endLine": 135,
+            "hash": "e5496d2ce8db2e16aab534d0c9a677a87113d58d6e9e80556bc7aa9d4b8b159d",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_3ee465ca107c814468709468",
+            "path": "src/requests/utils.py",
+            "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+            "side": "head",
+            "startLine": 376,
+            "endLine": 407,
+            "hash": "d92453a5adbfe87cb23f34dc9373e2cd31ba241386f7a00b4ad29859e68c5f63",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_a460b7dc641386df3abb63ec",
+            "path": "src/requests/utils.py",
+            "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+            "side": "head",
+            "startLine": 408,
+            "endLine": 439,
+            "hash": "7a016ebe88e80a697d57b371d7c3277c9c6d45db1ef5eafb06befc3eeb27ff28",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_2368a6715465e2d6695245e3",
+            "path": "src/requests/utils.py",
+            "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+            "side": "head",
+            "startLine": 522,
+            "endLine": 544,
+            "hash": "13933e6bbc3131d0e3460100604a9c696ada8fd795000ffb18649c76ba4d97f8",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_90aa11ad4b0626d4d2fee471",
+            "path": "src/requests/utils.py",
+            "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+            "side": "head",
+            "startLine": 569,
+            "endLine": 591,
+            "hash": "fd2b35a406ecd6393d5893a70fd9c964459d09410cd6162b0060e6d190ac3867",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_20750be6986f8e751ea72cb6",
+            "path": "src/requests/utils.py",
+            "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+            "side": "head",
+            "startLine": 633,
+            "endLine": 674,
+            "hash": "e37162a2f3c98bc8844ac9e16c278c4f5fd5d5ac2a10d0cf78765d4e35fb7f5a",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_b5f84a99eb1220221d021634",
+            "path": "src/requests/utils.py",
+            "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+            "side": "head",
+            "startLine": 763,
+            "endLine": 784,
+            "hash": "a1e8abe31b8fcc070b5f4c654c3f8edfbaaccbcdaa1a611cc5e5d1fa69556325",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_9a68dce8f75fe4d2e3a9e853",
+            "path": "src/requests/utils.py",
+            "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+            "side": "head",
+            "startLine": 787,
+            "endLine": 807,
+            "hash": "b144f4e19866ee76c48d7d798ae930a5d5841de025b64a8ffa2d3082d3c9d5f8",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_700dd479a09a48362baa72d1",
+            "path": "src/requests/utils.py",
+            "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+            "side": "head",
+            "startLine": 810,
+            "endLine": 870,
+            "hash": "1113a55be201c3063bb5f9cf3eb7e1cd0ffeb21fe78a3f0dcdb9b2215a86bd2b",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_9a08040818eaaade6ce0da73",
+            "path": "src/requests/utils.py",
+            "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+            "side": "head",
+            "startLine": 885,
+            "endLine": 908,
+            "hash": "f9f2837a7033b2c936cf225258dc44ae3fda5f0b889fed8c3ea10d9b53f54996",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_089b4a2d085fa5a453964e5a",
+            "path": "src/requests/utils.py",
+            "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+            "side": "head",
+            "startLine": 911,
+            "endLine": 939,
+            "hash": "796e9876a50377c7e9bffb9203c03d742e8e5871646f392cb609782e1aa6a61e",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_e03d00b81b05f10c53a7ea1e",
+            "path": "tests/test_utils.py",
+            "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+            "side": "head",
+            "startLine": 220,
+            "endLine": 282,
+            "hash": "08e900fca5575146becbf380441b8961591101f2166b5439586c405db587cf0b",
+            "kind": "test",
+            "origin": "snapshot"
+          }
+        ],
+        "unprocessed": [
+          "description:0",
+          "description:541",
+          "description:546",
+          "description:2741",
+          "description:2746",
+          "description:0",
+          "description:541",
+          "description:546",
+          "description:2741",
+          "description:2746"
+        ],
+        "limitations": [
+          "retrieval_python_indentation",
+          "retrieval_scan_budget_exceeded",
+          "retrieval_unverified_fallback",
+          "retrieval_budget_exceeded"
+        ],
+        "failures": [],
+        "rankingStatus": "ready",
+        "coverageStatus": "partial"
+      }
+    },
+    "generalPrAssessmentSummary": {
+      "version": 1,
+      "mode": "ordinary_pr",
+      "sourceState": "pr_author_claim",
+      "overallConclusion": "no_assessable_claims",
+      "counts": {
+        "evidence_supported": 0,
+        "evidence_partial": 0,
+        "not_demonstrated": 0,
+        "contradicted": 0,
+        "blocked": 0,
+        "not_assessable": 0
+      },
+      "reasonCodes": [
+        "author_claim_requires_confirmation",
+        "deterministic_candidate_missing",
+        "semantic_observer_unavailable"
+      ],
+      "observations": {
+        "version": 1,
+        "inventory": {
+          "state": "complete",
+          "changedArtifacts": 5,
+          "changedTestCandidates": 0
+        },
+        "links": {
+          "state": "unavailable",
+          "linkedObjectives": 0,
+          "supports": 0,
+          "tests": 0,
+          "implements": 0,
+          "contradicts": 0
+        },
+        "coverage": {
+          "source": null,
+          "evidence": null
+        }
+      }
+    },
+    "ordinaryRequirementOutcomes": {
+      "version": 1,
+      "scope": "selected_source_requirements",
+      "requirements": [
+        {
+          "requirementId": "req_1",
+          "authority": "author_claim",
+          "interpretation": "unavailable",
+          "criterion": null,
+          "reason": "source_interpretation_unavailable"
+        },
+        {
+          "requirementId": "req_2",
+          "authority": "author_claim",
+          "interpretation": "unavailable",
+          "criterion": null,
+          "reason": "source_interpretation_unavailable"
+        },
+        {
+          "requirementId": "req_3",
+          "authority": "author_claim",
+          "interpretation": "unavailable",
+          "criterion": null,
+          "reason": "source_interpretation_unavailable"
+        },
+        {
+          "requirementId": "req_4",
+          "authority": "author_claim",
+          "interpretation": "unavailable",
+          "criterion": null,
+          "reason": "source_interpretation_unavailable"
+        },
+        {
+          "requirementId": "req_5",
+          "authority": "author_claim",
+          "interpretation": "unavailable",
+          "criterion": null,
+          "reason": "source_interpretation_unavailable"
+        },
+        {
+          "requirementId": "req_6",
+          "authority": "author_claim",
+          "interpretation": "unavailable",
+          "criterion": null,
+          "reason": "source_interpretation_unavailable"
+        },
+        {
+          "requirementId": "req_7",
+          "authority": "author_claim",
+          "interpretation": "unavailable",
+          "criterion": null,
+          "reason": "source_interpretation_unavailable"
+        },
+        {
+          "requirementId": "req_8",
+          "authority": "author_claim",
+          "interpretation": "unavailable",
+          "criterion": null,
+          "reason": "source_interpretation_unavailable"
+        }
+      ]
+    }
+  }
+}

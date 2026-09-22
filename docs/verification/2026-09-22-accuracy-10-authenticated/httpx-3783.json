@@ -1,0 +1,1222 @@
+{
+  "deployment": "https://agentproof-hy1rvlmf2-renggyus-projects.vercel.app",
+  "id": "httpx-3783",
+  "group": "unused",
+  "url": "https://github.com/encode/httpx/pull/3783",
+  "httpStatus": 200,
+  "elapsedMs": 22670,
+  "error": null,
+  "expectedHead": "c1e73124c5d24aa6d61f0413d217f5810f62eb00",
+  "expectedBase": "b5addb64f0161ff6bfe94c124ef76f6a1fba5254",
+  "sameRevision": true,
+  "navigation": {
+    "version": 1,
+    "model": "gemini-3.8-flash",
+    "state": "partial",
+    "repository": "encode/httpx",
+    "headSha": "c1e73124c5d24aa6d61f0413d217f5810f62eb00",
+    "baseSha": "b5addb64f0161ff6bfe94c124ef76f6a1fba5254",
+    "sources": [
+      {
+        "id": "description",
+        "authority": "pr_author_claim",
+        "hash": "d2bfe7cb20fdb6a4a9546dd1ed6faf9a9b4c515438ca971f55e0cecb421e4dfd",
+        "length": 667,
+        "processedLength": 666,
+        "url": "https://github.com/encode/httpx/pull/3783"
+      },
+      {
+        "id": "title",
+        "authority": "pr_author_claim",
+        "hash": "7b802d3e81cdfe3a3d91ec10b7ed30c4ed78d3bd455adf7995b48f0328353817",
+        "length": 56,
+        "processedLength": 56,
+        "url": "https://github.com/encode/httpx/pull/3783"
+      }
+    ],
+    "goals": [
+      {
+        "id": "goal_1",
+        "summary": "Introduce a client option allowing the original HTTP method to be preserved during 301 and 302 redirects.",
+        "emphasis": "primary",
+        "authority": "pr_author_claim",
+        "sourceRefs": [
+          {
+            "sourceId": "title",
+            "start": 0,
+            "end": 56,
+            "hash": "7b802d3e81cdfe3a3d91ec10b7ed30c4ed78d3bd455adf7995b48f0328353817"
+          },
+          {
+            "sourceId": "description",
+            "start": 309,
+            "end": 358,
+            "hash": "a60c40cddcc8cfb1c5ccbaa4d1fef779dee0d629cb21f6c151ec67bd4a9b09e2"
+          }
+        ],
+        "facets": [
+          {
+            "kind": "motivation",
+            "summary": "RFC guidance for 301 and 302 responses is ambiguous; while browsers commonly switch the method to GET upon redirection, certain server applications rely on legacy behavior that preserves the original method.",
+            "sourceRefs": [
+              {
+                "sourceId": "description",
+                "start": 11,
+                "end": 307,
+                "hash": "b59b36a138119a5b883c726a817e7cc63ce6d9b2fe0f8b29ceabd8e05784071e"
+              }
+            ]
+          },
+          {
+            "kind": "test_claim",
+            "summary": "Author asserts tests were added for each introduced change.",
+            "sourceRefs": [
+              {
+                "sourceId": "description",
+                "start": 373,
+                "end": 666,
+                "hash": "b7e8ea6aa95b0057c3fc4136363640cc467ebb47178f02672c784bcc98a593a0"
+              }
+            ]
+          },
+          {
+            "kind": "implementation_claim",
+            "summary": "Author asserts documentation was updated accordingly.",
+            "sourceRefs": [
+              {
+                "sourceId": "description",
+                "start": 373,
+                "end": 666,
+                "hash": "b7e8ea6aa95b0057c3fc4136363640cc467ebb47178f02672c784bcc98a593a0"
+              }
+            ]
+          }
+        ],
+        "openQuestions": [],
+        "firstInspection": "read_f22fb624706ff08a7827a33f",
+        "candidates": [
+          {
+            "artifactId": "read_f22fb624706ff08a7827a33f",
+            "relevance": "relevant",
+            "whyInspect": "Implements redirect method selection where keep_method_for_redirects conditionally preserves the original method for 301 and 302 while ensuring 303 still switches to GET.",
+            "reviewQuestion": "Does keep_method_for_redirects correctly preserve the HTTP method specifically for 301 and 302 responses without bypassing expected RFC handling for 303 SEE_OTHER?",
+            "uncertainty": "Body preservation and stream handling during redirected non-GET methods are not defined in this helper."
+          },
+          {
+            "artifactId": "read_de49637f2c037126aa8ae5e3",
+            "relevance": "relevant",
+            "whyInspect": "Contains tests validating 301 redirect method preservation when keep_method_for_redirects is enabled versus disabled.",
+            "reviewQuestion": "Does the test suite verify keep_method_for_redirects behavior for both 301 and 302 redirects across synchronous and asynchronous clients?",
+            "uncertainty": "The visible snippet only shows 301 keep_method and standard 302 without showing whether 302 keep_method is tested."
+          },
+          {
+            "artifactId": "read_62f0876235afbf68681e71ef",
+            "relevance": "relevant",
+            "whyInspect": "Defines BaseClient constructor accepting and storing keep_method_for_redirects.",
+            "reviewQuestion": "Is keep_method_for_redirects initialized with an appropriate default value on BaseClient without breaking backwards compatibility?",
+            "uncertainty": "None."
+          },
+          {
+            "artifactId": "read_8ab436d1a0b06621c5419d5f",
+            "relevance": "relevant",
+            "whyInspect": "Exposes keep_method_for_redirects in Client.__init__ and forwards it to BaseClient.",
+            "reviewQuestion": "Is the parameter correctly propagated from Client.__init__ to super().__init__?",
+            "uncertainty": "None."
+          },
+          {
+            "artifactId": "read_82c90b5fc558739640b74e31",
+            "relevance": "relevant",
+            "whyInspect": "Exposes keep_method_for_redirects in AsyncClient.__init__ and forwards it to BaseClient.",
+            "reviewQuestion": "Is the parameter correctly supported and propagated across AsyncClient?",
+            "uncertainty": "None."
+          },
+          {
+            "artifactId": "read_ff250ca49b4efd286f126af8",
+            "relevance": "possible",
+            "whyInspect": "Constructs headers for redirect requests, stripping Content-Length and Transfer-Encoding only if the method switched to GET.",
+            "reviewQuestion": "Are body-related headers properly retained when the original request method is preserved during redirects?",
+            "uncertainty": "Does not reveal how the request body payload itself is replayed during redirects."
+          }
+        ],
+        "uncertainty": [
+          "Whether documentation updates claimed by the PR description exist in other files outside the provided inventory."
+        ]
+      }
+    ],
+    "artifacts": [
+      {
+        "id": "read_62f0876235afbf68681e71ef",
+        "path": "httpx/_client.py",
+        "revision": "c1e73124c5d24aa6d61f0413d217f5810f62eb00",
+        "side": "head",
+        "startLine": 189,
+        "endLine": 223,
+        "hash": "80e290a5020c8888a92ab6f6e8672c8d996685e257df8d5e5d4fd1e124a5dea3",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_f22fb624706ff08a7827a33f",
+        "path": "httpx/_client.py",
+        "revision": "c1e73124c5d24aa6d61f0413d217f5810f62eb00",
+        "side": "head",
+        "startLine": 496,
+        "endLine": 528,
+        "hash": "676848b9b2dba7378207100efbe35e2fa6ae7d8766a28f0134717f2dfacfbe69",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_ff250ca49b4efd286f126af8",
+        "path": "httpx/_client.py",
+        "revision": "c1e73124c5d24aa6d61f0413d217f5810f62eb00",
+        "side": "head",
+        "startLine": 559,
+        "endLine": 584,
+        "hash": "8b2e77819712cadc7b30d3e392cdaa06b0561ab778f5bf97233794a69499a773",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_8ab436d1a0b06621c5419d5f",
+        "path": "httpx/_client.py",
+        "revision": "c1e73124c5d24aa6d61f0413d217f5810f62eb00",
+        "side": "head",
+        "startLine": 656,
+        "endLine": 735,
+        "hash": "733c0b965b0810448dc21c907f31f6016ac5ffd242d3626165bc005ac0fe616c",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_38c36ccabd01ba898b78f12d",
+        "path": "httpx/_client.py",
+        "revision": "c1e73124c5d24aa6d61f0413d217f5810f62eb00",
+        "side": "head",
+        "startLine": 790,
+        "endLine": 844,
+        "hash": "094ccda2608cbcd9304cbf504dbe727b413d0f4b9ab6a026d8e43ae73ad98c5b",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_53e90d2e3c235a50b836c1bb",
+        "path": "httpx/_client.py",
+        "revision": "c1e73124c5d24aa6d61f0413d217f5810f62eb00",
+        "side": "head",
+        "startLine": 898,
+        "endLine": 947,
+        "hash": "e553ba7a35dbc3ffb06bdf5f6e620744429cd08c0afbb765bded061515c28ead",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_82c90b5fc558739640b74e31",
+        "path": "httpx/_client.py",
+        "revision": "c1e73124c5d24aa6d61f0413d217f5810f62eb00",
+        "side": "head",
+        "startLine": 1376,
+        "endLine": 1455,
+        "hash": "a25bad33c97af0cb380e9032fa522ba084657443cbe68382923255dffa99af73",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_73692910771932f5049fd313",
+        "path": "httpx/_client.py",
+        "revision": "c1e73124c5d24aa6d61f0413d217f5810f62eb00",
+        "side": "head",
+        "startLine": 1510,
+        "endLine": 1565,
+        "hash": "5fe482b5f78e0e137dee1d909220e6164df6f8588c825ad1cbb580a9b8a4b923",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_de49637f2c037126aa8ae5e3",
+        "path": "tests/client/test_redirects.py",
+        "revision": "c1e73124c5d24aa6d61f0413d217f5810f62eb00",
+        "side": "head",
+        "startLine": 116,
+        "endLine": 142,
+        "hash": "c706f4d8d622f5319cb2e82da41f86e1112179f95a61280513762d9644050a8f",
+        "kind": "test",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_94d107fa6a5fe267654ec6a3",
+        "path": "tests/client/test_redirects.py",
+        "revision": "c1e73124c5d24aa6d61f0413d217f5810f62eb00",
+        "side": "head",
+        "startLine": 439,
+        "endLine": 467,
+        "hash": "61afce02e909e723c5ef6624cee9b96bb5a3006b3cb9ed00b6cc76c5a3e892fd",
+        "kind": "test",
+        "origin": "snapshot"
+      }
+    ],
+    "unprocessed": [
+      "description:0",
+      "description:360",
+      "description:0",
+      "description:360"
+    ],
+    "limitations": [
+      "diff_context_incomplete",
+      "retrieval_python_indentation",
+      "retrieval_scan_budget_exceeded",
+      "retrieval_unverified_fallback",
+      "retrieval_budget_exceeded"
+    ],
+    "failures": [],
+    "rankingStatus": "ready",
+    "coverageStatus": "partial"
+  },
+  "report": {
+    "analysisId": "ap_muc2bbmw_uxt5nu",
+    "createdAt": "2026-09-22T02:36:01.832Z",
+    "source": {
+      "title": "Add option to keep the same method for 301/302 redirects",
+      "url": "https://github.com/encode/httpx/pull/3783",
+      "author": "kajinamit",
+      "baseBranch": "master",
+      "headBranch": "keep-method-for-redirects",
+      "provenance": {
+        "version": 1,
+        "origin": "github_snapshot",
+        "headSha": "c1e73124c5d24aa6d61f0413d217f5810f62eb00",
+        "baseSha": "b5addb64f0161ff6bfe94c124ef76f6a1fba5254",
+        "changedFileInventory": {
+          "version": 1,
+          "completeness": "complete",
+          "headSha": "c1e73124c5d24aa6d61f0413d217f5810f62eb00"
+        },
+        "evidenceCapturedAt": "2026-09-22T02:36:01.824Z",
+        "inputFingerprint": {
+          "version": 1,
+          "algorithm": "sha256",
+          "value": "f9f96793ad755f9ebd5b5bf4c1a705c57771035eb37d3e05b2098423ffe37cdb",
+          "coverage": "github_metadata"
+        }
+      }
+    },
+    "summary": {
+      "oneLine": "Critical evidence gap found. Coverage 23%. Test/build execution failed, so the PR is not proven ready.",
+      "confidence": 0.2,
+      "priority": "blocker",
+      "evidenceCoverage": 23,
+      "topRisks": [
+        "Test/build execution failed, so the PR is not proven ready.",
+        "Some requirements have only partial evidence.",
+        "Behavior changed without strong test evidence."
+      ]
+    },
+    "requirements": [
+      {
+        "requirementId": "req_1",
+        "requirementText": "While it's (unfortunately) common for browsers to switch the original http method to GET when following redirects, some server applications expects the \"legacy\" behavior which keeps the same method over redirects",
+        "status": "unclear",
+        "evidenceRefs": [
+          "ev_2"
+        ],
+        "gaps": [
+          "Implementation evidence exists, but no matching test, log, or check evidence verifies this criterion.",
+          "No deterministic test/build execution evidence was collected for this requirement."
+        ],
+        "reviewerNote": "Treat diff evidence as implementation evidence, not proof that behavior is verified.",
+        "confidence": 0.62,
+        "evidenceStatus": "partial",
+        "sourceAuthority": "pr_description",
+        "proofAxes": [
+          {
+            "subject": "execution",
+            "polarity": "present",
+            "state": "incomplete",
+            "evidenceRefs": [],
+            "axisId": "obs_req_1_execution_1",
+            "role": "observation"
+          },
+          {
+            "subject": "implementation",
+            "polarity": "present",
+            "state": "satisfied",
+            "evidenceRefs": [
+              "ev_2"
+            ],
+            "collectionBasis": "matching_artifact_evidence",
+            "axisId": "obs_req_1_implementation_1",
+            "role": "observation"
+          }
+        ]
+      },
+      {
+        "requirementId": "req_2",
+        "requirementText": "Add new option to clients to select the behavior",
+        "status": "unclear",
+        "evidenceRefs": [
+          "ev_2"
+        ],
+        "gaps": [
+          "A matching test artifact changed, but no passing test check or implementation diff proves this criterion.",
+          "No deterministic test/build execution evidence was collected for this requirement."
+        ],
+        "reviewerNote": "Treat test-file changes as reviewer leads until execution and implementation evidence are connected.",
+        "confidence": 0.48,
+        "evidenceStatus": "partial",
+        "sourceAuthority": "pr_description",
+        "proofAxes": [
+          {
+            "subject": "execution",
+            "polarity": "present",
+            "state": "incomplete",
+            "evidenceRefs": [],
+            "axisId": "obs_req_2_execution_1",
+            "role": "observation"
+          },
+          {
+            "subject": "implementation",
+            "polarity": "present",
+            "state": "satisfied",
+            "evidenceRefs": [
+              "ev_2"
+            ],
+            "collectionBasis": "matching_artifact_evidence",
+            "axisId": "obs_req_2_implementation_1",
+            "role": "observation"
+          }
+        ]
+      }
+    ],
+    "claims": [
+      {
+        "id": "claim_1",
+        "text": "Add new option to clients to select the behavior",
+        "evidenceRefs": [
+          "ev_2",
+          "ev_3"
+        ],
+        "supported": false
+      },
+      {
+        "id": "claim_2",
+        "text": "- [x] I've added a test for each change that was introduced, and I tried as much as possible to make a single atomic change",
+        "evidenceRefs": [
+          "ev_13",
+          "ev_9",
+          "ev_10"
+        ],
+        "supported": false
+      },
+      {
+        "id": "claim_3",
+        "text": "- [x] I've updated the documentation accordingly",
+        "evidenceRefs": [],
+        "supported": false
+      }
+    ],
+    "scope": {
+      "suspected": false,
+      "outOfScopeFiles": [],
+      "reasons": [],
+      "evidenceRefs": [],
+      "provenance": []
+    },
+    "testing": {
+      "ciStatus": "failed",
+      "lintStatus": "unknown",
+      "typecheckStatus": "unknown",
+      "missingTests": [
+        {
+          "path": "httpx/_client.py",
+          "why": "A related test file changed, but no passing test check or log was provided.",
+          "evidenceRefs": [
+            "ev_2",
+            "ev_13",
+            "ev_9",
+            "ev_10",
+            "ev_11"
+          ],
+          "provenance": [
+            {
+              "evidenceRef": "ev_2",
+              "sourceType": "diff",
+              "locator": "httpx/_client.py",
+              "confidence": 0.85,
+              "evidenceText": "modified httpx/_client.py (+25/-0). Patch excerpt: @@ -196,6 +196,7 @@ def __init__( timeout: TimeoutTypes = DEFAULT_TIMEOUT_CONFIG, follow_redirects: bool = False, max_redirects: int = DEFAULT_MAX_REDIRECTS, + keep_method_for_redirects:..."
+            },
+            {
+              "evidenceRef": "ev_13",
+              "sourceType": "log",
+              "locator": "https://github.com/encode/httpx/actions/runs/35071320524/job/104713276675",
+              "confidence": 0.75,
+              "evidenceText": "Status: failed. GitHub Actions job: Python 3.13: GitHub Actions job Python 3.13: failed. Steps: Run tests: unknown"
+            },
+            {
+              "evidenceRef": "ev_9",
+              "sourceType": "log",
+              "locator": "https://github.com/encode/httpx/actions/runs/35071320524/job/104713276405",
+              "confidence": 0.45,
+              "evidenceText": "Status: unknown. GitHub Actions job: Python 3.10: GitHub Actions job Python 3.10: unknown. Steps: Run tests: unknown"
+            },
+            {
+              "evidenceRef": "ev_10",
+              "sourceType": "log",
+              "locator": "https://github.com/encode/httpx/actions/runs/35071320524/job/104713276560",
+              "confidence": 0.45,
+              "evidenceText": "Status: unknown. GitHub Actions job: Python 3.9: GitHub Actions job Python 3.9: unknown. Steps: Run tests: unknown"
+            },
+            {
+              "evidenceRef": "ev_11",
+              "sourceType": "log",
+              "locator": "https://github.com/encode/httpx/actions/runs/35071320524/job/104713276563",
+              "confidence": 0.45,
+              "evidenceText": "Status: unknown. GitHub Actions job: Python 3.12: GitHub Actions job Python 3.12: unknown. Steps: Run tests: unknown"
+            }
+          ]
+        }
+      ]
+    },
+    "reviewPriority": [
+      {
+        "path": "Test/build checks",
+        "reason": "At least one test, build, or CI execution check failed; requirement satisfaction is not proven.",
+        "priority": "blocker",
+        "evidenceRefs": [
+          "ev_4",
+          "ev_13"
+        ]
+      },
+      {
+        "path": "httpx/_client.py",
+        "reason": "2 requirement(s) have only partial evidence.",
+        "priority": "medium",
+        "evidenceRefs": [
+          "ev_2",
+          "ev_13",
+          "ev_9",
+          "ev_10",
+          "ev_11"
+        ]
+      }
+    ],
+    "proofGraph": {
+      "version": 1,
+      "nodes": [
+        {
+          "requirementId": "req_1",
+          "requirementText": "While it's (unfortunately) common for browsers to switch the original http method to GET when following redirects, some server applications expects the \"legacy\" behavior which keeps the same method over redirects",
+          "sourceRole": "core_requirement",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Summary",
+          "contextRoles": [],
+          "status": "partial",
+          "confidence": 0.62,
+          "implementationEvidenceRefs": [
+            "ev_2"
+          ],
+          "targetedTestEvidenceRefs": [],
+          "executionEvidenceRefs": [],
+          "gapSignals": [
+            {
+              "kind": "missing_execution",
+              "severity": "medium",
+              "message": "No deterministic test/build execution evidence was collected for this requirement.",
+              "evidenceRefs": [
+                "ev_2"
+              ]
+            }
+          ],
+          "firstFiles": [
+            "httpx/_client.py"
+          ]
+        },
+        {
+          "requirementId": "req_2",
+          "requirementText": "Add new option to clients to select the behavior",
+          "sourceRole": "core_requirement",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Summary",
+          "contextRoles": [],
+          "status": "partial",
+          "confidence": 0.48,
+          "implementationEvidenceRefs": [
+            "ev_2"
+          ],
+          "targetedTestEvidenceRefs": [],
+          "executionEvidenceRefs": [],
+          "gapSignals": [
+            {
+              "kind": "missing_execution",
+              "severity": "medium",
+              "message": "No deterministic test/build execution evidence was collected for this requirement.",
+              "evidenceRefs": [
+                "ev_2"
+              ]
+            }
+          ],
+          "firstFiles": [
+            "httpx/_client.py"
+          ]
+        }
+      ],
+      "failedCheckAssociations": [
+        {
+          "version": 1,
+          "kind": "failed_check_association",
+          "requirementId": "req_1",
+          "checkEvidenceRef": "ev_4",
+          "state": "unknown",
+          "basis": "identity_incomplete"
+        },
+        {
+          "version": 1,
+          "kind": "failed_check_association",
+          "requirementId": "req_2",
+          "checkEvidenceRef": "ev_4",
+          "state": "unknown",
+          "basis": "identity_incomplete"
+        }
+      ],
+      "context": [
+        {
+          "id": "ctx_1",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Summary",
+          "text": "RFC hasn't been clear enough about the expected behavior for 301 and 302 response"
+        },
+        {
+          "id": "ctx_2",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Summary",
+          "text": "While it's (unfortunately) common for browsers to switch the original http method to GET when following redirects, some server applications expects the \"legacy\" behavior which keeps the same method over redirects"
+        },
+        {
+          "id": "ctx_3",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Summary",
+          "text": "Add new option to clients to select the behavior"
+        }
+      ],
+      "summary": {
+        "requirementCount": 2,
+        "requirementsWithImplementation": 2,
+        "requirementsWithTargetedTests": 0,
+        "requirementsWithExecution": 0,
+        "requirementsWithGaps": 2,
+        "gapCount": 2
+      }
+    },
+    "reprompt": {
+      "targetAgent": "codex",
+      "prompt": "You are revising an AI-generated PR for AgentProof verification.\nDo not broaden the PR. Make only changes tied to the original task.\n1. Address requirement \"While it's (unfortunately) common for browsers to switch the original http method to GET when following redirects, some server applications expects the \"legacy\" behavior which keeps the same method over redirects\" and provide evidence for the implementation.\n2. Address requirement \"Add new option to clients to select the behavior\" and provide evidence for the implementation.\n3. Add or identify tests that cover: httpx/_client.py.\n4. Fix the failing test/build check and summarize the exact log line that proves it now passes.\n5. Return requirement-by-requirement proof for: \"While it's (unfortunately) common for browsers to switch the original http method to GET when following redirects, some server applications expects the \"legacy\" behavior which keeps the same method over redirects\", \"Add new option to clients to select the behavior\".\nReturn a concise summary with changed files, tests run, and remaining risks."
+    },
+    "evidenceIndex": [
+      {
+        "id": "ev_4",
+        "kind": "check",
+        "label": "Python 3.13",
+        "locator": "https://github.com/encode/httpx/actions/runs/35071320524/job/104713276675",
+        "summary": "Status: failed. Python 3.13 - Check annotations available. Check annotations: warning at .github:2, failure at .github:30. Raw annotation messages and raw annotation details omitted.",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_13",
+        "kind": "log",
+        "label": "GitHub Actions job: Python 3.13",
+        "locator": "https://github.com/encode/httpx/actions/runs/35071320524/job/104713276675",
+        "summary": "Status: failed. GitHub Actions job: Python 3.13: GitHub Actions job Python 3.13: failed. Steps: Run tests: unknown",
+        "confidence": 0.75
+      },
+      {
+        "id": "ev_5",
+        "kind": "check",
+        "label": "Python 3.11",
+        "locator": "https://github.com/encode/httpx/actions/runs/35071320524/job/104713276651",
+        "summary": "Status: unknown. Python 3.11",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_6",
+        "kind": "check",
+        "label": "Python 3.12",
+        "locator": "https://github.com/encode/httpx/actions/runs/35071320524/job/104713276563",
+        "summary": "Status: unknown. Python 3.12",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_7",
+        "kind": "check",
+        "label": "Python 3.9",
+        "locator": "https://github.com/encode/httpx/actions/runs/35071320524/job/104713276560",
+        "summary": "Status: unknown. Python 3.9",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_8",
+        "kind": "check",
+        "label": "Python 3.10",
+        "locator": "https://github.com/encode/httpx/actions/runs/35071320524/job/104713276405",
+        "summary": "Status: unknown. Python 3.10",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_9",
+        "kind": "log",
+        "label": "GitHub Actions job: Python 3.10",
+        "locator": "https://github.com/encode/httpx/actions/runs/35071320524/job/104713276405",
+        "summary": "Status: unknown. GitHub Actions job: Python 3.10: GitHub Actions job Python 3.10: unknown. Steps: Run tests: unknown",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_10",
+        "kind": "log",
+        "label": "GitHub Actions job: Python 3.9",
+        "locator": "https://github.com/encode/httpx/actions/runs/35071320524/job/104713276560",
+        "summary": "Status: unknown. GitHub Actions job: Python 3.9: GitHub Actions job Python 3.9: unknown. Steps: Run tests: unknown",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_11",
+        "kind": "log",
+        "label": "GitHub Actions job: Python 3.12",
+        "locator": "https://github.com/encode/httpx/actions/runs/35071320524/job/104713276563",
+        "summary": "Status: unknown. GitHub Actions job: Python 3.12: GitHub Actions job Python 3.12: unknown. Steps: Run tests: unknown",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_12",
+        "kind": "log",
+        "label": "GitHub Actions job: Python 3.11",
+        "locator": "https://github.com/encode/httpx/actions/runs/35071320524/job/104713276651",
+        "summary": "Status: unknown. GitHub Actions job: Python 3.11: GitHub Actions job Python 3.11: unknown. Steps: Run tests: unknown",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_2",
+        "kind": "diff",
+        "label": "httpx/_client.py",
+        "locator": "httpx/_client.py",
+        "codeLocation": {
+          "path": "httpx/_client.py",
+          "side": "head",
+          "revisionSha": "c1e73124c5d24aa6d61f0413d217f5810f62eb00",
+          "line": 196
+        },
+        "summary": "modified httpx/_client.py (+25/-0). Patch excerpt: @@ -196,6 +196,7 @@ def __init__(\n         timeout: TimeoutTypes = DEFAULT_TIMEOUT_CONFIG,\n         follow_redirects: bool = False,\n         max_redirects: int = DEFAULT_MAX_REDIRECTS,\n+        keep_method_for_redirects: bo\n...[middle truncated for privacy and token control]\nvent_hooks.get(\"response\", [])),\n@@ -499,9 +501,20 @@ def _redirect_method(self, request: Request, response: Response) -> str:\n         method = request.method\n \n         # https:\n...[truncated for privacy and token control]",
+        "confidence": 0.85
+      },
+      {
+        "id": "ev_3",
+        "kind": "test",
+        "label": "tests/client/test_redirects.py",
+        "locator": "tests/client/test_redirects.py",
+        "codeLocation": {
+          "path": "tests/client/test_redirects.py",
+          "side": "head",
+          "revisionSha": "c1e73124c5d24aa6d61f0413d217f5810f62eb00",
+          "line": 118
+        },
+        "summary": "modified tests/client/test_redirects.py (+36/-0). Test evidence file. Patch excerpt: @@ -118,6 +118,18 @@ def test_redirect_301():\n     response = client.post(\"https://example.org/redirect_301\", follow_redirects=True)\n     assert response.status_code == httpx.codes.OK\n     assert response.url == \"https://ex\n...[middle truncated for privacy and token control]\ntory) == 1\n \n \n@@ -126,6 +138,18 @@ def test_redirect_302():\n     response = client.post(\"https://example.org/redirect_302\", follow_redirects=True)\n     assert response.status_cod\n...[truncated for privacy and token control]",
+        "confidence": 0.85
+      },
+      {
+        "id": "ev_1",
+        "kind": "pr_description",
+        "label": "PR description",
+        "summary": "# Summary\n\nRFC hasn't been clear enough about the expected behavior for 301 and 302 response. While it's (unfortunately) common for browsers to switch the original http method to GET when following redirects, some server applications expects the \"legacy\" behavior which keeps the same method over redirects.\n\nAdd new option to clients to select the behavior.\n\n# Checklist\n\n- [x] I understand that this PR may be closed in case there was no previous discussion. (This doesn't apply to typos!)\n- [x] I've added a test for each change that was introduced, and I tried as much as possible to make a single atomic change.\n- [x] I've updated the documentation accordingly.",
+        "confidence": 0.7
+      }
+    ],
+    "limitations": [
+      "GitHub check annotation metadata was collected; raw annotation details and raw log archives were not fetched or stored.",
+      "Public GitHub Actions metadata showed failing build/test jobs; raw log archives were not fetched or stored.",
+      "Raw CI logs were not fetched or stored.",
+      "No original task text was provided and no single valid linked issue was available; the PR description is retained only as unverified author context."
+    ],
+    "analysisContext": "unlinked_pr",
+    "reportSchemaVersion": "verification-report.v2",
+    "verificationContract": {
+      "version": 2,
+      "policy": "strict_typed_contract",
+      "state": "absent",
+      "source": null,
+      "gaps": [
+        {
+          "kind": "verification_contract_missing",
+          "message": "Approved verification contract is missing."
+        }
+      ],
+      "objectives": []
+    },
+    "reviewCandidates": {
+      "version": 1,
+      "intentGraph": {
+        "version": 1,
+        "source": {
+          "kind": "description",
+          "hash": "d2bfe7cb20fdb6a4a9546dd1ed6faf9a9b4c515438ca971f55e0cecb421e4dfd",
+          "length": 667,
+          "coordinates": "redacted_lf_utf16"
+        },
+        "repository": "encode/httpx",
+        "goals": [
+          {
+            "id": "intent_03cda486052574d0",
+            "requirementIds": [
+              "req_1"
+            ],
+            "sourceRefs": [
+              {
+                "start": 11,
+                "end": 307,
+                "hash": "b59b36a138119a5b883c726a817e7cc63ce6d9b2fe0f8b29ceabd8e05784071e"
+              }
+            ],
+            "facets": [
+              {
+                "kind": "condition",
+                "sourceRef": {
+                  "start": 183,
+                  "end": 307,
+                  "hash": "a9a0407a1575993041fc38eb629ad362c117227ba7f2fda2814ced10488ee078"
+                }
+              }
+            ]
+          },
+          {
+            "id": "intent_477106cac5aa125b",
+            "requirementIds": [
+              "req_2"
+            ],
+            "sourceRefs": [
+              {
+                "start": 309,
+                "end": 358,
+                "hash": "a60c40cddcc8cfb1c5ccbaa4d1fef779dee0d629cb21f6c151ec67bd4a9b09e2"
+              },
+              {
+                "start": 373,
+                "end": 491,
+                "hash": "05bae627d7f3b12b700d669d80041b63d00bfa7f28bc106613f01acdb26227f3"
+              },
+              {
+                "start": 492,
+                "end": 616,
+                "hash": "7975f531091753bb1c68303eac7d02f1ea79faeef6fa2cc81623e65ed7bb4b80"
+              },
+              {
+                "start": 617,
+                "end": 666,
+                "hash": "5dea687a93f1b859ff111b20a2d8b32b8ab229cec548fc8ae271d8b2ee7ea2f3"
+              }
+            ],
+            "facets": []
+          }
+        ],
+        "chunks": [
+          {
+            "id": "chunk_c26831e8b040196b8baa3da7",
+            "pool": "changed",
+            "path": "httpx/_client.py",
+            "revision": "c1e73124c5d24aa6d61f0413d217f5810f62eb00",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 1,
+            "hash": "85162606d5c99a0ee8fb7473c6a68b278aa2f68aa91e4d003bfd0ad16a5a444f",
+            "evidenceId": "ev_2"
+          },
+          {
+            "id": "chunk_46bd98aa507fb3070e99e09d",
+            "pool": "changed",
+            "path": "tests/client/test_redirects.py",
+            "revision": "c1e73124c5d24aa6d61f0413d217f5810f62eb00",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 1,
+            "hash": "5047a19fc33a7bc593cc81324825592790a073d86e7421c7c367d042892dddb8",
+            "evidenceId": "ev_3"
+          }
+        ],
+        "edges": [
+          {
+            "goalId": "intent_03cda486052574d0",
+            "chunkId": "chunk_46bd98aa507fb3070e99e09d",
+            "relation": "candidate",
+            "basis": [
+              "lexical"
+            ],
+            "score": 23
+          }
+        ],
+        "capabilities": {
+          "wholeRepository": "unavailable",
+          "embeddings": "unavailable",
+          "symbolResolution": "unavailable",
+          "semantic": "existing_relations_only",
+          "snapshotChunks": 0,
+          "rejectedSnapshots": 0,
+          "truncated": false
+        }
+      },
+      "requirements": [
+        {
+          "requirementId": "req_1",
+          "sourceHash": "f2a94d297b01567fc33b912a2266226cf5386827497063681d931e5c0f81f1c0",
+          "candidates": [
+            {
+              "evidenceId": "ev_3",
+              "basis": "changed_tokens",
+              "score": 23,
+              "evidenceHash": "5047a19fc33a7bc593cc81324825592790a073d86e7421c7c367d042892dddb8"
+            }
+          ]
+        },
+        {
+          "requirementId": "req_2",
+          "sourceHash": "aaf59d715637b950a7ac6f420f37561f1a50815b85753a33a6f7caa5335f6366",
+          "candidates": []
+        }
+      ],
+      "retainedRelations": [
+        {
+          "requirementId": "req_1",
+          "evidenceId": "ev_2",
+          "relation": "observed"
+        },
+        {
+          "requirementId": "req_2",
+          "evidenceId": "ev_2",
+          "relation": "observed"
+        }
+      ],
+      "navigation": {
+        "version": 1,
+        "model": "gemini-3.8-flash",
+        "state": "partial",
+        "repository": "encode/httpx",
+        "headSha": "c1e73124c5d24aa6d61f0413d217f5810f62eb00",
+        "baseSha": "b5addb64f0161ff6bfe94c124ef76f6a1fba5254",
+        "sources": [
+          {
+            "id": "description",
+            "authority": "pr_author_claim",
+            "hash": "d2bfe7cb20fdb6a4a9546dd1ed6faf9a9b4c515438ca971f55e0cecb421e4dfd",
+            "length": 667,
+            "processedLength": 666,
+            "url": "https://github.com/encode/httpx/pull/3783"
+          },
+          {
+            "id": "title",
+            "authority": "pr_author_claim",
+            "hash": "7b802d3e81cdfe3a3d91ec10b7ed30c4ed78d3bd455adf7995b48f0328353817",
+            "length": 56,
+            "processedLength": 56,
+            "url": "https://github.com/encode/httpx/pull/3783"
+          }
+        ],
+        "goals": [
+          {
+            "id": "goal_1",
+            "summary": "Introduce a client option allowing the original HTTP method to be preserved during 301 and 302 redirects.",
+            "emphasis": "primary",
+            "authority": "pr_author_claim",
+            "sourceRefs": [
+              {
+                "sourceId": "title",
+                "start": 0,
+                "end": 56,
+                "hash": "7b802d3e81cdfe3a3d91ec10b7ed30c4ed78d3bd455adf7995b48f0328353817"
+              },
+              {
+                "sourceId": "description",
+                "start": 309,
+                "end": 358,
+                "hash": "a60c40cddcc8cfb1c5ccbaa4d1fef779dee0d629cb21f6c151ec67bd4a9b09e2"
+              }
+            ],
+            "facets": [
+              {
+                "kind": "motivation",
+                "summary": "RFC guidance for 301 and 302 responses is ambiguous; while browsers commonly switch the method to GET upon redirection, certain server applications rely on legacy behavior that preserves the original method.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 11,
+                    "end": 307,
+                    "hash": "b59b36a138119a5b883c726a817e7cc63ce6d9b2fe0f8b29ceabd8e05784071e"
+                  }
+                ]
+              },
+              {
+                "kind": "test_claim",
+                "summary": "Author asserts tests were added for each introduced change.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 373,
+                    "end": 666,
+                    "hash": "b7e8ea6aa95b0057c3fc4136363640cc467ebb47178f02672c784bcc98a593a0"
+                  }
+                ]
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "Author asserts documentation was updated accordingly.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 373,
+                    "end": 666,
+                    "hash": "b7e8ea6aa95b0057c3fc4136363640cc467ebb47178f02672c784bcc98a593a0"
+                  }
+                ]
+              }
+            ],
+            "openQuestions": [],
+            "firstInspection": "read_f22fb624706ff08a7827a33f",
+            "candidates": [
+              {
+                "artifactId": "read_f22fb624706ff08a7827a33f",
+                "relevance": "relevant",
+                "whyInspect": "Implements redirect method selection where keep_method_for_redirects conditionally preserves the original method for 301 and 302 while ensuring 303 still switches to GET.",
+                "reviewQuestion": "Does keep_method_for_redirects correctly preserve the HTTP method specifically for 301 and 302 responses without bypassing expected RFC handling for 303 SEE_OTHER?",
+                "uncertainty": "Body preservation and stream handling during redirected non-GET methods are not defined in this helper."
+              },
+              {
+                "artifactId": "read_de49637f2c037126aa8ae5e3",
+                "relevance": "relevant",
+                "whyInspect": "Contains tests validating 301 redirect method preservation when keep_method_for_redirects is enabled versus disabled.",
+                "reviewQuestion": "Does the test suite verify keep_method_for_redirects behavior for both 301 and 302 redirects across synchronous and asynchronous clients?",
+                "uncertainty": "The visible snippet only shows 301 keep_method and standard 302 without showing whether 302 keep_method is tested."
+              },
+              {
+                "artifactId": "read_62f0876235afbf68681e71ef",
+                "relevance": "relevant",
+                "whyInspect": "Defines BaseClient constructor accepting and storing keep_method_for_redirects.",
+                "reviewQuestion": "Is keep_method_for_redirects initialized with an appropriate default value on BaseClient without breaking backwards compatibility?",
+                "uncertainty": "None."
+              },
+              {
+                "artifactId": "read_8ab436d1a0b06621c5419d5f",
+                "relevance": "relevant",
+                "whyInspect": "Exposes keep_method_for_redirects in Client.__init__ and forwards it to BaseClient.",
+                "reviewQuestion": "Is the parameter correctly propagated from Client.__init__ to super().__init__?",
+                "uncertainty": "None."
+              },
+              {
+                "artifactId": "read_82c90b5fc558739640b74e31",
+                "relevance": "relevant",
+                "whyInspect": "Exposes keep_method_for_redirects in AsyncClient.__init__ and forwards it to BaseClient.",
+                "reviewQuestion": "Is the parameter correctly supported and propagated across AsyncClient?",
+                "uncertainty": "None."
+              },
+              {
+                "artifactId": "read_ff250ca49b4efd286f126af8",
+                "relevance": "possible",
+                "whyInspect": "Constructs headers for redirect requests, stripping Content-Length and Transfer-Encoding only if the method switched to GET.",
+                "reviewQuestion": "Are body-related headers properly retained when the original request method is preserved during redirects?",
+                "uncertainty": "Does not reveal how the request body payload itself is replayed during redirects."
+              }
+            ],
+            "uncertainty": [
+              "Whether documentation updates claimed by the PR description exist in other files outside the provided inventory."
+            ]
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "read_62f0876235afbf68681e71ef",
+            "path": "httpx/_client.py",
+            "revision": "c1e73124c5d24aa6d61f0413d217f5810f62eb00",
+            "side": "head",
+            "startLine": 189,
+            "endLine": 223,
+            "hash": "80e290a5020c8888a92ab6f6e8672c8d996685e257df8d5e5d4fd1e124a5dea3",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_f22fb624706ff08a7827a33f",
+            "path": "httpx/_client.py",
+            "revision": "c1e73124c5d24aa6d61f0413d217f5810f62eb00",
+            "side": "head",
+            "startLine": 496,
+            "endLine": 528,
+            "hash": "676848b9b2dba7378207100efbe35e2fa6ae7d8766a28f0134717f2dfacfbe69",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_ff250ca49b4efd286f126af8",
+            "path": "httpx/_client.py",
+            "revision": "c1e73124c5d24aa6d61f0413d217f5810f62eb00",
+            "side": "head",
+            "startLine": 559,
+            "endLine": 584,
+            "hash": "8b2e77819712cadc7b30d3e392cdaa06b0561ab778f5bf97233794a69499a773",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_8ab436d1a0b06621c5419d5f",
+            "path": "httpx/_client.py",
+            "revision": "c1e73124c5d24aa6d61f0413d217f5810f62eb00",
+            "side": "head",
+            "startLine": 656,
+            "endLine": 735,
+            "hash": "733c0b965b0810448dc21c907f31f6016ac5ffd242d3626165bc005ac0fe616c",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_38c36ccabd01ba898b78f12d",
+            "path": "httpx/_client.py",
+            "revision": "c1e73124c5d24aa6d61f0413d217f5810f62eb00",
+            "side": "head",
+            "startLine": 790,
+            "endLine": 844,
+            "hash": "094ccda2608cbcd9304cbf504dbe727b413d0f4b9ab6a026d8e43ae73ad98c5b",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_53e90d2e3c235a50b836c1bb",
+            "path": "httpx/_client.py",
+            "revision": "c1e73124c5d24aa6d61f0413d217f5810f62eb00",
+            "side": "head",
+            "startLine": 898,
+            "endLine": 947,
+            "hash": "e553ba7a35dbc3ffb06bdf5f6e620744429cd08c0afbb765bded061515c28ead",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_82c90b5fc558739640b74e31",
+            "path": "httpx/_client.py",
+            "revision": "c1e73124c5d24aa6d61f0413d217f5810f62eb00",
+            "side": "head",
+            "startLine": 1376,
+            "endLine": 1455,
+            "hash": "a25bad33c97af0cb380e9032fa522ba084657443cbe68382923255dffa99af73",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_73692910771932f5049fd313",
+            "path": "httpx/_client.py",
+            "revision": "c1e73124c5d24aa6d61f0413d217f5810f62eb00",
+            "side": "head",
+            "startLine": 1510,
+            "endLine": 1565,
+            "hash": "5fe482b5f78e0e137dee1d909220e6164df6f8588c825ad1cbb580a9b8a4b923",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_de49637f2c037126aa8ae5e3",
+            "path": "tests/client/test_redirects.py",
+            "revision": "c1e73124c5d24aa6d61f0413d217f5810f62eb00",
+            "side": "head",
+            "startLine": 116,
+            "endLine": 142,
+            "hash": "c706f4d8d622f5319cb2e82da41f86e1112179f95a61280513762d9644050a8f",
+            "kind": "test",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_94d107fa6a5fe267654ec6a3",
+            "path": "tests/client/test_redirects.py",
+            "revision": "c1e73124c5d24aa6d61f0413d217f5810f62eb00",
+            "side": "head",
+            "startLine": 439,
+            "endLine": 467,
+            "hash": "61afce02e909e723c5ef6624cee9b96bb5a3006b3cb9ed00b6cc76c5a3e892fd",
+            "kind": "test",
+            "origin": "snapshot"
+          }
+        ],
+        "unprocessed": [
+          "description:0",
+          "description:360",
+          "description:0",
+          "description:360"
+        ],
+        "limitations": [
+          "diff_context_incomplete",
+          "retrieval_python_indentation",
+          "retrieval_scan_budget_exceeded",
+          "retrieval_unverified_fallback",
+          "retrieval_budget_exceeded"
+        ],
+        "failures": [],
+        "rankingStatus": "ready",
+        "coverageStatus": "partial"
+      }
+    },
+    "generalPrAssessmentSummary": {
+      "version": 1,
+      "mode": "ordinary_pr",
+      "sourceState": "pr_author_claim",
+      "overallConclusion": "no_assessable_claims",
+      "counts": {
+        "evidence_supported": 0,
+        "evidence_partial": 0,
+        "not_demonstrated": 0,
+        "contradicted": 0,
+        "blocked": 0,
+        "not_assessable": 0
+      },
+      "reasonCodes": [
+        "author_claim_requires_confirmation",
+        "deterministic_candidate_missing",
+        "semantic_observer_unavailable"
+      ],
+      "observations": {
+        "version": 1,
+        "inventory": {
+          "state": "complete",
+          "changedArtifacts": 2,
+          "changedTestCandidates": 1
+        },
+        "links": {
+          "state": "unavailable",
+          "linkedObjectives": 0,
+          "supports": 0,
+          "tests": 0,
+          "implements": 0,
+          "contradicts": 0
+        },
+        "coverage": {
+          "source": null,
+          "evidence": null
+        }
+      }
+    },
+    "ordinaryRequirementOutcomes": {
+      "version": 1,
+      "scope": "selected_source_requirements",
+      "requirements": [
+        {
+          "requirementId": "req_1",
+          "authority": "author_claim",
+          "interpretation": "unavailable",
+          "criterion": null,
+          "reason": "source_interpretation_unavailable"
+        },
+        {
+          "requirementId": "req_2",
+          "authority": "author_claim",
+          "interpretation": "unavailable",
+          "criterion": null,
+          "reason": "source_interpretation_unavailable"
+        }
+      ]
+    }
+  }
+}

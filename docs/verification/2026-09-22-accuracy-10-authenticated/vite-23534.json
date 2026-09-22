@@ -1,0 +1,2603 @@
+{
+  "deployment": "https://agentproof-hy1rvlmf2-renggyus-projects.vercel.app",
+  "id": "vite-23534",
+  "group": "unused",
+  "url": "https://github.com/vitejs/vite/pull/23534",
+  "httpStatus": 200,
+  "elapsedMs": 35423,
+  "error": null,
+  "expectedHead": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+  "expectedBase": "e9078f865cdff6bed77cd729214a7e2868f126b5",
+  "sameRevision": true,
+  "navigation": {
+    "version": 1,
+    "model": "gemini-3.8-flash",
+    "state": "partial",
+    "repository": "vitejs/vite",
+    "headSha": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+    "baseSha": "e9078f865cdff6bed77cd729214a7e2868f126b5",
+    "sources": [
+      {
+        "id": "task",
+        "authority": "issue_source",
+        "hash": "e28a83409a6249e95ab1c7804ef6af0b324d4bbbe182f2d3bfc586b771ad5259",
+        "length": 3496,
+        "processedLength": 3496,
+        "url": "https://github.com/vitejs/vite/issues/23512"
+      },
+      {
+        "id": "description",
+        "authority": "pr_author_claim",
+        "hash": "f83b5eff209b56142cb46bd8f8ed43f7b47cc945006dc910107864883c5259c4",
+        "length": 1021,
+        "processedLength": 1021,
+        "url": "https://github.com/vitejs/vite/pull/23534"
+      },
+      {
+        "id": "title",
+        "authority": "pr_author_claim",
+        "hash": "313c540b277df77c006346846c069fc8236c7c4cd0e9c814c19ef781f76f832a",
+        "length": 57,
+        "processedLength": 57,
+        "url": "https://github.com/vitejs/vite/pull/23534"
+      }
+    ],
+    "goals": [
+      {
+        "id": "goal_1",
+        "summary": "Avoid browser-external warnings for imports explicitly disabled by package browser mappings",
+        "emphasis": "primary",
+        "authority": "mixed_sources",
+        "sourceRefs": [
+          {
+            "sourceId": "task",
+            "start": 0,
+            "end": 115,
+            "hash": "0d4d47f97294483ba0760335472f2719f2c53d0b451afaa966f13517ce26459e"
+          },
+          {
+            "sourceId": "task",
+            "start": 134,
+            "end": 272,
+            "hash": "79170f80dc9eda7aaad74355655f8aa577313d3f1e3d72505b8dc29ca968980a"
+          },
+          {
+            "sourceId": "task",
+            "start": 917,
+            "end": 1124,
+            "hash": "e7c58ea54f648cef56730e8bfbcd896c11c0a3d5e9b15de0d75aa5f93789b815"
+          },
+          {
+            "sourceId": "title",
+            "start": 0,
+            "end": 57,
+            "hash": "313c540b277df77c006346846c069fc8236c7c4cd0e9c814c19ef781f76f832a"
+          },
+          {
+            "sourceId": "description",
+            "start": 0,
+            "end": 13,
+            "hash": "65dbe752d84baafa4f9ae80da1ac588063e784236a244848948ce652287b17cb"
+          }
+        ],
+        "facets": [
+          {
+            "kind": "context",
+            "summary": "Packages like PostCSS declare modules as false in package.json browser fields, and browser-safe runtime code inspects properties on those modules to check API availability",
+            "sourceRefs": [
+              {
+                "sourceId": "task",
+                "start": 274,
+                "end": 678,
+                "hash": "65717659e61a4234cfa6987243a3963c9d43e3abb9b60b39855841482440ec00"
+              },
+              {
+                "sourceId": "task",
+                "start": 680,
+                "end": 891,
+                "hash": "3dcc0d40a05e5138c860adbc6e4f414bc783cb6a42a44d0b7bffa18b270a0a48"
+              }
+            ]
+          },
+          {
+            "kind": "motivation",
+            "summary": "Property accesses on explicitly disabled browser modules trigger numerous externalized warnings during dev mode, despite succeeding and behaving cleanly in production build",
+            "sourceRefs": [
+              {
+                "sourceId": "task",
+                "start": 274,
+                "end": 678,
+                "hash": "65717659e61a4234cfa6987243a3963c9d43e3abb9b60b39855841482440ec00"
+              },
+              {
+                "sourceId": "description",
+                "start": 15,
+                "end": 298,
+                "hash": "fdac1b88383fe515a3cedca7509aa9d769276dc41663fd46ef7eb96d9c8ae7e1"
+              }
+            ]
+          },
+          {
+            "kind": "constraint",
+            "summary": "Do not suppress warnings globally or provide Node polyfills; preserve existing diagnostics for unsupported Node built-in imports without an explicit false mapping",
+            "sourceRefs": [
+              {
+                "sourceId": "task",
+                "start": 917,
+                "end": 1124,
+                "hash": "e7c58ea54f648cef56730e8bfbcd896c11c0a3d5e9b15de0d75aa5f93789b815"
+              },
+              {
+                "sourceId": "task",
+                "start": 1126,
+                "end": 1396,
+                "hash": "bf88fec4fbf981435248f708acd8ad9169ed2f36c42c373f02a00ae841a0731e"
+              },
+              {
+                "sourceId": "task",
+                "start": 1841,
+                "end": 2137,
+                "hash": "9b01e6c23d1154973ea57529dafc0e80034d1b21185970e3ae2ef448e50c47f5"
+              }
+            ]
+          },
+          {
+            "kind": "acceptance",
+            "summary": "Return an empty module for imports explicitly mapped to false by browser field specifications, consistent across development and production dependency optimization",
+            "sourceRefs": [
+              {
+                "sourceId": "task",
+                "start": 917,
+                "end": 1124,
+                "hash": "e7c58ea54f648cef56730e8bfbcd896c11c0a3d5e9b15de0d75aa5f93789b815"
+              },
+              {
+                "sourceId": "task",
+                "start": 1126,
+                "end": 1396,
+                "hash": "bf88fec4fbf981435248f708acd8ad9169ed2f36c42c373f02a00ae841a0731e"
+              },
+              {
+                "sourceId": "description",
+                "start": 300,
+                "end": 512,
+                "hash": "a8201b5e1df7e49d33ad1b0201e1bb685c6409bd4964b35686cab6d3d0cba5c5"
+              }
+            ]
+          },
+          {
+            "kind": "reproduction",
+            "summary": "Vite dev server with PostCSS initializing runs cleanly without page error but emits 23 externalization warnings in the console, whereas build and preview do not emit warnings",
+            "sourceRefs": [
+              {
+                "sourceId": "task",
+                "start": 2158,
+                "end": 2273,
+                "hash": "d52e2e5fbb64c0571630b4b6634820bebdfd776d47693bcd7ae29867647c691f"
+              },
+              {
+                "sourceId": "task",
+                "start": 2275,
+                "end": 2415,
+                "hash": "a8a017af56cf54285dab3e50b76f39613004243ab59d5200196a551e71247fd0"
+              },
+              {
+                "sourceId": "task",
+                "start": 2417,
+                "end": 2720,
+                "hash": "113202e67ae00602d973f0304c6e9681dac7d059e37c28da908356e00bcce7a1"
+              },
+              {
+                "sourceId": "task",
+                "start": 2722,
+                "end": 2746,
+                "hash": "11b87c96e55ebb86ff94f815ddb5b482f03a46f6ac3d11f025c6e8bec7dd8fb3"
+              },
+              {
+                "sourceId": "task",
+                "start": 2748,
+                "end": 3225,
+                "hash": "bbbf6fccefd8523e548a82bd93b0a85c4486150ed659ca574b472fffd3a45b40"
+              },
+              {
+                "sourceId": "task",
+                "start": 3227,
+                "end": 3404,
+                "hash": "6d275f960be5b4f647f639ede3838e30a238184184bb9ae3a185afe8bd53be16"
+              }
+            ]
+          },
+          {
+            "kind": "context",
+            "summary": "Downstream consumers currently need package-specific resolver workarounds or upstream package changes to avoid availability check warnings",
+            "sourceRefs": [
+              {
+                "sourceId": "task",
+                "start": 1415,
+                "end": 1815,
+                "hash": "a8919409defb1c643f75fca47ccab109a9ceb0b8102641d5a8dd033e550024a9"
+              }
+            ]
+          },
+          {
+            "kind": "implementation_claim",
+            "summary": "Routes the bare browser external sentinel to an empty CJS module in dev and prod, while preserving proxy routing and diagnostics for suffixed sentinel IDs",
+            "sourceRefs": [
+              {
+                "sourceId": "description",
+                "start": 15,
+                "end": 298,
+                "hash": "fdac1b88383fe515a3cedca7509aa9d769276dc41663fd46ef7eb96d9c8ae7e1"
+              },
+              {
+                "sourceId": "description",
+                "start": 300,
+                "end": 512,
+                "hash": "a8201b5e1df7e49d33ad1b0201e1bb685c6409bd4964b35686cab6d3d0cba5c5"
+              }
+            ]
+          },
+          {
+            "kind": "test_claim",
+            "summary": "Builds vite and runs test-serve and test-build on optimize-deps and resolve playground specs along with lint and diff checks",
+            "sourceRefs": [
+              {
+                "sourceId": "description",
+                "start": 514,
+                "end": 912,
+                "hash": "5b0563d46b5e549123bba5980fd996bd6cb1e2cf54a9431cafd39ecf6bc61655"
+              }
+            ]
+          }
+        ],
+        "openQuestions": [],
+        "firstInspection": "read_b9a632902cdc287be3e98337",
+        "candidates": [
+          {
+            "artifactId": "read_b9a632902cdc287be3e98337",
+            "relevance": "relevant",
+            "whyInspect": "Defines how resolution results differentiate between the bare browser external sentinel and suffixed browser external identifiers.",
+            "reviewQuestion": "Does resolution properly route exact browser external sentinel matches to the empty namespace while leaving prefixed sentinels on the warning namespace?",
+            "uncertainty": "Whether any other resolver flows produce browserExternalId or suffixed variants that might bypass this branching."
+          },
+          {
+            "artifactId": "read_140238de5f870a30aed337de",
+            "relevance": "relevant",
+            "whyInspect": "Contains the load handler emitting an empty module export for empty namespace IDs while keeping the proxy warning for standard browser-external namespace IDs.",
+            "reviewQuestion": "Does loading an empty browser-external module return an empty CJS module without triggering dev-mode proxy warnings?",
+            "uncertainty": "Whether ESM consumers handle the empty module exports identically in both dev and production dependency optimization."
+          },
+          {
+            "artifactId": "read_f7fc56f804151e55ab3b9ba2",
+            "relevance": "relevant",
+            "whyInspect": "Shows the plugin filter regex setup and delegation from resolveId into resolveResult and load.",
+            "reviewQuestion": "Does the load filter regex for browserExternalNamespace also match the sub-namespace browserExternalEmptyNamespace without additional patterns?",
+            "uncertainty": "None; browserExternalEmptyNamespace starts with browserExternalNamespace."
+          },
+          {
+            "artifactId": "read_1396c8fe7194cb713555e774",
+            "relevance": "relevant",
+            "whyInspect": "Declares the namespace constants, including browserExternalEmptyNamespace derived from browserExternalNamespace.",
+            "reviewQuestion": "Is the browserExternalEmptyNamespace prefix formatted and isolated cleanly so as not to collide with other virtual module schemes?",
+            "uncertainty": "None."
+          },
+          {
+            "artifactId": "read_aa38ef4d77d4cdecdb7db1eb",
+            "relevance": "relevant",
+            "whyInspect": "Test verifying that accessing properties on a module mapped to false in package browser field avoids emitting warning logs in serve mode.",
+            "reviewQuestion": "Does the test assert that client console logs are free of browser-externalized warnings when properties are accessed on disabled modules?",
+            "uncertainty": "Whether build/preview mode is also validated against this test fixture."
+          },
+          {
+            "artifactId": "read_ae1f62776f241a1ad7ea9102",
+            "relevance": "possible",
+            "whyInspect": "Sample internal file requiring disabled module fs alongside mapped module events to verify runtime property access.",
+            "reviewQuestion": "Does the test dep exercise property checking on the externalized import in a realistic client pattern?",
+            "uncertainty": "None."
+          },
+          {
+            "artifactId": "read_600cf1ae540e480ba281df37",
+            "relevance": "possible",
+            "whyInspect": "Reproduction package configuration showing browser mapping with fs mapped to false.",
+            "reviewQuestion": "Does this package manifest match typical library browser field declarations like PostCSS?",
+            "uncertainty": "None."
+          },
+          {
+            "artifactId": "read_d923fbe2a44012d189ae686f",
+            "relevance": "possible",
+            "whyInspect": "Shows the definition and documentation of browserExternalId originating from package browser field spec.",
+            "reviewQuestion": "How does Vite define and construct the browserExternalId sentinel when resolving package browser fields?",
+            "uncertainty": "None."
+          }
+        ],
+        "uncertainty": []
+      }
+    ],
+    "artifacts": [
+      {
+        "id": "read_aa38ef4d77d4cdecdb7db1eb",
+        "path": "playground/optimize-deps/__tests__/optimize-deps.spec.ts",
+        "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+        "side": "head",
+        "startLine": 116,
+        "endLine": 134,
+        "hash": "ff22d8e08a53e1e910d58061639f1872d67c7b031f7e92827b5727bba852cc86",
+        "kind": "test",
+        "origin": "diff"
+      },
+      {
+        "id": "read_ae1f62776f241a1ad7ea9102",
+        "path": "playground/optimize-deps/dep-cjs-browser-field-bare/internal.js",
+        "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+        "side": "head",
+        "startLine": 2,
+        "endLine": 9,
+        "hash": "276f995deef85526dbafc75be2fcb2f59b01e75f3929c46847ca2e877a4433e4",
+        "kind": "code",
+        "origin": "diff"
+      },
+      {
+        "id": "read_93817df4a9fce63d68775d1b",
+        "path": "playground/optimize-deps/dep-cjs-browser-field-bare/internal.js",
+        "revision": "e9078f865cdff6bed77cd729214a7e2868f126b5",
+        "side": "base",
+        "startLine": 2,
+        "endLine": 6,
+        "hash": "20deef961b39a733e38bee5212e8aa3264b3b14b4cbc1103d58cd38186121bda",
+        "kind": "code",
+        "origin": "diff"
+      },
+      {
+        "id": "read_600cf1ae540e480ba281df37",
+        "path": "playground/optimize-deps/dep-cjs-browser-field-bare/package.json",
+        "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+        "side": "head",
+        "startLine": 4,
+        "endLine": 10,
+        "hash": "b69a54fe95b520436549a7410df752d36d29e4e8c820342da06fa4d48fc7e9fc",
+        "kind": "code",
+        "origin": "diff"
+      },
+      {
+        "id": "read_1b5f8997a1feabfc4b2dcf30",
+        "path": "playground/optimize-deps/dep-cjs-browser-field-bare/package.json",
+        "revision": "e9078f865cdff6bed77cd729214a7e2868f126b5",
+        "side": "base",
+        "startLine": 4,
+        "endLine": 9,
+        "hash": "450853e34f08cc18ee80b27c0616ea3531d243f7aeaca6496bb9d2539a1fcdb7",
+        "kind": "code",
+        "origin": "diff"
+      },
+      {
+        "id": "read_1396c8fe7194cb713555e774",
+        "path": "packages/vite/src/node/optimizer/rolldownDepPlugin.ts",
+        "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+        "side": "head",
+        "startLine": 54,
+        "endLine": 71,
+        "hash": "10d9d0d1759ca9d1195a81664508118cd97fff539371b1236fbbbe50f4d96b59",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_b9a632902cdc287be3e98337",
+        "path": "packages/vite/src/node/optimizer/rolldownDepPlugin.ts",
+        "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+        "side": "head",
+        "startLine": 112,
+        "endLine": 155,
+        "hash": "30f4c957c69399f17d48c20c9835779cd714ca9efc3f376ced196821e7aa9e01",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_d766351da022e0ee05de283c",
+        "path": "packages/vite/src/node/optimizer/rolldownDepPlugin.ts",
+        "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+        "side": "head",
+        "startLine": 179,
+        "endLine": 203,
+        "hash": "c812e55cbded3a847c1d6d0c21fe812b16d469b86f2397b39aceae00444a88b3",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_f7fc56f804151e55ab3b9ba2",
+        "path": "packages/vite/src/node/optimizer/rolldownDepPlugin.ts",
+        "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+        "side": "head",
+        "startLine": 232,
+        "endLine": 272,
+        "hash": "4d6a77b314ee1810d4d36d30c56d6b7dc949f2e35109f04c08a6dc5d7e024c02",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_140238de5f870a30aed337de",
+        "path": "packages/vite/src/node/optimizer/rolldownDepPlugin.ts",
+        "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+        "side": "head",
+        "startLine": 268,
+        "endLine": 325,
+        "hash": "a5a2a6f5da7f291c82cc926fd8a3c3456148e9d0ce2cfe7d181a9716876119f3",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_81ccca29a941cd9f3bb6546e",
+        "path": "packages/vite/src/node/optimizer/rolldownDepPlugin.ts",
+        "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+        "side": "head",
+        "startLine": 331,
+        "endLine": 378,
+        "hash": "e8142d7850e8572340605c246eb0ed3fa21de8b95085c0aaf0930810e1dd8e26",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_d712d6d7cd88080fe5b64bfd",
+        "path": "packages/vite/src/node/optimizer/rolldownDepPlugin.ts",
+        "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+        "side": "head",
+        "startLine": 388,
+        "endLine": 443,
+        "hash": "d0915aa98a39012ae419adb0d97447ec7f174e9e4611b873996858f66ed991e5",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_d923fbe2a44012d189ae686f",
+        "path": "packages/vite/src/node/plugins/resolve.ts",
+        "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+        "side": "head",
+        "startLine": 56,
+        "endLine": 68,
+        "hash": "3bb31e5b90eff7510abf244a0bdaf5a7b552a38d6060015d5837548c096efb1b",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_8f7f612f49e5a6741941430c",
+        "path": "packages/vite/src/node/plugins/resolve.ts",
+        "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+        "side": "head",
+        "startLine": 75,
+        "endLine": 104,
+        "hash": "28799be5f4b601577a39d6ee122a63b1c3fa12cfac7a4d08834aadcf7ec966bb",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_3d1231fd90c6a043f8fd8762",
+        "path": "packages/vite/src/node/plugins/resolve.ts",
+        "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+        "side": "head",
+        "startLine": 119,
+        "endLine": 171,
+        "hash": "80b32c9ad670a1e85e0457ca6cee03609e84e6ea9e9bbd466ad45e91aaff2d60",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_9c530193bfa0bd9ff995b39c",
+        "path": "packages/vite/src/node/plugins/resolve.ts",
+        "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+        "side": "head",
+        "startLine": 295,
+        "endLine": 341,
+        "hash": "64374d4d2ea0615970d77ab2e73aaf489c617d84748f931ce86b9a7311c11040",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_5a5edd17254f70d061f1779f",
+        "path": "packages/vite/src/node/plugins/resolve.ts",
+        "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+        "side": "head",
+        "startLine": 413,
+        "endLine": 487,
+        "hash": "7153ca2e0688431d9835c96d0c4da285fb67db3c0539b3bd5f36213bbaba4bff",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_dd1af7f96d4e664752dc4565",
+        "path": "packages/vite/src/node/plugins/resolve.ts",
+        "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+        "side": "head",
+        "startLine": 559,
+        "endLine": 582,
+        "hash": "63e4480a5e64d11dbc22fdb44f5ddc65d71114f9709a23ed8f5bd0d3064c0a75",
+        "kind": "code",
+        "origin": "snapshot"
+      }
+    ],
+    "unprocessed": [
+      "task:117",
+      "task:893",
+      "task:1398",
+      "task:1817",
+      "task:2139",
+      "task:3406",
+      "description:914",
+      "task:117",
+      "task:893",
+      "task:1398",
+      "task:1817",
+      "task:2139",
+      "task:3406",
+      "description:914"
+    ],
+    "limitations": [
+      "diff_context_incomplete",
+      "retrieval_unverified_fallback",
+      "retrieval_budget_exceeded"
+    ],
+    "failures": [],
+    "rankingStatus": "ready",
+    "coverageStatus": "partial"
+  },
+  "report": {
+    "analysisId": "ap_muc2egwp_ixtt8v",
+    "createdAt": "2026-09-22T02:38:28.633Z",
+    "source": {
+      "title": "fix(optimizer): avoid false-mapping warnings (fix #23512)",
+      "url": "https://github.com/vitejs/vite/pull/23534",
+      "author": "QIU-Guanzong",
+      "baseBranch": "main",
+      "headBranch": "qiu/fix-browser-false-optimizer",
+      "provenance": {
+        "version": 1,
+        "origin": "github_snapshot",
+        "headSha": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+        "baseSha": "e9078f865cdff6bed77cd729214a7e2868f126b5",
+        "changedFileInventory": {
+          "version": 1,
+          "completeness": "complete",
+          "headSha": "fd030aea79caa116d40f3c6f2990d0b9b15b9784"
+        },
+        "evidenceCapturedAt": "2026-09-22T02:38:28.617Z",
+        "inputFingerprint": {
+          "version": 1,
+          "algorithm": "sha256",
+          "value": "bee439b84c1f40800c8cebef0895c969c6122d4f509ae1a15b36db3ab351d8e2",
+          "coverage": "github_metadata"
+        }
+      }
+    },
+    "summary": {
+      "oneLine": "Critical evidence gap found. Coverage 16%. Test/build execution failed, so the PR is not proven ready.",
+      "confidence": 0.2,
+      "priority": "blocker",
+      "evidenceCoverage": 16,
+      "topRisks": [
+        "Test/build execution failed, so the PR is not proven ready.",
+        "Some requirements are too vague or weakly evidenced.",
+        "Some requirements have only partial evidence.",
+        "Some changed files have broad test evidence, but no targeted test mapping."
+      ]
+    },
+    "requirements": [
+      {
+        "requirementId": "req_1",
+        "requirementText": "The production build performs the same transformation without warnings",
+        "status": "unclear",
+        "evidenceRefs": [
+          "ev_32",
+          "ev_14",
+          "ev_8",
+          "ev_9",
+          "ev_10",
+          "ev_11",
+          "ev_12",
+          "ev_13",
+          "ev_29",
+          "ev_30"
+        ],
+        "gaps": [
+          "No changed-file evidence clearly maps to this criterion.",
+          "No implementation artifact evidence clearly maps to this requirement.",
+          "Execution evidence was collected, but no validated requirement-local test-relation receipt authorizes promotion.",
+          "Requirement needs human interpretation before trusting the report."
+        ],
+        "reviewerNote": "Ask the coding agent to connect implementation changes to this requirement.",
+        "confidence": 0.38,
+        "proofAxes": [
+          {
+            "subject": "execution",
+            "polarity": "present",
+            "state": "incomplete",
+            "evidenceRefs": [
+              "ev_8",
+              "ev_9",
+              "ev_10",
+              "ev_11",
+              "ev_12",
+              "ev_13",
+              "ev_29",
+              "ev_30"
+            ],
+            "collectionBasis": "passing_execution",
+            "axisId": "obs_req_1_execution_1",
+            "role": "observation"
+          },
+          {
+            "subject": "implementation",
+            "polarity": "present",
+            "state": "violated",
+            "evidenceRefs": [],
+            "collectionBasis": "complete_changed_file_inventory",
+            "axisId": "obs_req_1_implementation_1",
+            "role": "observation"
+          }
+        ],
+        "evidenceStatus": "unclear"
+      },
+      {
+        "requirementId": "req_2",
+        "requirementText": "It has no framework, test runner, Vite configuration, warning filter, or polyfill",
+        "status": "unclear",
+        "evidenceRefs": [
+          "ev_3",
+          "ev_5"
+        ],
+        "gaps": [
+          "A related file changed, but no diff, test, or log evidence proves this criterion.",
+          "No deterministic test/build execution evidence was collected for this requirement."
+        ],
+        "reviewerNote": "Treat this as a lead for human review, not proof of satisfaction.",
+        "confidence": 0.5,
+        "proofAxes": [
+          {
+            "subject": "execution",
+            "polarity": "present",
+            "state": "incomplete",
+            "evidenceRefs": [],
+            "axisId": "obs_req_2_execution_1",
+            "role": "observation"
+          },
+          {
+            "subject": "implementation",
+            "polarity": "present",
+            "state": "satisfied",
+            "evidenceRefs": [
+              "ev_3",
+              "ev_5"
+            ],
+            "collectionBasis": "matching_artifact_evidence",
+            "axisId": "obs_req_2_implementation_1",
+            "role": "observation"
+          }
+        ],
+        "evidenceStatus": "partial"
+      },
+      {
+        "requirementId": "req_3",
+        "requirementText": "An upstream solution would avoid maintaining a package-specific resolver in consumers",
+        "status": "unclear",
+        "evidenceRefs": [
+          "ev_3",
+          "ev_6"
+        ],
+        "gaps": [
+          "A related file changed, but no diff, test, or log evidence proves this criterion.",
+          "No deterministic test/build execution evidence was collected for this requirement."
+        ],
+        "reviewerNote": "Treat this as a lead for human review, not proof of satisfaction.",
+        "confidence": 0.5,
+        "proofAxes": [
+          {
+            "subject": "execution",
+            "polarity": "present",
+            "state": "incomplete",
+            "evidenceRefs": [],
+            "axisId": "obs_req_3_execution_1",
+            "role": "observation"
+          },
+          {
+            "subject": "implementation",
+            "polarity": "present",
+            "state": "satisfied",
+            "evidenceRefs": [
+              "ev_3",
+              "ev_6"
+            ],
+            "collectionBasis": "matching_artifact_evidence",
+            "axisId": "obs_req_3_implementation_1",
+            "role": "observation"
+          }
+        ],
+        "evidenceStatus": "partial"
+      },
+      {
+        "requirementId": "req_4",
+        "requirementText": "I recognize that #9837 deliberately changed these accesses from errors to warnings after #9200, and that retaining the warnings was intentional",
+        "status": "unclear",
+        "evidenceRefs": [
+          "ev_1",
+          "ev_2",
+          "ev_4"
+        ],
+        "gaps": [
+          "A matching test artifact changed, but no passing test check or implementation diff proves this criterion.",
+          "No implementation artifact evidence clearly maps to this requirement."
+        ],
+        "reviewerNote": "Treat test-file changes as reviewer leads until execution and implementation evidence are connected.",
+        "confidence": 0.48,
+        "proofAxes": [
+          {
+            "subject": "execution",
+            "polarity": "present",
+            "state": "incomplete",
+            "evidenceRefs": [],
+            "axisId": "obs_req_4_execution_1",
+            "role": "observation"
+          },
+          {
+            "subject": "implementation",
+            "polarity": "present",
+            "state": "violated",
+            "evidenceRefs": [],
+            "collectionBasis": "complete_changed_file_inventory",
+            "axisId": "obs_req_4_implementation_1",
+            "role": "observation"
+          }
+        ],
+        "evidenceStatus": "partial"
+      }
+    ],
+    "claims": [
+      {
+        "id": "claim_1",
+        "text": "- `npx --yes pnpm@12.4.2 run test-serve playground/optimize-deps/__tests__/optimize-deps.spec.ts`",
+        "evidenceRefs": [
+          "ev_7",
+          "ev_32",
+          "ev_14"
+        ],
+        "supported": true
+      },
+      {
+        "id": "claim_2",
+        "text": "- `npx --yes pnpm@12.4.2 run test-build playground/optimize-deps/__tests__/optimize-deps.spec.ts`",
+        "evidenceRefs": [
+          "ev_7",
+          "ev_32",
+          "ev_14"
+        ],
+        "supported": true
+      },
+      {
+        "id": "claim_3",
+        "text": "- `npx --yes pnpm@12.4.2 run test-serve playground/resolve/__tests__/resolve.spec.ts`",
+        "evidenceRefs": [
+          "ev_7",
+          "ev_32",
+          "ev_14"
+        ],
+        "supported": false
+      },
+      {
+        "id": "claim_4",
+        "text": "AI assistance disclosure: AI assistance was used to investigate, prepare, and validate this focused change",
+        "evidenceRefs": [
+          "ev_19",
+          "ev_24"
+        ],
+        "supported": false
+      }
+    ],
+    "scope": {
+      "suspected": true,
+      "outOfScopeFiles": [
+        "playground/optimize-deps/dep-cjs-browser-field-bare/internal.js",
+        "playground/optimize-deps/dep-cjs-browser-field-bare/package.json"
+      ],
+      "reasons": [
+        "playground/optimize-deps/dep-cjs-browser-field-bare/internal.js does not clearly map to the stated criteria.",
+        "playground/optimize-deps/dep-cjs-browser-field-bare/package.json does not clearly map to the stated criteria."
+      ],
+      "evidenceRefs": [
+        "ev_5",
+        "ev_6"
+      ],
+      "provenance": [
+        {
+          "evidenceRef": "ev_5",
+          "sourceType": "diff",
+          "locator": "playground/optimize-deps/dep-cjs-browser-field-bare/internal.js",
+          "confidence": 0.85,
+          "evidenceText": "modified playground/optimize-deps/dep-cjs-browser-field-bare/internal.js (+4/-1). Patch excerpt: @@ -2,5 +2,8 @@ // eslint-disable-next-line n/prefer-node-protocol const events = require('events') +// eslint-disable-next-line n/prefer-no..."
+        },
+        {
+          "evidenceRef": "ev_6",
+          "sourceType": "diff",
+          "locator": "playground/optimize-deps/dep-cjs-browser-field-bare/package.json",
+          "confidence": 0.85,
+          "evidenceText": "modified playground/optimize-deps/dep-cjs-browser-field-bare/package.json (+2/-1). Patch excerpt: @@ -4,6 +4,7 @@ \"version\": \"0.0.0\", \"main\": \"index.js\", \"browser\": { - \"events\": \"./events-shim.js\" + \"events\": \"./events-shim.js\", + \"fs\":..."
+        }
+      ]
+    },
+    "testing": {
+      "ciStatus": "failed",
+      "lintStatus": "passed",
+      "typecheckStatus": "unknown",
+      "missingTests": [
+        {
+          "path": "packages/vite/src/node/optimizer/rolldownDepPlugin.ts",
+          "why": "Passing test evidence exists, but no targeted test evidence clearly maps to this file.",
+          "evidenceRefs": [
+            "ev_3",
+            "ev_7",
+            "ev_32",
+            "ev_14",
+            "ev_36"
+          ],
+          "provenance": [
+            {
+              "evidenceRef": "ev_3",
+              "sourceType": "diff",
+              "locator": "packages/vite/src/node/optimizer/rolldownDepPlugin.ts",
+              "confidence": 0.85,
+              "evidenceText": "modified packages/vite/src/node/optimizer/rolldownDepPlugin.ts (+12/-0). Patch excerpt: @@ -58,6 +58,7 @@ const externalTypes = [ const optionalPeerDepNamespace = 'optional-peer-dep:' const browserExternalNamespace = 'browser-external:'..."
+            },
+            {
+              "evidenceRef": "ev_7",
+              "sourceType": "check",
+              "locator": "https://github.com/vitejs/vite/actions/runs/35510633984/job/106077854814",
+              "confidence": 0.9,
+              "evidenceText": "Status: failed. Build&Test: node-22, ubuntu-latest - Check annotations available. Check annotations: failure at .github:57, notice at .github:1. Raw annotation messages and raw annotation details omitted."
+            },
+            {
+              "evidenceRef": "ev_32",
+              "sourceType": "log",
+              "locator": "https://github.com/vitejs/vite/actions/runs/35510633984/job/106077854814",
+              "confidence": 0.75,
+              "evidenceText": "Status: failed. GitHub Actions job: Build&Test: node-22, ubuntu-latest: GitHub Actions job Build&Test: node-22, ubuntu-latest: failed. Steps: (non-windows) Set Playwright path and Get playwright version: passed; (windows) Set Playwright..."
+            },
+            {
+              "evidenceRef": "ev_14",
+              "sourceType": "check",
+              "locator": "https://github.com/vitejs/vite/actions/runs/35510633984/job/106078716582",
+              "confidence": 0.45,
+              "evidenceText": "Status: unknown. Build & Test Passed or Skipped"
+            },
+            {
+              "evidenceRef": "ev_36",
+              "sourceType": "log",
+              "locator": "https://github.com/vitejs/vite/actions/runs/35510633984/job/106078716582",
+              "confidence": 0.45,
+              "evidenceText": "Status: unknown. GitHub Actions job: Build & Test Passed or Skipped: GitHub Actions job Build & Test Passed or Skipped: unknown."
+            }
+          ]
+        }
+      ]
+    },
+    "reviewPriority": [
+      {
+        "path": "Test/build checks",
+        "reason": "At least one test, build, or CI execution check failed; requirement satisfaction is not proven.",
+        "priority": "blocker",
+        "evidenceRefs": [
+          "ev_7",
+          "ev_32"
+        ]
+      },
+      {
+        "path": "packages/vite/src/node/optimizer/rolldownDepPlugin.ts",
+        "reason": "1 requirement(s) need human interpretation before trusting the report.",
+        "priority": "medium",
+        "evidenceRefs": [
+          "ev_32",
+          "ev_14",
+          "ev_8",
+          "ev_9",
+          "ev_10",
+          "ev_3",
+          "ev_5",
+          "ev_6",
+          "ev_1",
+          "ev_2",
+          "ev_7",
+          "ev_36"
+        ]
+      },
+      {
+        "path": "playground/optimize-deps/dep-cjs-browser-field-bare/internal.js",
+        "reason": "Changed file does not clearly map to acceptance criteria.",
+        "priority": "medium",
+        "evidenceRefs": [
+          "ev_5"
+        ]
+      },
+      {
+        "path": "playground/optimize-deps/dep-cjs-browser-field-bare/package.json",
+        "reason": "Changed file does not clearly map to acceptance criteria.",
+        "priority": "medium",
+        "evidenceRefs": [
+          "ev_6"
+        ]
+      }
+    ],
+    "proofGraph": {
+      "version": 1,
+      "nodes": [
+        {
+          "requirementId": "req_1",
+          "requirementText": "The production build performs the same transformation without warnings",
+          "sourceRole": "core_requirement",
+          "sourceQuality": "linked_issue",
+          "sourceSection": "Description",
+          "contextRoles": [],
+          "status": "unclear",
+          "confidence": 0.38,
+          "implementationEvidenceRefs": [],
+          "targetedTestEvidenceRefs": [],
+          "executionEvidenceRefs": [
+            "ev_8",
+            "ev_9",
+            "ev_10",
+            "ev_11",
+            "ev_12",
+            "ev_13",
+            "ev_29",
+            "ev_30"
+          ],
+          "gapSignals": [
+            {
+              "kind": "missing_implementation",
+              "severity": "medium",
+              "message": "No implementation artifact evidence clearly maps to this requirement.",
+              "evidenceRefs": [
+                "ev_32",
+                "ev_14"
+              ]
+            },
+            {
+              "kind": "missing_execution",
+              "severity": "medium",
+              "message": "Execution evidence was collected, but no validated requirement-local test-relation receipt authorizes promotion.",
+              "evidenceRefs": [
+                "ev_8",
+                "ev_9",
+                "ev_10",
+                "ev_11",
+                "ev_12",
+                "ev_13",
+                "ev_29",
+                "ev_30"
+              ]
+            },
+            {
+              "kind": "ambiguous_requirement",
+              "severity": "medium",
+              "message": "Requirement needs human interpretation before trusting the report.",
+              "evidenceRefs": [
+                "ev_32",
+                "ev_14"
+              ]
+            }
+          ],
+          "firstFiles": []
+        },
+        {
+          "requirementId": "req_2",
+          "requirementText": "It has no framework, test runner, Vite configuration, warning filter, or polyfill",
+          "sourceRole": "core_requirement",
+          "sourceQuality": "linked_issue",
+          "sourceSection": "Description",
+          "contextRoles": [],
+          "status": "partial",
+          "confidence": 0.5,
+          "implementationEvidenceRefs": [
+            "ev_3",
+            "ev_5"
+          ],
+          "targetedTestEvidenceRefs": [],
+          "executionEvidenceRefs": [],
+          "gapSignals": [
+            {
+              "kind": "missing_execution",
+              "severity": "medium",
+              "message": "No deterministic test/build execution evidence was collected for this requirement.",
+              "evidenceRefs": [
+                "ev_3",
+                "ev_5"
+              ]
+            }
+          ],
+          "firstFiles": [
+            "packages/vite/src/node/optimizer/rolldownDepPlugin.ts",
+            "playground/optimize-deps/dep-cjs-browser-field-bare/internal.js"
+          ]
+        },
+        {
+          "requirementId": "req_3",
+          "requirementText": "An upstream solution would avoid maintaining a package-specific resolver in consumers",
+          "sourceRole": "core_requirement",
+          "sourceQuality": "linked_issue",
+          "sourceSection": "Alternative",
+          "contextRoles": [],
+          "status": "partial",
+          "confidence": 0.5,
+          "implementationEvidenceRefs": [
+            "ev_3",
+            "ev_6"
+          ],
+          "targetedTestEvidenceRefs": [],
+          "executionEvidenceRefs": [],
+          "gapSignals": [
+            {
+              "kind": "missing_execution",
+              "severity": "medium",
+              "message": "No deterministic test/build execution evidence was collected for this requirement.",
+              "evidenceRefs": [
+                "ev_3",
+                "ev_6"
+              ]
+            }
+          ],
+          "firstFiles": [
+            "packages/vite/src/node/optimizer/rolldownDepPlugin.ts",
+            "playground/optimize-deps/dep-cjs-browser-field-bare/package.json"
+          ]
+        },
+        {
+          "requirementId": "req_4",
+          "requirementText": "I recognize that #9837 deliberately changed these accesses from errors to warnings after #9200, and that retaining the warnings was intentional",
+          "sourceRole": "core_requirement",
+          "sourceQuality": "linked_issue",
+          "sourceSection": "Additional context",
+          "contextRoles": [],
+          "status": "partial",
+          "confidence": 0.48,
+          "implementationEvidenceRefs": [],
+          "targetedTestEvidenceRefs": [],
+          "executionEvidenceRefs": [],
+          "gapSignals": [
+            {
+              "kind": "missing_implementation",
+              "severity": "medium",
+              "message": "No implementation artifact evidence clearly maps to this requirement.",
+              "evidenceRefs": [
+                "ev_4",
+                "ev_1",
+                "ev_2"
+              ]
+            }
+          ],
+          "firstFiles": []
+        }
+      ],
+      "failedCheckAssociations": [
+        {
+          "version": 1,
+          "kind": "failed_check_association",
+          "requirementId": "req_1",
+          "checkEvidenceRef": "ev_7",
+          "state": "unknown",
+          "basis": "identity_incomplete"
+        },
+        {
+          "version": 1,
+          "kind": "failed_check_association",
+          "requirementId": "req_2",
+          "checkEvidenceRef": "ev_7",
+          "state": "unknown",
+          "basis": "identity_incomplete"
+        },
+        {
+          "version": 1,
+          "kind": "failed_check_association",
+          "requirementId": "req_3",
+          "checkEvidenceRef": "ev_7",
+          "state": "unknown",
+          "basis": "identity_incomplete"
+        },
+        {
+          "version": 1,
+          "kind": "failed_check_association",
+          "requirementId": "req_4",
+          "checkEvidenceRef": "ev_7",
+          "state": "unknown",
+          "basis": "identity_incomplete"
+        }
+      ],
+      "context": [
+        {
+          "id": "ctx_1",
+          "source": "issue",
+          "role": "problem_context",
+          "sourceQuality": "linked_issue",
+          "sourceSection": "linked_issue_title",
+          "text": "Avoid browser-external warnings for imports explicitly disabled by browser mappings"
+        },
+        {
+          "id": "ctx_2",
+          "source": "issue",
+          "role": "environment_context",
+          "sourceQuality": "linked_issue",
+          "sourceSection": "Description",
+          "text": "Could Vite distinguish imports explicitly disabled by a package's `browser` mappings from unsupported Node imports that were not disabled?"
+        },
+        {
+          "id": "ctx_3",
+          "source": "issue",
+          "role": "environment_context",
+          "sourceQuality": "linked_issue",
+          "sourceSection": "Description",
+          "text": "PostCSS 8.5.28 declares `path`, `url`, `fs`, and `source-map-js` as `false` in its `browser` field"
+        },
+        {
+          "id": "ctx_4",
+          "source": "issue",
+          "role": "environment_context",
+          "sourceQuality": "linked_issue",
+          "sourceSection": "Description",
+          "text": "Its browser-compatible code reads properties from those modules to check whether the APIs are available"
+        },
+        {
+          "id": "ctx_5",
+          "source": "issue",
+          "role": "environment_context",
+          "sourceQuality": "linked_issue",
+          "sourceSection": "Description",
+          "text": "In Vite 8.3.0 development mode, those reads trigger 23 browser-externalized warnings, although the CSS transformation succeeds"
+        },
+        {
+          "id": "ctx_6",
+          "source": "issue",
+          "role": "problem_context",
+          "sourceQuality": "linked_issue",
+          "sourceSection": "Description",
+          "text": "The production build performs the same transformation without warnings"
+        },
+        {
+          "id": "ctx_7",
+          "source": "issue",
+          "role": "environment_context",
+          "sourceQuality": "linked_issue",
+          "sourceSection": "Description",
+          "text": "This surfaced in successful WordPress/Gutenberg Vitest Browser Mode runs, but the reproduction below uses only Vite and PostCSS"
+        },
+        {
+          "id": "ctx_8",
+          "source": "issue",
+          "role": "problem_context",
+          "sourceQuality": "linked_issue",
+          "sourceSection": "Description",
+          "text": "It has no framework, test runner, Vite configuration, warning filter, or polyfill"
+        },
+        {
+          "id": "ctx_9",
+          "source": "issue",
+          "role": "solution_hint",
+          "sourceQuality": "solution_hint",
+          "sourceSection": "Suggested solution",
+          "text": "For imports that the owning package explicitly maps to `false`, return a normal empty module during dependency optimization"
+        },
+        {
+          "id": "ctx_10",
+          "source": "issue",
+          "role": "solution_hint",
+          "sourceQuality": "solution_hint",
+          "sourceSection": "Suggested solution",
+          "text": "Keep the existing diagnostics for unsupported Node imports without such a mapping"
+        },
+        {
+          "id": "ctx_11",
+          "source": "issue",
+          "role": "external_reference",
+          "sourceQuality": "linked_issue",
+          "sourceSection": "Suggested solution",
+          "text": "The [browser-field specification](https://github.com/defunctzombie/package-browser-field-spec#ignore-a-module) describes `false` as returning an empty object"
+        },
+        {
+          "id": "ctx_12",
+          "source": "issue",
+          "role": "solution_hint",
+          "sourceQuality": "solution_hint",
+          "sourceSection": "Suggested solution",
+          "text": "This proposal concerns that explicit opt-out"
+        },
+        {
+          "id": "ctx_13",
+          "source": "issue",
+          "role": "solution_hint",
+          "sourceQuality": "solution_hint",
+          "sourceSection": "Suggested solution",
+          "text": "it does not request global warning suppression or Node polyfills"
+        },
+        {
+          "id": "ctx_14",
+          "source": "issue",
+          "role": "solution_hint",
+          "sourceQuality": "solution_hint",
+          "sourceSection": "Alternative",
+          "text": "We have a [draft Gutenberg workaround](https://github.com/WordPress/gutenberg/pull/83091) that resolves only PostCSS's explicitly disabled imports to an empty module during Browser dependency optimization"
+        },
+        {
+          "id": "ctx_15",
+          "source": "issue",
+          "role": "environment_context",
+          "sourceQuality": "linked_issue",
+          "sourceSection": "Alternative",
+          "text": "Another possible approach would be changing PostCSS's browser packaging to avoid these availability checks"
+        },
+        {
+          "id": "ctx_16",
+          "source": "issue",
+          "role": "problem_context",
+          "sourceQuality": "linked_issue",
+          "sourceSection": "Alternative",
+          "text": "An upstream solution would avoid maintaining a package-specific resolver in consumers"
+        },
+        {
+          "id": "ctx_17",
+          "source": "issue",
+          "role": "problem_context",
+          "sourceQuality": "linked_issue",
+          "sourceSection": "Additional context",
+          "text": "I recognize that #9837 deliberately changed these accesses from errors to warnings after #9200, and that retaining the warnings was intentional"
+        },
+        {
+          "id": "ctx_18",
+          "source": "issue",
+          "role": "environment_context",
+          "sourceQuality": "linked_issue",
+          "sourceSection": "Additional context",
+          "text": "This request is to distinguish the narrower `browser: { \"module\": false }` case, rather than to restore Vite 2's behavior for all externalized modules"
+        },
+        {
+          "id": "ctx_19",
+          "source": "issue",
+          "role": "reproduction_context",
+          "sourceQuality": "linked_issue",
+          "sourceSection": "Reproduction",
+          "text": "[Standalone reproduction with pinned dependencies](https://gist.github.com/ciampo/14be43e90b094e557dce5f826f214ddd)"
+        },
+        {
+          "id": "ctx_20",
+          "source": "issue",
+          "role": "reproduction_context",
+          "sourceQuality": "linked_issue",
+          "sourceSection": "Reproduction",
+          "text": "Open the printed local URL and the browser console"
+        },
+        {
+          "id": "ctx_21",
+          "source": "issue",
+          "role": "reproduction_context",
+          "sourceQuality": "linked_issue",
+          "sourceSection": "Reproduction",
+          "text": "The page displays `a { color: blue }`, while the console emits 23 warnings during PostCSS initialization"
+        },
+        {
+          "id": "ctx_22",
+          "source": "issue",
+          "role": "reproduction_context",
+          "sourceQuality": "linked_issue",
+          "sourceSection": "Reproduction",
+          "text": "For comparison, stop the dev server, run `npm run build && npm run preview`, and open the preview URL"
+        },
+        {
+          "id": "ctx_23",
+          "source": "issue",
+          "role": "reproduction_context",
+          "sourceQuality": "linked_issue",
+          "sourceSection": "Reproduction",
+          "text": "The output is identical, with no warnings"
+        },
+        {
+          "id": "ctx_24",
+          "source": "issue",
+          "role": "reproduction_context",
+          "sourceQuality": "linked_issue",
+          "sourceSection": "Reproduction",
+          "text": "Representative messages:"
+        },
+        {
+          "id": "ctx_25",
+          "source": "issue",
+          "role": "reproduction_context",
+          "sourceQuality": "linked_issue",
+          "sourceSection": "Reproduction",
+          "text": "Neither development nor production produced a page error"
+        },
+        {
+          "id": "ctx_26",
+          "source": "issue",
+          "role": "reproduction_context",
+          "sourceQuality": "linked_issue",
+          "sourceSection": "Reproduction",
+          "text": "AI assistance: Codex prepared and executed the reproduction and assisted with this report"
+        },
+        {
+          "id": "ctx_27",
+          "source": "pr_description",
+          "role": "external_reference",
+          "sourceQuality": "author_claim",
+          "sourceSection": null,
+          "text": "Fixes #23512"
+        },
+        {
+          "id": "ctx_28",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": null,
+          "text": "An explicit `browser` mapping to `false` resolves to Vite's bare `browserExternalId`"
+        },
+        {
+          "id": "ctx_29",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": null,
+          "text": "The dependency optimizer treated it like a regular browser-externalized builtin and installed the development Proxy, which emitted warnings despite the browser-field behavior being an empty module"
+        },
+        {
+          "id": "ctx_30",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": null,
+          "text": "This routes the bare sentinel to an empty CJS module in both development and production"
+        }
+      ],
+      "summary": {
+        "requirementCount": 4,
+        "requirementsWithImplementation": 2,
+        "requirementsWithTargetedTests": 0,
+        "requirementsWithExecution": 1,
+        "requirementsWithGaps": 4,
+        "gapCount": 6
+      }
+    },
+    "reprompt": {
+      "targetAgent": "codex",
+      "prompt": "You are revising an AI-generated PR for AgentProof verification.\nDo not broaden the PR. Make only changes tied to the original task.\n1. Address requirement \"The production build performs the same transformation without warnings\" and provide evidence for the implementation.\n2. Address requirement \"It has no framework, test runner, Vite configuration, warning filter, or polyfill\" and provide evidence for the implementation.\n3. Address requirement \"An upstream solution would avoid maintaining a package-specific resolver in consumers\" and provide evidence for the implementation.\n4. Address requirement \"I recognize that #9837 deliberately changed these accesses from errors to warnings after #9200, and that retaining the warnings was intentional\" and provide evidence for the implementation.\n5. Explain or revert out-of-scope changes in: playground/optimize-deps/dep-cjs-browser-field-bare/internal.js, playground/optimize-deps/dep-cjs-browser-field-bare/package.json.\n6. Add or identify tests that cover: packages/vite/src/node/optimizer/rolldownDepPlugin.ts.\n7. Fix the failing test/build check and summarize the exact log line that proves it now passes.\n8. Return requirement-by-requirement proof for: \"The production build performs the same transformation without warnings\", \"It has no framework, test runner, Vite configuration, warning filter, or polyfill\", \"An upstream solution would avoid maintaining a package-specific resolver in consumers\", \"I recognize that #9837 deliberately changed these accesses from errors to warnings after #9200, and that retaining the warnings was intentional\".\nReturn a concise summary with changed files, tests run, and remaining risks."
+    },
+    "evidenceIndex": [
+      {
+        "id": "ev_7",
+        "kind": "check",
+        "label": "Build&Test: node-22, ubuntu-latest",
+        "locator": "https://github.com/vitejs/vite/actions/runs/35510633984/job/106077854814",
+        "summary": "Status: failed. Build&Test: node-22, ubuntu-latest - Check annotations available. Check annotations: failure at .github:57, notice at .github:1. Raw annotation messages and raw annotation details omitted.",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_32",
+        "kind": "log",
+        "label": "GitHub Actions job: Build&Test: node-22, ubuntu-latest",
+        "locator": "https://github.com/vitejs/vite/actions/runs/35510633984/job/106077854814",
+        "summary": "Status: failed. GitHub Actions job: Build&Test: node-22, ubuntu-latest: GitHub Actions job Build&Test: node-22, ubuntu-latest: failed. Steps: (non-windows) Set Playwright path and Get playwright version: passed; (windows) Set Playwright path and Get playwright version: unknown; Install Playwright: passed; Build: passed; Test unit: passed; Test serve: failed; Test serve (bundled dev): unknown; Test build: unknown",
+        "confidence": 0.75
+      },
+      {
+        "id": "ev_14",
+        "kind": "check",
+        "label": "Build & Test Passed or Skipped",
+        "locator": "https://github.com/vitejs/vite/actions/runs/35510633984/job/106078716582",
+        "summary": "Status: unknown. Build & Test Passed or Skipped",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_16",
+        "kind": "check",
+        "label": "preview",
+        "locator": "https://github.com/vitejs/vite/actions/runs/35510634001/job/106077815855",
+        "summary": "Status: unknown. preview",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_17",
+        "kind": "check",
+        "label": "Redirect rules - vite-docs-main",
+        "locator": "https://github.com/vitejs/vite/runs/106077807438",
+        "summary": "Status: unknown. Redirect rules - vite-docs-main - Please check [the logs](https://app.netlify.com/projects/vite-docs-main/deploys/6aafd1088ffb9d000847168e).",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_18",
+        "kind": "check",
+        "label": "Header rules - vite-docs-main",
+        "locator": "https://github.com/vitejs/vite/runs/106077806925",
+        "summary": "Status: unknown. Header rules - vite-docs-main - Please check [the logs](https://app.netlify.com/projects/vite-docs-main/deploys/6aafd1088ffb9d000847168e).",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_19",
+        "kind": "check",
+        "label": "Pages changed - vite-docs-main",
+        "locator": "https://github.com/vitejs/vite/runs/106077806329",
+        "summary": "Status: unknown. Pages changed - vite-docs-main - Please check [the logs](https://app.netlify.com/projects/vite-docs-main/deploys/6aafd1088ffb9d000847168e).",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_20",
+        "kind": "check",
+        "label": "Comment and close issue",
+        "locator": "https://github.com/vitejs/vite/actions/runs/35510633922/job/106077804500",
+        "summary": "Status: unknown. Comment and close issue",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_21",
+        "kind": "check",
+        "label": "Comment and close PR",
+        "locator": "https://github.com/vitejs/vite/actions/runs/35510633922/job/106077804493",
+        "summary": "Status: unknown. Comment and close PR",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_36",
+        "kind": "log",
+        "label": "GitHub Actions job: Build & Test Passed or Skipped",
+        "locator": "https://github.com/vitejs/vite/actions/runs/35510633984/job/106078716582",
+        "summary": "Status: unknown. GitHub Actions job: Build & Test Passed or Skipped: GitHub Actions job Build & Test Passed or Skipped: unknown.",
+        "confidence": 0.45
+      },
+      {
+        "id": "ev_8",
+        "kind": "check",
+        "label": "Build & Test Failed",
+        "locator": "https://github.com/vitejs/vite/actions/runs/35510633984/job/106078715961",
+        "summary": "Status: passed. Build & Test Failed",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_9",
+        "kind": "check",
+        "label": "Build&Test: node-24, macos-latest",
+        "locator": "https://github.com/vitejs/vite/actions/runs/35510633984/job/106077854859",
+        "summary": "Status: passed. Build&Test: node-24, macos-latest",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_10",
+        "kind": "check",
+        "label": "Build&Test: node-26, ubuntu-latest",
+        "locator": "https://github.com/vitejs/vite/actions/runs/35510633984/job/106077854821",
+        "summary": "Status: passed. Build&Test: node-26, ubuntu-latest",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_11",
+        "kind": "check",
+        "label": "Build&Test: node-24, ubuntu-latest",
+        "locator": "https://github.com/vitejs/vite/actions/runs/35510633984/job/106077854813",
+        "summary": "Status: passed. Build&Test: node-24, ubuntu-latest",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_12",
+        "kind": "check",
+        "label": "Build&Test: node-20, ubuntu-latest",
+        "locator": "https://github.com/vitejs/vite/actions/runs/35510633984/job/106077854774",
+        "summary": "Status: passed. Build&Test: node-20, ubuntu-latest",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_13",
+        "kind": "check",
+        "label": "Build&Test: node-24.15.0, windows-latest",
+        "locator": "https://github.com/vitejs/vite/actions/runs/35510633984/job/106077854764",
+        "summary": "Status: passed. Build&Test: node-24.15.0, windows-latest",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_15",
+        "kind": "check",
+        "label": "zizmor",
+        "locator": "https://github.com/vitejs/vite/runs/106077826357",
+        "summary": "Status: passed. zizmor - [View all branch alerts](/vitejs/vite/security/code-scanning?query=pr%3A23534+tool%3Azizmor+is%3Aopen).",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_22",
+        "kind": "check",
+        "label": "Semantic Pull Request",
+        "locator": "https://github.com/vitejs/vite/actions/runs/35510633921/job/106077804069",
+        "summary": "Status: passed. Semantic Pull Request",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_23",
+        "kind": "check",
+        "label": "AgentScan",
+        "locator": "https://github.com/vitejs/vite/actions/runs/35510633922/job/106077804008",
+        "summary": "Status: passed. AgentScan",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_24",
+        "kind": "check",
+        "label": "Get changed files",
+        "locator": "https://github.com/vitejs/vite/actions/runs/35510633984/job/106077804002",
+        "summary": "Status: passed. Get changed files",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_25",
+        "kind": "check",
+        "label": "Run zizmor",
+        "locator": "https://github.com/vitejs/vite/actions/runs/35510634006/job/106077803925",
+        "summary": "Status: passed. Run zizmor",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_26",
+        "kind": "check",
+        "label": "Lint: node-24, ubuntu-latest",
+        "locator": "https://github.com/vitejs/vite/actions/runs/35510633984/job/106077803857",
+        "summary": "Status: passed. Lint: node-24, ubuntu-latest",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_27",
+        "kind": "check",
+        "label": "netlify/vite-docs-main/deploy-preview",
+        "locator": "https://app.netlify.com/projects/vite-docs-main/deploys/6aafd1088ffb9d000847168e",
+        "summary": "Status: passed. netlify/vite-docs-main/deploy-preview - Deploy Preview canceled.",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_28",
+        "kind": "log",
+        "label": "GitHub Actions job: Lint: node-24, ubuntu-latest",
+        "locator": "https://github.com/vitejs/vite/actions/runs/35510633984/job/106077803857",
+        "summary": "Status: passed. GitHub Actions job: Lint: node-24, ubuntu-latest: GitHub Actions job Lint: node-24, ubuntu-latest: passed. Reported conclusion: success; execution output not collected. Steps: Build: passed",
+        "confidence": 0.75
+      },
+      {
+        "id": "ev_29",
+        "kind": "log",
+        "label": "GitHub Actions job: Build&Test: node-24.15.0, windows-latest",
+        "locator": "https://github.com/vitejs/vite/actions/runs/35510633984/job/106077854764",
+        "summary": "Status: passed. GitHub Actions job: Build&Test: node-24.15.0, windows-latest: GitHub Actions job Build&Test: node-24.15.0, windows-latest: passed. Reported conclusion: success; execution output not collected. Steps: (non-windows) Set Playwright path and Get playwright version: unknown; (windows) Set Playwright path and Get playwright version: passed; Install Playwright: passed; Build: passed; Test unit: passed; Test serve: passed; Test serve (bundled dev): passed; Test build: passed",
+        "confidence": 0.75
+      },
+      {
+        "id": "ev_30",
+        "kind": "log",
+        "label": "GitHub Actions job: Build&Test: node-20, ubuntu-latest",
+        "locator": "https://github.com/vitejs/vite/actions/runs/35510633984/job/106077854774",
+        "summary": "Status: passed. GitHub Actions job: Build&Test: node-20, ubuntu-latest: GitHub Actions job Build&Test: node-20, ubuntu-latest: passed. Reported conclusion: success; execution output not collected. Steps: (non-windows) Set Playwright path and Get playwright version: passed; (windows) Set Playwright path and Get playwright version: unknown; Install Playwright: passed; Build: passed; Test unit: passed; Test serve: passed; Test serve (bundled dev): passed; Test build: passed",
+        "confidence": 0.75
+      },
+      {
+        "id": "ev_31",
+        "kind": "log",
+        "label": "GitHub Actions job: Build&Test: node-24, ubuntu-latest",
+        "locator": "https://github.com/vitejs/vite/actions/runs/35510633984/job/106077854813",
+        "summary": "Status: passed. GitHub Actions job: Build&Test: node-24, ubuntu-latest: GitHub Actions job Build&Test: node-24, ubuntu-latest: passed. Reported conclusion: success; execution output not collected. Steps: (non-windows) Set Playwright path and Get playwright version: passed; (windows) Set Playwright path and Get playwright version: unknown; Install Playwright: passed; Build: passed; Test unit: passed; Test serve: passed; Test serve (bundled dev): passed; Test build: passed",
+        "confidence": 0.75
+      },
+      {
+        "id": "ev_33",
+        "kind": "log",
+        "label": "GitHub Actions job: Build&Test: node-26, ubuntu-latest",
+        "locator": "https://github.com/vitejs/vite/actions/runs/35510633984/job/106077854821",
+        "summary": "Status: passed. GitHub Actions job: Build&Test: node-26, ubuntu-latest: GitHub Actions job Build&Test: node-26, ubuntu-latest: passed. Reported conclusion: success; execution output not collected. Steps: (non-windows) Set Playwright path and Get playwright version: passed; (windows) Set Playwright path and Get playwright version: unknown; Install Playwright: passed; Build: passed; Test unit: passed; Test serve: passed; Test serve (bundled dev): passed; Test build: passed",
+        "confidence": 0.75
+      },
+      {
+        "id": "ev_34",
+        "kind": "log",
+        "label": "GitHub Actions job: Build&Test: node-24, macos-latest",
+        "locator": "https://github.com/vitejs/vite/actions/runs/35510633984/job/106077854859",
+        "summary": "Status: passed. GitHub Actions job: Build&Test: node-24, macos-latest: GitHub Actions job Build&Test: node-24, macos-latest: passed. Reported conclusion: success; execution output not collected. Steps: (non-windows) Set Playwright path and Get playwright version: passed; (windows) Set Playwright path and Get playwright version: unknown; Install Playwright: passed; Build: passed; Test unit: passed; Test serve: passed; Test serve (bundled dev): passed; Test build: passed",
+        "confidence": 0.75
+      },
+      {
+        "id": "ev_35",
+        "kind": "log",
+        "label": "GitHub Actions job: Build & Test Failed",
+        "locator": "https://github.com/vitejs/vite/actions/runs/35510633984/job/106078715961",
+        "summary": "Status: passed. GitHub Actions job: Build & Test Failed: GitHub Actions job Build & Test Failed: passed. Reported conclusion: success; execution output not collected. Steps: Run echo \"Build & Test Failed\": passed",
+        "confidence": 0.75
+      },
+      {
+        "id": "ev_3",
+        "kind": "diff",
+        "label": "packages/vite/src/node/optimizer/rolldownDepPlugin.ts",
+        "locator": "packages/vite/src/node/optimizer/rolldownDepPlugin.ts",
+        "codeLocation": {
+          "path": "packages/vite/src/node/optimizer/rolldownDepPlugin.ts",
+          "side": "head",
+          "revisionSha": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+          "line": 58
+        },
+        "summary": "modified packages/vite/src/node/optimizer/rolldownDepPlugin.ts (+12/-0). Patch excerpt: @@ -58,6 +58,7 @@ const externalTypes = [\n \n const optionalPeerDepNamespace = 'optional-peer-dep:'\n const browserExternalNamespace = 'browser-external:'\n+const browserExternalEmptyNamespace = `${browserExternalNamespace}emp\n...[middle truncated for privacy and token control]\n},\n         handler(id) {\n+          if (id.startsWith(browserExternalEmptyNamespace)) {\n+            return {\n+              code: 'module.exports = {}',\n+            }\n...[truncated for privacy and token control]",
+        "confidence": 0.85
+      },
+      {
+        "id": "ev_4",
+        "kind": "test",
+        "label": "playground/optimize-deps/__tests__/optimize-deps.spec.ts",
+        "locator": "playground/optimize-deps/__tests__/optimize-deps.spec.ts",
+        "codeLocation": {
+          "path": "playground/optimize-deps/__tests__/optimize-deps.spec.ts",
+          "side": "head",
+          "revisionSha": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+          "line": 116
+        },
+        "summary": "modified playground/optimize-deps/__tests__/optimize-deps.spec.ts (+13/-0). Test evidence file. Patch excerpt: @@ -116,6 +116,19 @@ test('cjs browser field bare', async () => {\n     .toBe('pong')\n })\n \n+test.runIf(isServe)(\n+  'cjs browser field false mapping does not warn when a property is accessed',\n+  () => {\n+    expect(\n+\n...[middle truncated for privacy and token control]\nrowserFieldTest\" in client code.',\n+        ),\n+      ),\n+    ).toBe(false)\n+  },\n+)\n+\n test('dep from linked dep (lodash-es)', async () => {\n   await expect.poll(() => page.textContent('.deps-linked')).toBe('fooBarBaz')\n })",
+        "confidence": 0.85
+      },
+      {
+        "id": "ev_5",
+        "kind": "diff",
+        "label": "playground/optimize-deps/dep-cjs-browser-field-bare/internal.js",
+        "locator": "playground/optimize-deps/dep-cjs-browser-field-bare/internal.js",
+        "codeLocation": {
+          "path": "playground/optimize-deps/dep-cjs-browser-field-bare/internal.js",
+          "side": "head",
+          "revisionSha": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+          "line": 2
+        },
+        "summary": "modified playground/optimize-deps/dep-cjs-browser-field-bare/internal.js (+4/-1). Patch excerpt: @@ -2,5 +2,8 @@\n \n // eslint-disable-next-line n/prefer-node-protocol\n const events = require('events')\n+// eslint-disable-next-line n/prefer-node-protocol\n+const fs = require('fs')\n \n-module.exports = 'foo' in events ? 'pong' : ''\n+module.exports =\n+  'foo' in events && fs.__explicitBrowserFieldTest === undefined ? 'pong' : ''",
+        "confidence": 0.85
+      },
+      {
+        "id": "ev_6",
+        "kind": "diff",
+        "label": "playground/optimize-deps/dep-cjs-browser-field-bare/package.json",
+        "locator": "playground/optimize-deps/dep-cjs-browser-field-bare/package.json",
+        "codeLocation": {
+          "path": "playground/optimize-deps/dep-cjs-browser-field-bare/package.json",
+          "side": "head",
+          "revisionSha": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+          "line": 4
+        },
+        "summary": "modified playground/optimize-deps/dep-cjs-browser-field-bare/package.json (+2/-1). Patch excerpt: @@ -4,6 +4,7 @@\n   \"version\": \"0.0.0\",\n   \"main\": \"index.js\",\n   \"browser\": {\n-    \"events\": \"./events-shim.js\"\n+    \"events\": \"./events-shim.js\",\n+    \"fs\": false\n   }\n }",
+        "confidence": 0.85
+      },
+      {
+        "id": "ev_1",
+        "kind": "task",
+        "label": "Linked issue",
+        "summary": "Linked issue vitejs/vite#23512: Avoid browser-external warnings for imports explicitly disabled by browser mappings\n\n### Description\n\nCould Vite distinguish imports explicitly disabled by a package's `browser` mappings from unsupported Node imports that were not disabled?\n\nPostCSS 8.5.28 declares `path`, `url`, `fs`, and `source-map-js` as `false` in its `browser` field. Its browser-compatible code reads properties from those modules to check whether the APIs are available. In Vite 8.3.0 development mode, those reads trigger 23 browser-externalized warnings, although the CSS transformation succeeds. The productio\n...[truncated for privacy and token control]",
+        "confidence": 0.95
+      },
+      {
+        "id": "ev_2",
+        "kind": "pr_description",
+        "label": "PR description",
+        "summary": "Fixes #23512.\n\nAn explicit `browser` mapping to `false` resolves to Vite's bare `browserExternalId`. The dependency optimizer treated it like a regular browser-externalized builtin and installed the development Proxy, which emitted warnings despite the browser-field behavior being an empty module.\n\nThis routes the bare sentinel to an empty CJS module in both development and production. Sentinel IDs with a suffix continue through the existing Proxy path, so unsupported Node builtins retain their diagnostics.\n\nTests:\n- `npx --yes pnpm@12.4.2 --filter=./packages/vite run build`\n- `npx --yes pnpm@12.4.2 run test-serv\n...[truncated for privacy and token control]",
+        "confidence": 0.7
+      }
+    ],
+    "limitations": [
+      "GitHub check annotation metadata was collected; raw annotation details and raw log archives were not fetched or stored.",
+      "Public GitHub Actions metadata showed failing build/test jobs; raw log archives were not fetched or stored.",
+      "COLLECTOR_LIMITATION: GitHub workflow execution identity collection was capped at 3 workflow runs.",
+      "Public GitHub metadata reported successful test/build checks, but no execution output or raw logs were collected; success remains an unverified observation.",
+      "Raw CI logs were not fetched or stored.",
+      "At least one requirement needs human interpretation."
+    ],
+    "analysisContext": "linked_issue",
+    "reportSchemaVersion": "verification-report.v2",
+    "verificationContract": {
+      "version": 2,
+      "policy": "strict_typed_contract",
+      "state": "absent",
+      "source": null,
+      "gaps": [
+        {
+          "kind": "verification_contract_missing",
+          "message": "Approved verification contract is missing."
+        }
+      ],
+      "objectives": []
+    },
+    "reviewCandidates": {
+      "version": 1,
+      "intentGraph": {
+        "version": 1,
+        "source": {
+          "kind": "task",
+          "hash": "e28a83409a6249e95ab1c7804ef6af0b324d4bbbe182f2d3bfc586b771ad5259",
+          "length": 3496,
+          "coordinates": "redacted_lf_utf16"
+        },
+        "repository": "vitejs/vite",
+        "goals": [
+          {
+            "id": "intent_18a79d794ad225b8",
+            "requirementIds": [
+              "req_1",
+              "req_2",
+              "req_3",
+              "req_4"
+            ],
+            "sourceRefs": [
+              {
+                "start": 0,
+                "end": 115,
+                "hash": "0d4d47f97294483ba0760335472f2719f2c53d0b451afaa966f13517ce26459e"
+              },
+              {
+                "start": 134,
+                "end": 272,
+                "hash": "79170f80dc9eda7aaad74355655f8aa577313d3f1e3d72505b8dc29ca968980a"
+              },
+              {
+                "start": 274,
+                "end": 678,
+                "hash": "65717659e61a4234cfa6987243a3963c9d43e3abb9b60b39855841482440ec00"
+              },
+              {
+                "start": 680,
+                "end": 891,
+                "hash": "3dcc0d40a05e5138c860adbc6e4f414bc783cb6a42a44d0b7bffa18b270a0a48"
+              },
+              {
+                "start": 917,
+                "end": 1124,
+                "hash": "e7c58ea54f648cef56730e8bfbcd896c11c0a3d5e9b15de0d75aa5f93789b815"
+              },
+              {
+                "start": 1126,
+                "end": 1396,
+                "hash": "bf88fec4fbf981435248f708acd8ad9169ed2f36c42c373f02a00ae841a0731e"
+              },
+              {
+                "start": 1415,
+                "end": 1815,
+                "hash": "a8919409defb1c643f75fca47ccab109a9ceb0b8102641d5a8dd033e550024a9"
+              },
+              {
+                "start": 1841,
+                "end": 2137,
+                "hash": "9b01e6c23d1154973ea57529dafc0e80034d1b21185970e3ae2ef448e50c47f5"
+              }
+            ],
+            "facets": [
+              {
+                "kind": "reproduction",
+                "sourceRef": {
+                  "start": 2158,
+                  "end": 2273,
+                  "hash": "d52e2e5fbb64c0571630b4b6634820bebdfd776d47693bcd7ae29867647c691f"
+                }
+              },
+              {
+                "kind": "reproduction",
+                "sourceRef": {
+                  "start": 2417,
+                  "end": 2720,
+                  "hash": "113202e67ae00602d973f0304c6e9681dac7d059e37c28da908356e00bcce7a1"
+                }
+              },
+              {
+                "kind": "reproduction",
+                "sourceRef": {
+                  "start": 3227,
+                  "end": 3404,
+                  "hash": "6d275f960be5b4f647f639ede3838e30a238184184bb9ae3a185afe8bd53be16"
+                }
+              },
+              {
+                "kind": "reproduction",
+                "sourceRef": {
+                  "start": 3406,
+                  "end": 3496,
+                  "hash": "a7c86d9e8a0242a655cd6c65a97dc2397b94180609be08b93e4d0dad8b404957"
+                }
+              }
+            ]
+          }
+        ],
+        "chunks": [
+          {
+            "id": "chunk_95d978cf3855c0c4ad89008b",
+            "pool": "changed",
+            "path": "packages/vite/src/node/optimizer/rolldownDepPlugin.ts",
+            "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 1,
+            "hash": "9ab587068fd043b300ecf55be4e33b5443b6ab68d0c868b3ed83df9073ad0193",
+            "evidenceId": "ev_3"
+          },
+          {
+            "id": "chunk_f1c5da3269bd768a8d74cc86",
+            "pool": "changed",
+            "path": "playground/optimize-deps/__tests__/optimize-deps.spec.ts",
+            "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 1,
+            "hash": "660b07dba23b6c014b245f9468797b681798b334dd1e7c824148610ffb7e012d",
+            "evidenceId": "ev_4"
+          },
+          {
+            "id": "chunk_ac4382cb257d8efda4b252a9",
+            "pool": "changed",
+            "path": "playground/optimize-deps/dep-cjs-browser-field-bare/internal.js",
+            "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 1,
+            "hash": "0a8050ed1791755239740ecacad743d846c97c1df6f48606dcce9c0b649726d9",
+            "evidenceId": "ev_5"
+          },
+          {
+            "id": "chunk_aec7a4847f66745fdc738b6f",
+            "pool": "changed",
+            "path": "playground/optimize-deps/dep-cjs-browser-field-bare/package.json",
+            "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 1,
+            "hash": "ffb499810dcab1b41c2123369916815134f83bdcd87fa72a28e999732a2f0249",
+            "evidenceId": "ev_6"
+          }
+        ],
+        "edges": [
+          {
+            "goalId": "intent_18a79d794ad225b8",
+            "chunkId": "chunk_f1c5da3269bd768a8d74cc86",
+            "relation": "candidate",
+            "basis": [
+              "lexical"
+            ],
+            "score": 104
+          },
+          {
+            "goalId": "intent_18a79d794ad225b8",
+            "chunkId": "chunk_95d978cf3855c0c4ad89008b",
+            "relation": "candidate",
+            "basis": [
+              "lexical"
+            ],
+            "score": 56
+          },
+          {
+            "goalId": "intent_18a79d794ad225b8",
+            "chunkId": "chunk_ac4382cb257d8efda4b252a9",
+            "relation": "candidate",
+            "basis": [
+              "lexical"
+            ],
+            "score": 32
+          }
+        ],
+        "capabilities": {
+          "wholeRepository": "unavailable",
+          "embeddings": "unavailable",
+          "symbolResolution": "unavailable",
+          "semantic": "existing_relations_only",
+          "snapshotChunks": 0,
+          "rejectedSnapshots": 0,
+          "truncated": false
+        }
+      },
+      "requirements": [
+        {
+          "requirementId": "req_1",
+          "sourceHash": "3ceb36039c8a3443a1c537aeb116839ee657472abaa1e047f3b53e6080cd7bb5",
+          "candidates": [
+            {
+              "evidenceId": "ev_4",
+              "basis": "changed_tokens",
+              "score": 104,
+              "evidenceHash": "660b07dba23b6c014b245f9468797b681798b334dd1e7c824148610ffb7e012d"
+            },
+            {
+              "evidenceId": "ev_3",
+              "basis": "changed_tokens",
+              "score": 56,
+              "evidenceHash": "9ab587068fd043b300ecf55be4e33b5443b6ab68d0c868b3ed83df9073ad0193"
+            },
+            {
+              "evidenceId": "ev_5",
+              "basis": "changed_tokens",
+              "score": 32,
+              "evidenceHash": "0a8050ed1791755239740ecacad743d846c97c1df6f48606dcce9c0b649726d9"
+            }
+          ]
+        },
+        {
+          "requirementId": "req_2",
+          "sourceHash": "3ceb36039c8a3443a1c537aeb116839ee657472abaa1e047f3b53e6080cd7bb5",
+          "candidates": [
+            {
+              "evidenceId": "ev_4",
+              "basis": "changed_tokens",
+              "score": 104,
+              "evidenceHash": "660b07dba23b6c014b245f9468797b681798b334dd1e7c824148610ffb7e012d"
+            },
+            {
+              "evidenceId": "ev_3",
+              "basis": "changed_tokens",
+              "score": 56,
+              "evidenceHash": "9ab587068fd043b300ecf55be4e33b5443b6ab68d0c868b3ed83df9073ad0193"
+            },
+            {
+              "evidenceId": "ev_5",
+              "basis": "changed_tokens",
+              "score": 32,
+              "evidenceHash": "0a8050ed1791755239740ecacad743d846c97c1df6f48606dcce9c0b649726d9"
+            }
+          ]
+        },
+        {
+          "requirementId": "req_3",
+          "sourceHash": "3ceb36039c8a3443a1c537aeb116839ee657472abaa1e047f3b53e6080cd7bb5",
+          "candidates": [
+            {
+              "evidenceId": "ev_4",
+              "basis": "changed_tokens",
+              "score": 104,
+              "evidenceHash": "660b07dba23b6c014b245f9468797b681798b334dd1e7c824148610ffb7e012d"
+            },
+            {
+              "evidenceId": "ev_3",
+              "basis": "changed_tokens",
+              "score": 56,
+              "evidenceHash": "9ab587068fd043b300ecf55be4e33b5443b6ab68d0c868b3ed83df9073ad0193"
+            },
+            {
+              "evidenceId": "ev_5",
+              "basis": "changed_tokens",
+              "score": 32,
+              "evidenceHash": "0a8050ed1791755239740ecacad743d846c97c1df6f48606dcce9c0b649726d9"
+            }
+          ]
+        },
+        {
+          "requirementId": "req_4",
+          "sourceHash": "3ceb36039c8a3443a1c537aeb116839ee657472abaa1e047f3b53e6080cd7bb5",
+          "candidates": [
+            {
+              "evidenceId": "ev_4",
+              "basis": "changed_tokens",
+              "score": 104,
+              "evidenceHash": "660b07dba23b6c014b245f9468797b681798b334dd1e7c824148610ffb7e012d"
+            },
+            {
+              "evidenceId": "ev_3",
+              "basis": "changed_tokens",
+              "score": 56,
+              "evidenceHash": "9ab587068fd043b300ecf55be4e33b5443b6ab68d0c868b3ed83df9073ad0193"
+            },
+            {
+              "evidenceId": "ev_5",
+              "basis": "changed_tokens",
+              "score": 32,
+              "evidenceHash": "0a8050ed1791755239740ecacad743d846c97c1df6f48606dcce9c0b649726d9"
+            }
+          ]
+        }
+      ],
+      "retainedRelations": [
+        {
+          "requirementId": "req_2",
+          "evidenceId": "ev_3",
+          "relation": "observed"
+        },
+        {
+          "requirementId": "req_2",
+          "evidenceId": "ev_5",
+          "relation": "observed"
+        },
+        {
+          "requirementId": "req_3",
+          "evidenceId": "ev_3",
+          "relation": "observed"
+        },
+        {
+          "requirementId": "req_3",
+          "evidenceId": "ev_6",
+          "relation": "observed"
+        }
+      ],
+      "navigation": {
+        "version": 1,
+        "model": "gemini-3.8-flash",
+        "state": "partial",
+        "repository": "vitejs/vite",
+        "headSha": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+        "baseSha": "e9078f865cdff6bed77cd729214a7e2868f126b5",
+        "sources": [
+          {
+            "id": "task",
+            "authority": "issue_source",
+            "hash": "e28a83409a6249e95ab1c7804ef6af0b324d4bbbe182f2d3bfc586b771ad5259",
+            "length": 3496,
+            "processedLength": 3496,
+            "url": "https://github.com/vitejs/vite/issues/23512"
+          },
+          {
+            "id": "description",
+            "authority": "pr_author_claim",
+            "hash": "f83b5eff209b56142cb46bd8f8ed43f7b47cc945006dc910107864883c5259c4",
+            "length": 1021,
+            "processedLength": 1021,
+            "url": "https://github.com/vitejs/vite/pull/23534"
+          },
+          {
+            "id": "title",
+            "authority": "pr_author_claim",
+            "hash": "313c540b277df77c006346846c069fc8236c7c4cd0e9c814c19ef781f76f832a",
+            "length": 57,
+            "processedLength": 57,
+            "url": "https://github.com/vitejs/vite/pull/23534"
+          }
+        ],
+        "goals": [
+          {
+            "id": "goal_1",
+            "summary": "Avoid browser-external warnings for imports explicitly disabled by package browser mappings",
+            "emphasis": "primary",
+            "authority": "mixed_sources",
+            "sourceRefs": [
+              {
+                "sourceId": "task",
+                "start": 0,
+                "end": 115,
+                "hash": "0d4d47f97294483ba0760335472f2719f2c53d0b451afaa966f13517ce26459e"
+              },
+              {
+                "sourceId": "task",
+                "start": 134,
+                "end": 272,
+                "hash": "79170f80dc9eda7aaad74355655f8aa577313d3f1e3d72505b8dc29ca968980a"
+              },
+              {
+                "sourceId": "task",
+                "start": 917,
+                "end": 1124,
+                "hash": "e7c58ea54f648cef56730e8bfbcd896c11c0a3d5e9b15de0d75aa5f93789b815"
+              },
+              {
+                "sourceId": "title",
+                "start": 0,
+                "end": 57,
+                "hash": "313c540b277df77c006346846c069fc8236c7c4cd0e9c814c19ef781f76f832a"
+              },
+              {
+                "sourceId": "description",
+                "start": 0,
+                "end": 13,
+                "hash": "65dbe752d84baafa4f9ae80da1ac588063e784236a244848948ce652287b17cb"
+              }
+            ],
+            "facets": [
+              {
+                "kind": "context",
+                "summary": "Packages like PostCSS declare modules as false in package.json browser fields, and browser-safe runtime code inspects properties on those modules to check API availability",
+                "sourceRefs": [
+                  {
+                    "sourceId": "task",
+                    "start": 274,
+                    "end": 678,
+                    "hash": "65717659e61a4234cfa6987243a3963c9d43e3abb9b60b39855841482440ec00"
+                  },
+                  {
+                    "sourceId": "task",
+                    "start": 680,
+                    "end": 891,
+                    "hash": "3dcc0d40a05e5138c860adbc6e4f414bc783cb6a42a44d0b7bffa18b270a0a48"
+                  }
+                ]
+              },
+              {
+                "kind": "motivation",
+                "summary": "Property accesses on explicitly disabled browser modules trigger numerous externalized warnings during dev mode, despite succeeding and behaving cleanly in production build",
+                "sourceRefs": [
+                  {
+                    "sourceId": "task",
+                    "start": 274,
+                    "end": 678,
+                    "hash": "65717659e61a4234cfa6987243a3963c9d43e3abb9b60b39855841482440ec00"
+                  },
+                  {
+                    "sourceId": "description",
+                    "start": 15,
+                    "end": 298,
+                    "hash": "fdac1b88383fe515a3cedca7509aa9d769276dc41663fd46ef7eb96d9c8ae7e1"
+                  }
+                ]
+              },
+              {
+                "kind": "constraint",
+                "summary": "Do not suppress warnings globally or provide Node polyfills; preserve existing diagnostics for unsupported Node built-in imports without an explicit false mapping",
+                "sourceRefs": [
+                  {
+                    "sourceId": "task",
+                    "start": 917,
+                    "end": 1124,
+                    "hash": "e7c58ea54f648cef56730e8bfbcd896c11c0a3d5e9b15de0d75aa5f93789b815"
+                  },
+                  {
+                    "sourceId": "task",
+                    "start": 1126,
+                    "end": 1396,
+                    "hash": "bf88fec4fbf981435248f708acd8ad9169ed2f36c42c373f02a00ae841a0731e"
+                  },
+                  {
+                    "sourceId": "task",
+                    "start": 1841,
+                    "end": 2137,
+                    "hash": "9b01e6c23d1154973ea57529dafc0e80034d1b21185970e3ae2ef448e50c47f5"
+                  }
+                ]
+              },
+              {
+                "kind": "acceptance",
+                "summary": "Return an empty module for imports explicitly mapped to false by browser field specifications, consistent across development and production dependency optimization",
+                "sourceRefs": [
+                  {
+                    "sourceId": "task",
+                    "start": 917,
+                    "end": 1124,
+                    "hash": "e7c58ea54f648cef56730e8bfbcd896c11c0a3d5e9b15de0d75aa5f93789b815"
+                  },
+                  {
+                    "sourceId": "task",
+                    "start": 1126,
+                    "end": 1396,
+                    "hash": "bf88fec4fbf981435248f708acd8ad9169ed2f36c42c373f02a00ae841a0731e"
+                  },
+                  {
+                    "sourceId": "description",
+                    "start": 300,
+                    "end": 512,
+                    "hash": "a8201b5e1df7e49d33ad1b0201e1bb685c6409bd4964b35686cab6d3d0cba5c5"
+                  }
+                ]
+              },
+              {
+                "kind": "reproduction",
+                "summary": "Vite dev server with PostCSS initializing runs cleanly without page error but emits 23 externalization warnings in the console, whereas build and preview do not emit warnings",
+                "sourceRefs": [
+                  {
+                    "sourceId": "task",
+                    "start": 2158,
+                    "end": 2273,
+                    "hash": "d52e2e5fbb64c0571630b4b6634820bebdfd776d47693bcd7ae29867647c691f"
+                  },
+                  {
+                    "sourceId": "task",
+                    "start": 2275,
+                    "end": 2415,
+                    "hash": "a8a017af56cf54285dab3e50b76f39613004243ab59d5200196a551e71247fd0"
+                  },
+                  {
+                    "sourceId": "task",
+                    "start": 2417,
+                    "end": 2720,
+                    "hash": "113202e67ae00602d973f0304c6e9681dac7d059e37c28da908356e00bcce7a1"
+                  },
+                  {
+                    "sourceId": "task",
+                    "start": 2722,
+                    "end": 2746,
+                    "hash": "11b87c96e55ebb86ff94f815ddb5b482f03a46f6ac3d11f025c6e8bec7dd8fb3"
+                  },
+                  {
+                    "sourceId": "task",
+                    "start": 2748,
+                    "end": 3225,
+                    "hash": "bbbf6fccefd8523e548a82bd93b0a85c4486150ed659ca574b472fffd3a45b40"
+                  },
+                  {
+                    "sourceId": "task",
+                    "start": 3227,
+                    "end": 3404,
+                    "hash": "6d275f960be5b4f647f639ede3838e30a238184184bb9ae3a185afe8bd53be16"
+                  }
+                ]
+              },
+              {
+                "kind": "context",
+                "summary": "Downstream consumers currently need package-specific resolver workarounds or upstream package changes to avoid availability check warnings",
+                "sourceRefs": [
+                  {
+                    "sourceId": "task",
+                    "start": 1415,
+                    "end": 1815,
+                    "hash": "a8919409defb1c643f75fca47ccab109a9ceb0b8102641d5a8dd033e550024a9"
+                  }
+                ]
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "Routes the bare browser external sentinel to an empty CJS module in dev and prod, while preserving proxy routing and diagnostics for suffixed sentinel IDs",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 15,
+                    "end": 298,
+                    "hash": "fdac1b88383fe515a3cedca7509aa9d769276dc41663fd46ef7eb96d9c8ae7e1"
+                  },
+                  {
+                    "sourceId": "description",
+                    "start": 300,
+                    "end": 512,
+                    "hash": "a8201b5e1df7e49d33ad1b0201e1bb685c6409bd4964b35686cab6d3d0cba5c5"
+                  }
+                ]
+              },
+              {
+                "kind": "test_claim",
+                "summary": "Builds vite and runs test-serve and test-build on optimize-deps and resolve playground specs along with lint and diff checks",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 514,
+                    "end": 912,
+                    "hash": "5b0563d46b5e549123bba5980fd996bd6cb1e2cf54a9431cafd39ecf6bc61655"
+                  }
+                ]
+              }
+            ],
+            "openQuestions": [],
+            "firstInspection": "read_b9a632902cdc287be3e98337",
+            "candidates": [
+              {
+                "artifactId": "read_b9a632902cdc287be3e98337",
+                "relevance": "relevant",
+                "whyInspect": "Defines how resolution results differentiate between the bare browser external sentinel and suffixed browser external identifiers.",
+                "reviewQuestion": "Does resolution properly route exact browser external sentinel matches to the empty namespace while leaving prefixed sentinels on the warning namespace?",
+                "uncertainty": "Whether any other resolver flows produce browserExternalId or suffixed variants that might bypass this branching."
+              },
+              {
+                "artifactId": "read_140238de5f870a30aed337de",
+                "relevance": "relevant",
+                "whyInspect": "Contains the load handler emitting an empty module export for empty namespace IDs while keeping the proxy warning for standard browser-external namespace IDs.",
+                "reviewQuestion": "Does loading an empty browser-external module return an empty CJS module without triggering dev-mode proxy warnings?",
+                "uncertainty": "Whether ESM consumers handle the empty module exports identically in both dev and production dependency optimization."
+              },
+              {
+                "artifactId": "read_f7fc56f804151e55ab3b9ba2",
+                "relevance": "relevant",
+                "whyInspect": "Shows the plugin filter regex setup and delegation from resolveId into resolveResult and load.",
+                "reviewQuestion": "Does the load filter regex for browserExternalNamespace also match the sub-namespace browserExternalEmptyNamespace without additional patterns?",
+                "uncertainty": "None; browserExternalEmptyNamespace starts with browserExternalNamespace."
+              },
+              {
+                "artifactId": "read_1396c8fe7194cb713555e774",
+                "relevance": "relevant",
+                "whyInspect": "Declares the namespace constants, including browserExternalEmptyNamespace derived from browserExternalNamespace.",
+                "reviewQuestion": "Is the browserExternalEmptyNamespace prefix formatted and isolated cleanly so as not to collide with other virtual module schemes?",
+                "uncertainty": "None."
+              },
+              {
+                "artifactId": "read_aa38ef4d77d4cdecdb7db1eb",
+                "relevance": "relevant",
+                "whyInspect": "Test verifying that accessing properties on a module mapped to false in package browser field avoids emitting warning logs in serve mode.",
+                "reviewQuestion": "Does the test assert that client console logs are free of browser-externalized warnings when properties are accessed on disabled modules?",
+                "uncertainty": "Whether build/preview mode is also validated against this test fixture."
+              },
+              {
+                "artifactId": "read_ae1f62776f241a1ad7ea9102",
+                "relevance": "possible",
+                "whyInspect": "Sample internal file requiring disabled module fs alongside mapped module events to verify runtime property access.",
+                "reviewQuestion": "Does the test dep exercise property checking on the externalized import in a realistic client pattern?",
+                "uncertainty": "None."
+              },
+              {
+                "artifactId": "read_600cf1ae540e480ba281df37",
+                "relevance": "possible",
+                "whyInspect": "Reproduction package configuration showing browser mapping with fs mapped to false.",
+                "reviewQuestion": "Does this package manifest match typical library browser field declarations like PostCSS?",
+                "uncertainty": "None."
+              },
+              {
+                "artifactId": "read_d923fbe2a44012d189ae686f",
+                "relevance": "possible",
+                "whyInspect": "Shows the definition and documentation of browserExternalId originating from package browser field spec.",
+                "reviewQuestion": "How does Vite define and construct the browserExternalId sentinel when resolving package browser fields?",
+                "uncertainty": "None."
+              }
+            ],
+            "uncertainty": []
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "read_aa38ef4d77d4cdecdb7db1eb",
+            "path": "playground/optimize-deps/__tests__/optimize-deps.spec.ts",
+            "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+            "side": "head",
+            "startLine": 116,
+            "endLine": 134,
+            "hash": "ff22d8e08a53e1e910d58061639f1872d67c7b031f7e92827b5727bba852cc86",
+            "kind": "test",
+            "origin": "diff"
+          },
+          {
+            "id": "read_ae1f62776f241a1ad7ea9102",
+            "path": "playground/optimize-deps/dep-cjs-browser-field-bare/internal.js",
+            "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+            "side": "head",
+            "startLine": 2,
+            "endLine": 9,
+            "hash": "276f995deef85526dbafc75be2fcb2f59b01e75f3929c46847ca2e877a4433e4",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_93817df4a9fce63d68775d1b",
+            "path": "playground/optimize-deps/dep-cjs-browser-field-bare/internal.js",
+            "revision": "e9078f865cdff6bed77cd729214a7e2868f126b5",
+            "side": "base",
+            "startLine": 2,
+            "endLine": 6,
+            "hash": "20deef961b39a733e38bee5212e8aa3264b3b14b4cbc1103d58cd38186121bda",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_600cf1ae540e480ba281df37",
+            "path": "playground/optimize-deps/dep-cjs-browser-field-bare/package.json",
+            "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+            "side": "head",
+            "startLine": 4,
+            "endLine": 10,
+            "hash": "b69a54fe95b520436549a7410df752d36d29e4e8c820342da06fa4d48fc7e9fc",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_1b5f8997a1feabfc4b2dcf30",
+            "path": "playground/optimize-deps/dep-cjs-browser-field-bare/package.json",
+            "revision": "e9078f865cdff6bed77cd729214a7e2868f126b5",
+            "side": "base",
+            "startLine": 4,
+            "endLine": 9,
+            "hash": "450853e34f08cc18ee80b27c0616ea3531d243f7aeaca6496bb9d2539a1fcdb7",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_1396c8fe7194cb713555e774",
+            "path": "packages/vite/src/node/optimizer/rolldownDepPlugin.ts",
+            "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+            "side": "head",
+            "startLine": 54,
+            "endLine": 71,
+            "hash": "10d9d0d1759ca9d1195a81664508118cd97fff539371b1236fbbbe50f4d96b59",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_b9a632902cdc287be3e98337",
+            "path": "packages/vite/src/node/optimizer/rolldownDepPlugin.ts",
+            "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+            "side": "head",
+            "startLine": 112,
+            "endLine": 155,
+            "hash": "30f4c957c69399f17d48c20c9835779cd714ca9efc3f376ced196821e7aa9e01",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_d766351da022e0ee05de283c",
+            "path": "packages/vite/src/node/optimizer/rolldownDepPlugin.ts",
+            "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+            "side": "head",
+            "startLine": 179,
+            "endLine": 203,
+            "hash": "c812e55cbded3a847c1d6d0c21fe812b16d469b86f2397b39aceae00444a88b3",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_f7fc56f804151e55ab3b9ba2",
+            "path": "packages/vite/src/node/optimizer/rolldownDepPlugin.ts",
+            "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+            "side": "head",
+            "startLine": 232,
+            "endLine": 272,
+            "hash": "4d6a77b314ee1810d4d36d30c56d6b7dc949f2e35109f04c08a6dc5d7e024c02",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_140238de5f870a30aed337de",
+            "path": "packages/vite/src/node/optimizer/rolldownDepPlugin.ts",
+            "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+            "side": "head",
+            "startLine": 268,
+            "endLine": 325,
+            "hash": "a5a2a6f5da7f291c82cc926fd8a3c3456148e9d0ce2cfe7d181a9716876119f3",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_81ccca29a941cd9f3bb6546e",
+            "path": "packages/vite/src/node/optimizer/rolldownDepPlugin.ts",
+            "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+            "side": "head",
+            "startLine": 331,
+            "endLine": 378,
+            "hash": "e8142d7850e8572340605c246eb0ed3fa21de8b95085c0aaf0930810e1dd8e26",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_d712d6d7cd88080fe5b64bfd",
+            "path": "packages/vite/src/node/optimizer/rolldownDepPlugin.ts",
+            "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+            "side": "head",
+            "startLine": 388,
+            "endLine": 443,
+            "hash": "d0915aa98a39012ae419adb0d97447ec7f174e9e4611b873996858f66ed991e5",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_d923fbe2a44012d189ae686f",
+            "path": "packages/vite/src/node/plugins/resolve.ts",
+            "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+            "side": "head",
+            "startLine": 56,
+            "endLine": 68,
+            "hash": "3bb31e5b90eff7510abf244a0bdaf5a7b552a38d6060015d5837548c096efb1b",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_8f7f612f49e5a6741941430c",
+            "path": "packages/vite/src/node/plugins/resolve.ts",
+            "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+            "side": "head",
+            "startLine": 75,
+            "endLine": 104,
+            "hash": "28799be5f4b601577a39d6ee122a63b1c3fa12cfac7a4d08834aadcf7ec966bb",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_3d1231fd90c6a043f8fd8762",
+            "path": "packages/vite/src/node/plugins/resolve.ts",
+            "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+            "side": "head",
+            "startLine": 119,
+            "endLine": 171,
+            "hash": "80b32c9ad670a1e85e0457ca6cee03609e84e6ea9e9bbd466ad45e91aaff2d60",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_9c530193bfa0bd9ff995b39c",
+            "path": "packages/vite/src/node/plugins/resolve.ts",
+            "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+            "side": "head",
+            "startLine": 295,
+            "endLine": 341,
+            "hash": "64374d4d2ea0615970d77ab2e73aaf489c617d84748f931ce86b9a7311c11040",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_5a5edd17254f70d061f1779f",
+            "path": "packages/vite/src/node/plugins/resolve.ts",
+            "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+            "side": "head",
+            "startLine": 413,
+            "endLine": 487,
+            "hash": "7153ca2e0688431d9835c96d0c4da285fb67db3c0539b3bd5f36213bbaba4bff",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_dd1af7f96d4e664752dc4565",
+            "path": "packages/vite/src/node/plugins/resolve.ts",
+            "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+            "side": "head",
+            "startLine": 559,
+            "endLine": 582,
+            "hash": "63e4480a5e64d11dbc22fdb44f5ddc65d71114f9709a23ed8f5bd0d3064c0a75",
+            "kind": "code",
+            "origin": "snapshot"
+          }
+        ],
+        "unprocessed": [
+          "task:117",
+          "task:893",
+          "task:1398",
+          "task:1817",
+          "task:2139",
+          "task:3406",
+          "description:914",
+          "task:117",
+          "task:893",
+          "task:1398",
+          "task:1817",
+          "task:2139",
+          "task:3406",
+          "description:914"
+        ],
+        "limitations": [
+          "diff_context_incomplete",
+          "retrieval_unverified_fallback",
+          "retrieval_budget_exceeded"
+        ],
+        "failures": [],
+        "rankingStatus": "ready",
+        "coverageStatus": "partial"
+      }
+    },
+    "generalPrAssessmentSummary": {
+      "version": 1,
+      "mode": "ordinary_pr",
+      "sourceState": "linked_issue",
+      "overallConclusion": "no_assessable_claims",
+      "counts": {
+        "evidence_supported": 0,
+        "evidence_partial": 0,
+        "not_demonstrated": 0,
+        "contradicted": 0,
+        "blocked": 0,
+        "not_assessable": 0
+      },
+      "reasonCodes": [
+        "deterministic_candidate_missing",
+        "semantic_observer_unavailable"
+      ],
+      "observations": {
+        "version": 1,
+        "inventory": {
+          "state": "complete",
+          "changedArtifacts": 4,
+          "changedTestCandidates": 1
+        },
+        "links": {
+          "state": "unavailable",
+          "linkedObjectives": 0,
+          "supports": 0,
+          "tests": 0,
+          "implements": 0,
+          "contradicts": 0
+        },
+        "coverage": {
+          "source": null,
+          "evidence": null
+        }
+      }
+    },
+    "ordinaryRequirementOutcomes": {
+      "version": 1,
+      "scope": "selected_source_requirements",
+      "requirements": [
+        {
+          "requirementId": "req_1",
+          "authority": "authoritative",
+          "interpretation": "unavailable",
+          "criterion": null,
+          "reason": "source_interpretation_unavailable"
+        },
+        {
+          "requirementId": "req_2",
+          "authority": "authoritative",
+          "interpretation": "unavailable",
+          "criterion": null,
+          "reason": "source_interpretation_unavailable"
+        },
+        {
+          "requirementId": "req_3",
+          "authority": "authoritative",
+          "interpretation": "unavailable",
+          "criterion": null,
+          "reason": "source_interpretation_unavailable"
+        },
+        {
+          "requirementId": "req_4",
+          "authority": "authoritative",
+          "interpretation": "unavailable",
+          "criterion": null,
+          "reason": "source_interpretation_unavailable"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,3286 @@
+{
+  "deployment": "https://agentproof-hy1rvlmf2-renggyus-projects.vercel.app",
+  "startedAt": "2026-09-22T02:34:55.430Z",
+  "results": [
+    {
+      "id": "flask-5918",
+      "group": "regression",
+      "url": "https://github.com/pallets/flask/pull/5918",
+      "httpStatus": 200,
+      "elapsedMs": 40823,
+      "error": null,
+      "expectedHead": "a82e942870b6472bb40017349cca772c242eb1ad",
+      "expectedBase": "d8eaaba824655046958d1a97f11780de460c3271",
+      "sameRevision": true,
+      "navigation": {
+        "version": 1,
+        "model": "gemini-3.8-flash",
+        "state": "partial",
+        "repository": "pallets/flask",
+        "headSha": "a82e942870b6472bb40017349cca772c242eb1ad",
+        "baseSha": "d8eaaba824655046958d1a97f11780de460c3271",
+        "sources": [
+          {
+            "id": "task",
+            "authority": "issue_source",
+            "hash": "2a9e274f1f8fc755df3c99536298f8daddc18a21918d44e079c6614c49ba39aa",
+            "length": 1950,
+            "processedLength": 1950,
+            "url": "https://github.com/pallets/flask/issues/5916"
+          },
+          {
+            "id": "description",
+            "authority": "pr_author_claim",
+            "hash": "2eca06898eff1f96ebc66df41db8ef195d8e0a535c76cd04714f2d60668da966",
+            "length": 723,
+            "processedLength": 723,
+            "url": "https://github.com/pallets/flask/pull/5918"
+          },
+          {
+            "id": "title",
+            "authority": "pr_author_claim",
+            "hash": "523ca4b9d35450294c993c6879fb9bcf5d4abccc657f780f25a510c2a568b6bc",
+            "length": 35,
+            "processedLength": 35,
+            "url": "https://github.com/pallets/flask/pull/5918"
+          }
+        ],
+        "goals": [
+          {
+            "id": "goal_1",
+            "summary": "Implement automatic OPTIONS handling as a distinct route and view dispatch rather than a per-request dispatch check",
+            "emphasis": "primary",
+            "authority": "mixed_sources",
+            "sourceRefs": [
+              {
+                "sourceId": "title",
+                "start": 0,
+                "end": 35,
+                "hash": "523ca4b9d35450294c993c6879fb9bcf5d4abccc657f780f25a510c2a568b6bc"
+              },
+              {
+                "sourceId": "description",
+                "start": 0,
+                "end": 138,
+                "hash": "dc1d30f42bb92b8e59482400bea40920906acd1be3dc19ae64e139c7177b86af"
+              },
+              {
+                "sourceId": "task",
+                "start": 1751,
+                "end": 1950,
+                "hash": "005025fdd0d62c123a6b387566db182a800612efaddb0abb5bb31d1e47e6e8b4"
+              }
+            ],
+            "facets": [
+              {
+                "kind": "motivation",
+                "summary": "Adding OPTIONS to every rule and evaluating provide_automatic_options on every request dispatch is wasteful and awkward compared to routing handles",
+                "sourceRefs": [
+                  {
+                    "sourceId": "task",
+                    "start": 71,
+                    "end": 261,
+                    "hash": "2766250b3654520cd547672d7013fbb5b8bb6ab0e2e807b94c992df947d5b98b"
+                  },
+                  {
+                    "sourceId": "task",
+                    "start": 353,
+                    "end": 1749,
+                    "hash": "59d1bec59161279016e70857c33a7ec6e3880e3dddebb2f37a26fc28d8a6b57c"
+                  }
+                ]
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "Registers automatic options as part of regular routing and view dispatch instead of running a special check during request dispatch",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 0,
+                    "end": 138,
+                    "hash": "dc1d30f42bb92b8e59482400bea40920906acd1be3dc19ae64e139c7177b86af"
+                  },
+                  {
+                    "sourceId": "task",
+                    "start": 1751,
+                    "end": 1950,
+                    "hash": "005025fdd0d62c123a6b387566db182a800612efaddb0abb5bb31d1e47e6e8b4"
+                  }
+                ]
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "Filters out the internal automatic options endpoint from the flask routes command output to avoid noise",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 482,
+                    "end": 581,
+                    "hash": "a9382ce06a8471ca28f028cdc72a1b515affd9a6f4fc41b31f28fae84371ca2f"
+                  }
+                ]
+              },
+              {
+                "kind": "context",
+                "summary": "Prevents adding duplicate internal options routes when multiple methods share a URL, with broad exception handling until Werkzeug 3.2 DuplicateRuleError is available",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 140,
+                    "end": 480,
+                    "hash": "c3c0d1663b74c978974ed3bf5235a5b38ab1dc8b8022d2af4ab38d24c032b0a5"
+                  },
+                  {
+                    "sourceId": "task",
+                    "start": 353,
+                    "end": 1749,
+                    "hash": "59d1bec59161279016e70857c33a7ec6e3880e3dddebb2f37a26fc28d8a6b57c"
+                  }
+                ]
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "Refactors the static view dispatch to avoid using a lambda and weakref, aligning it with the options view structure",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 583,
+                    "end": 691,
+                    "hash": "9cace0693a3584b1515136d7165c7eca9a0d1cb1f8c7aa745899809ac1b79b7f"
+                  }
+                ]
+              }
+            ],
+            "openQuestions": [],
+            "firstInspection": null,
+            "candidates": [],
+            "uncertainty": []
+          },
+          {
+            "id": "goal_2",
+            "summary": "Fix provide_automatic_options configuration and attribute behavior",
+            "emphasis": "supporting",
+            "authority": "issue_source",
+            "sourceRefs": [
+              {
+                "sourceId": "task",
+                "start": 353,
+                "end": 1749,
+                "hash": "59d1bec59161279016e70857c33a7ec6e3880e3dddebb2f37a26fc28d8a6b57c"
+              },
+              {
+                "sourceId": "task",
+                "start": 1751,
+                "end": 1950,
+                "hash": "005025fdd0d62c123a6b387566db182a800612efaddb0abb5bb31d1e47e6e8b4"
+              }
+            ],
+            "facets": [
+              {
+                "kind": "motivation",
+                "summary": "When PROVIDE_AUTOMATIC_OPTIONS is disabled globally, the per-rule or per-view provide_automatic_options setting failed to re-enable the behavior",
+                "sourceRefs": [
+                  {
+                    "sourceId": "task",
+                    "start": 353,
+                    "end": 1749,
+                    "hash": "59d1bec59161279016e70857c33a7ec6e3880e3dddebb2f37a26fc28d8a6b57c"
+                  }
+                ]
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "Author fixed the issue where automatic options could not be enabled when the global config was off",
+                "sourceRefs": [
+                  {
+                    "sourceId": "task",
+                    "start": 1751,
+                    "end": 1950,
+                    "hash": "005025fdd0d62c123a6b387566db182a800612efaddb0abb5bb31d1e47e6e8b4"
+                  }
+                ]
+              },
+              {
+                "kind": "test_claim",
+                "summary": "Existing tests had gaps and some revealed unintended duplicate rule registrations",
+                "sourceRefs": [
+                  {
+                    "sourceId": "task",
+                    "start": 353,
+                    "end": 1749,
+                    "hash": "59d1bec59161279016e70857c33a7ec6e3880e3dddebb2f37a26fc28d8a6b57c"
+                  }
+                ]
+              }
+            ],
+            "openQuestions": [],
+            "firstInspection": null,
+            "candidates": [],
+            "uncertainty": []
+          },
+          {
+            "id": "goal_3",
+            "summary": "Consider deprecating PROVIDE_AUTOMATIC_OPTIONS configuration",
+            "emphasis": "optional",
+            "authority": "issue_source",
+            "sourceRefs": [
+              {
+                "sourceId": "task",
+                "start": 353,
+                "end": 1749,
+                "hash": "59d1bec59161279016e70857c33a7ec6e3880e3dddebb2f37a26fc28d8a6b57c"
+              },
+              {
+                "sourceId": "task",
+                "start": 1751,
+                "end": 1950,
+                "hash": "005025fdd0d62c123a6b387566db182a800612efaddb0abb5bb31d1e47e6e8b4"
+              }
+            ],
+            "facets": [
+              {
+                "kind": "context",
+                "summary": "Questioning the deployment-level benefit of globally disabling OPTIONS responses",
+                "sourceRefs": [
+                  {
+                    "sourceId": "task",
+                    "start": 353,
+                    "end": 1749,
+                    "hash": "59d1bec59161279016e70857c33a7ec6e3880e3dddebb2f37a26fc28d8a6b57c"
+                  }
+                ]
+              }
+            ],
+            "openQuestions": [],
+            "firstInspection": null,
+            "candidates": [],
+            "uncertainty": []
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "read_a255e33ebc541eccede30121",
+            "path": "src/flask/app.py",
+            "revision": "d8eaaba824655046958d1a97f11780de460c3271",
+            "side": "base",
+            "startLine": 5,
+            "endLine": 11,
+            "hash": "3a54b9f5f8737f8fe15c999bf589a4475327666801b1bf4902e2a8ec441b1a81",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_1c5b51c96a4bd64f535ac943",
+            "path": "src/flask/app.py",
+            "revision": "d8eaaba824655046958d1a97f11780de460c3271",
+            "side": "base",
+            "startLine": 353,
+            "endLine": 365,
+            "hash": "c34f5b5e7d5d52edd0fbfe5d3d7fc7f38d73a98f1168f684b6eda36f826d8582",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_ce3297af394a8c3219563b8f",
+            "path": "src/flask/cli.py",
+            "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+            "side": "head",
+            "startLine": 1072,
+            "endLine": 1086,
+            "hash": "335079fe1fdc4eedb386121d241400b75ab5181166b09fbad9284618dae5dad9",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_1434fee152719aa2f74a91bd",
+            "path": "src/flask/cli.py",
+            "revision": "d8eaaba824655046958d1a97f11780de460c3271",
+            "side": "base",
+            "startLine": 1072,
+            "endLine": 1081,
+            "hash": "f23416bb121162f2658f6d0dc2aa7b4b3783c2cc04f0be2e77a416ad772a14e5",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_0dba3e02354e5f2415c2f08c",
+            "path": "tests/test_basic.py",
+            "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+            "side": "head",
+            "startLine": 53,
+            "endLine": 65,
+            "hash": "066d539646d13091b79b2e91e93a7519a559c0566353a3bf790158d3efac27fe",
+            "kind": "test",
+            "origin": "diff"
+          },
+          {
+            "id": "read_e856985fc46e44a50548e253",
+            "path": "tests/test_cli.py",
+            "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+            "side": "head",
+            "startLine": 482,
+            "endLine": 498,
+            "hash": "014361369a8df4e9edf2d12d11cb6ef91d21581c6138619edde78aad4e79e14d",
+            "kind": "test",
+            "origin": "diff"
+          },
+          {
+            "id": "read_99504aa6de4ea231af1785fd",
+            "path": "src/flask/app.py",
+            "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 15,
+            "hash": "4354069f81ec28103ef7a527d57c23be0dde2fc3383ff0a7ad1e127b7775a967",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_863b6573bb3f364dc7b6ebe1",
+            "path": "src/flask/app.py",
+            "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+            "side": "head",
+            "startLine": 254,
+            "endLine": 308,
+            "hash": "1a859288db8d29724c6d93e970d807fb5be37f9de6568f95f0c7961350d22041",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_70dff5b0c70695799bc253a0",
+            "path": "src/flask/app.py",
+            "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+            "side": "head",
+            "startLine": 310,
+            "endLine": 368,
+            "hash": "bc29fbbe1beca7560e1f23352768403d514d9591e557dfb05a4bba8e4928acd0",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_6992eaa6cac3f40e307afdb2",
+            "path": "src/flask/app.py",
+            "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+            "side": "head",
+            "startLine": 391,
+            "endLine": 411,
+            "hash": "6945c7d88aa5a05e052717dd02b70b21aa883a9916d3a4a7ac0bbd79485ffdaa",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_a35af82f7d05a5957633e352",
+            "path": "src/flask/app.py",
+            "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+            "side": "head",
+            "startLine": 468,
+            "endLine": 506,
+            "hash": "9aa1689c1214ed5319d571b15d2362b8e8f29a926d0573f51397fac61e5f5d87",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_2ddec75d2e71bd4467dbab0c",
+            "path": "src/flask/app.py",
+            "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+            "side": "head",
+            "startLine": 508,
+            "endLine": 559,
+            "hash": "421603a39b10ded038e59a491f11b0aecab63873ceb1cc28202cb72a9b2d0f2e",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_421a32fde29bb7b4e720d95f",
+            "path": "src/flask/app.py",
+            "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+            "side": "head",
+            "startLine": 561,
+            "endLine": 587,
+            "hash": "6e82f655478ff820afe958a0b495433d7ad4ca393f2a08857f450fdb518c02d5",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_0f76869decc43b4d8e177428",
+            "path": "src/flask/sansio/app.py",
+            "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+            "side": "head",
+            "startLine": 439,
+            "endLine": 464,
+            "hash": "0901a3c33100121ec442cddaa2b69b550bff49dba6e9d068b488af80e4ba76ae",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_b0b44c4b248f52a55b097b2a",
+            "path": "src/flask/sansio/app.py",
+            "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+            "side": "head",
+            "startLine": 569,
+            "endLine": 595,
+            "hash": "1438a52cebaef43ae4ab20fa56242a8654b0d3425cefbb1186e6be71fd5e4ec6",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_fa6919b5af4121bc39d1913a",
+            "path": "src/flask/sansio/app.py",
+            "revision": "a82e942870b6472bb40017349cca772c242eb1ad",
+            "side": "head",
+            "startLine": 604,
+            "endLine": 671,
+            "hash": "86e77f1d73bb18331f13a6546eb92e1ac2b8fb5a6aadc0698d8df6fae4962589",
+            "kind": "code",
+            "origin": "snapshot"
+          }
+        ],
+        "unprocessed": [
+          "task:0",
+          "task:263",
+          "description:693",
+          "task:0",
+          "task:263",
+          "description:693"
+        ],
+        "limitations": [
+          "diff_context_incomplete",
+          "retrieval_python_indentation",
+          "retrieval_scan_budget_exceeded",
+          "retrieval_unverified_fallback",
+          "retrieval_budget_exceeded",
+          "semantic_unavailable"
+        ],
+        "failures": [
+          {
+            "stage": "ranking",
+            "category": "invalid_json_or_shape",
+            "reason": "provider_invalid_json"
+          }
+        ],
+        "rankingStatus": "unavailable",
+        "coverageStatus": "partial"
+      }
+    },
+    {
+      "id": "starlette-3552",
+      "group": "regression",
+      "url": "https://github.com/Kludex/starlette/pull/3552",
+      "httpStatus": 200,
+      "elapsedMs": 20489,
+      "error": null,
+      "expectedHead": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+      "expectedBase": "03f12b7fcf0a3e21a8da648ca0900c79472e9efe",
+      "sameRevision": true,
+      "navigation": {
+        "version": 1,
+        "model": "gemini-3.8-flash",
+        "state": "partial",
+        "repository": "Kludex/starlette",
+        "headSha": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+        "baseSha": "03f12b7fcf0a3e21a8da648ca0900c79472e9efe",
+        "sources": [
+          {
+            "id": "description",
+            "authority": "pr_author_claim",
+            "hash": "5c137b997205407f4995c3cb2f9c410040b0dfe79c2707eb0b8a4eca9ebaebb4",
+            "length": 1806,
+            "processedLength": 1804,
+            "url": "https://github.com/Kludex/starlette/pull/3552"
+          },
+          {
+            "id": "title",
+            "authority": "pr_author_claim",
+            "hash": "14fc982be7a8594740189d2f1286a9ade1162126d42b98eab761979d24ad12cd",
+            "length": 81,
+            "processedLength": 81,
+            "url": "https://github.com/Kludex/starlette/pull/3552"
+          }
+        ],
+        "goals": [
+          {
+            "id": "goal_1",
+            "summary": "Handle missing payloads and non-UTF-8 bytes cleanly in WebSocketEndpoint.decode() when configured for JSON",
+            "emphasis": "primary",
+            "authority": "pr_author_claim",
+            "sourceRefs": [
+              {
+                "sourceId": "title",
+                "start": 0,
+                "end": 81,
+                "hash": "14fc982be7a8594740189d2f1286a9ade1162126d42b98eab761979d24ad12cd"
+              },
+              {
+                "sourceId": "description",
+                "start": 841,
+                "end": 1073,
+                "hash": "394ae8c9cf2f7e1b11ea0309f70b14a833813adc9a63dc39d9b2a036e3c182ab"
+              }
+            ],
+            "facets": [
+              {
+                "kind": "context",
+                "summary": "When WebSocketEndpoint uses JSON encoding, decode() accepts text frames or UTF-8 encoded binary frames. Previously, missing text assumed bytes were present and valid UTF-8.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 11,
+                    "end": 286,
+                    "hash": "02325a1867782e4d9b41d3e082853d546c11c46be04a6a66dbad5e64e5e9cbd3"
+                  }
+                ]
+              },
+              {
+                "kind": "motivation",
+                "summary": "Empty events (no text or bytes) caused AttributeError/KeyError, and invalid UTF-8 bytes triggered an unhandled UnicodeDecodeError. Both bypassed the unsupported data closure (1003) and raised 1011 internal server errors with tracebacks.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 288,
+                    "end": 629,
+                    "hash": "67d9ed2afe5172e7e94e5a36f1e750bb6c6b886aeda06a18a82191d67de66a87"
+                  },
+                  {
+                    "sourceId": "description",
+                    "start": 631,
+                    "end": 839,
+                    "hash": "31fc16d619db805686af583280ce10384519da1f286873c8fa9bba18333d184f"
+                  }
+                ]
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "Checks for bytes before decoding and catches UnicodeDecodeError to close with WS_1003_UNSUPPORTED_DATA and raise RuntimeError('Malformed JSON data received.'), mirroring text JSON handling.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 841,
+                    "end": 1073,
+                    "hash": "394ae8c9cf2f7e1b11ea0309f70b14a833813adc9a63dc39d9b2a036e3c182ab"
+                  }
+                ]
+              },
+              {
+                "kind": "test_claim",
+                "summary": "Author reports verification with test scripts passing all 1253 tests with 100% coverage, alongside clean linting and type checks.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 1075,
+                    "end": 1213,
+                    "hash": "c8d10f936be2aa78cd13e627c0173889cd74db3d78de37d418fefbd33d4fc1c0"
+                  }
+                ]
+              }
+            ],
+            "openQuestions": [],
+            "firstInspection": "read_ee9fcfc6fec832b5f204c159",
+            "candidates": [
+              {
+                "artifactId": "read_ee9fcfc6fec832b5f204c159",
+                "relevance": "relevant",
+                "whyInspect": "Contains the modified decode() branch for JSON encoding that checks message['bytes'], catches UnicodeDecodeError, closes with WS_1003_UNSUPPORTED_DATA, and raises RuntimeError.",
+                "reviewQuestion": "Does the updated logic correctly check for both text and bytes payloads, handle non-UTF-8 bytes cleanly without unhandled exceptions, and preserve existing JSON parsing?",
+                "uncertainty": "None"
+              },
+              {
+                "artifactId": "read_0976e38ec273d5e5fe287622",
+                "relevance": "relevant",
+                "whyInspect": "Includes test_websocket_endpoint_decode_json_rejects_message_without_payload which validates receiving an ASGI event with text and bytes set to None.",
+                "reviewQuestion": "Does the test adequately simulate ASGI receive events lacking payloads and verify both the close frame status code and the raised RuntimeError?",
+                "uncertainty": "None"
+              },
+              {
+                "artifactId": "read_9b1167319f2d3b470ea06b96",
+                "relevance": "relevant",
+                "whyInspect": "Contains test_websocket_endpoint_decode_json_rejects_invalid_utf8_bytes testing direct decode() behavior with invalid UTF-8 byte sequences.",
+                "reviewQuestion": "Does the test ensure decode() catches decoding errors and triggers a WS_1003_UNSUPPORTED_DATA close event rather than raising an unhandled UnicodeDecodeError?",
+                "uncertainty": "None"
+              },
+              {
+                "artifactId": "read_f58bcc9c01d1dd699b331d66",
+                "relevance": "relevant",
+                "whyInspect": "Shows integration testing with TestClient where invalid binary bytes are sent to a JSON-encoded WebSocket endpoint.",
+                "reviewQuestion": "Does the end-to-end WebSocket client connection properly observe the RuntimeError and expected closure behavior when malformed binary bytes are sent?",
+                "uncertainty": "None"
+              },
+              {
+                "artifactId": "read_14c22376e4442df6021ba772",
+                "relevance": "possible",
+                "whyInspect": "Base revision showing the previous implementation that unconditionally decoded message['bytes'] when message.get('text') was None.",
+                "reviewQuestion": "How does the previous implementation compare in failure modes (KeyError vs UnicodeDecodeError) when handling unexpected payloads?",
+                "uncertainty": "None"
+              }
+            ],
+            "uncertainty": []
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "read_ee9fcfc6fec832b5f204c159",
+            "path": "starlette/endpoints.py",
+            "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+            "side": "head",
+            "startLine": 104,
+            "endLine": 118,
+            "hash": "19585bda686fbac415bf632415fe814f2e6732a370aafdc22afb1db9747506d7",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_14c22376e4442df6021ba772",
+            "path": "starlette/endpoints.py",
+            "revision": "03f12b7fcf0a3e21a8da648ca0900c79472e9efe",
+            "side": "base",
+            "startLine": 104,
+            "endLine": 111,
+            "hash": "3e3049e3a404fcbc25175e349a167763ebf652bb07888229ee85d7ae7f679482",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_b1acdbbbaf7c28e12a126d2a",
+            "path": "tests/test_endpoints.py",
+            "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+            "side": "head",
+            "startLine": 61,
+            "endLine": 75,
+            "hash": "0501d9f682206372fa11bbcb29e13056ec3ff600783bc69d55d44e98379fe57f",
+            "kind": "test",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_38f058211748674567342c12",
+            "path": "tests/test_endpoints.py",
+            "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+            "side": "head",
+            "startLine": 89,
+            "endLine": 106,
+            "hash": "fc4149b5841784b6ad53d35d9621a463bddcc0efd850d5381c640b40292bb352",
+            "kind": "test",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_67305f13ffd201f91381a5ea",
+            "path": "tests/test_endpoints.py",
+            "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+            "side": "head",
+            "startLine": 109,
+            "endLine": 126,
+            "hash": "2ebfaf160fd8c458820778d4cb735006287dc7b0ac13f53a1abcd58d217aa588",
+            "kind": "test",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_f58bcc9c01d1dd699b331d66",
+            "path": "tests/test_endpoints.py",
+            "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+            "side": "head",
+            "startLine": 129,
+            "endLine": 166,
+            "hash": "b2af05ce7ba03064d3af45ae27d71ed2210167c8bb5beede4845cfe5dc27319d",
+            "kind": "test",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_c21aa4b28ccb1d5121045bf8",
+            "path": "tests/test_endpoints.py",
+            "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+            "side": "head",
+            "startLine": 169,
+            "endLine": 180,
+            "hash": "648242d265daebeaaac1d4a3e895669f8322b6af1f82874901dedbfd801503b5",
+            "kind": "test",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_6cda536c2d32ab71cac2db60",
+            "path": "tests/test_endpoints.py",
+            "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+            "side": "head",
+            "startLine": 183,
+            "endLine": 194,
+            "hash": "46a2e708baeeecbe2ec3be067f1d3848976de0a9061ec62aa00cdeea3d4babae",
+            "kind": "test",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_e07b2490f3d7dfe44270959a",
+            "path": "tests/test_endpoints.py",
+            "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+            "side": "head",
+            "startLine": 197,
+            "endLine": 219,
+            "hash": "21e603ab15f570171b4e9194b63e1162b333fa048f6aa6b45abc7edc36266d36",
+            "kind": "test",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_0976e38ec273d5e5fe287622",
+            "path": "tests/test_endpoints.py",
+            "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+            "side": "head",
+            "startLine": 222,
+            "endLine": 265,
+            "hash": "a3742c73ef69e70d1847cdf6096abf3ec4903daf2d38060f42e9cba93ee47790",
+            "kind": "test",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_9b1167319f2d3b470ea06b96",
+            "path": "tests/test_endpoints.py",
+            "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+            "side": "head",
+            "startLine": 268,
+            "endLine": 288,
+            "hash": "e8b8a643740eb40d439c9e86c2accaaf5bc6aa04c740897d55358ed557789fbd",
+            "kind": "test",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_35f160596f8e7212168142fd",
+            "path": "tests/test_endpoints.py",
+            "revision": "fe83c02c765dcee66e447833acd9bc73adc2bb72",
+            "side": "head",
+            "startLine": 291,
+            "endLine": 301,
+            "hash": "d3f379a1dd51229d611ae2b4f10f931741d49413ac2507dd7ea36e0731482294",
+            "kind": "test",
+            "origin": "snapshot"
+          }
+        ],
+        "unprocessed": [
+          "description:0",
+          "description:1217",
+          "description:0",
+          "description:1217"
+        ],
+        "limitations": [
+          "diff_context_incomplete",
+          "retrieval_python_indentation",
+          "retrieval_unverified_fallback",
+          "retrieval_budget_exceeded"
+        ],
+        "failures": [],
+        "rankingStatus": "ready",
+        "coverageStatus": "partial"
+      }
+    },
+    {
+      "id": "httpx-3783",
+      "group": "unused",
+      "url": "https://github.com/encode/httpx/pull/3783",
+      "httpStatus": 200,
+      "elapsedMs": 22670,
+      "error": null,
+      "expectedHead": "c1e73124c5d24aa6d61f0413d217f5810f62eb00",
+      "expectedBase": "b5addb64f0161ff6bfe94c124ef76f6a1fba5254",
+      "sameRevision": true,
+      "navigation": {
+        "version": 1,
+        "model": "gemini-3.8-flash",
+        "state": "partial",
+        "repository": "encode/httpx",
+        "headSha": "c1e73124c5d24aa6d61f0413d217f5810f62eb00",
+        "baseSha": "b5addb64f0161ff6bfe94c124ef76f6a1fba5254",
+        "sources": [
+          {
+            "id": "description",
+            "authority": "pr_author_claim",
+            "hash": "d2bfe7cb20fdb6a4a9546dd1ed6faf9a9b4c515438ca971f55e0cecb421e4dfd",
+            "length": 667,
+            "processedLength": 666,
+            "url": "https://github.com/encode/httpx/pull/3783"
+          },
+          {
+            "id": "title",
+            "authority": "pr_author_claim",
+            "hash": "7b802d3e81cdfe3a3d91ec10b7ed30c4ed78d3bd455adf7995b48f0328353817",
+            "length": 56,
+            "processedLength": 56,
+            "url": "https://github.com/encode/httpx/pull/3783"
+          }
+        ],
+        "goals": [
+          {
+            "id": "goal_1",
+            "summary": "Introduce a client option allowing the original HTTP method to be preserved during 301 and 302 redirects.",
+            "emphasis": "primary",
+            "authority": "pr_author_claim",
+            "sourceRefs": [
+              {
+                "sourceId": "title",
+                "start": 0,
+                "end": 56,
+                "hash": "7b802d3e81cdfe3a3d91ec10b7ed30c4ed78d3bd455adf7995b48f0328353817"
+              },
+              {
+                "sourceId": "description",
+                "start": 309,
+                "end": 358,
+                "hash": "a60c40cddcc8cfb1c5ccbaa4d1fef779dee0d629cb21f6c151ec67bd4a9b09e2"
+              }
+            ],
+            "facets": [
+              {
+                "kind": "motivation",
+                "summary": "RFC guidance for 301 and 302 responses is ambiguous; while browsers commonly switch the method to GET upon redirection, certain server applications rely on legacy behavior that preserves the original method.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 11,
+                    "end": 307,
+                    "hash": "b59b36a138119a5b883c726a817e7cc63ce6d9b2fe0f8b29ceabd8e05784071e"
+                  }
+                ]
+              },
+              {
+                "kind": "test_claim",
+                "summary": "Author asserts tests were added for each introduced change.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 373,
+                    "end": 666,
+                    "hash": "b7e8ea6aa95b0057c3fc4136363640cc467ebb47178f02672c784bcc98a593a0"
+                  }
+                ]
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "Author asserts documentation was updated accordingly.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 373,
+                    "end": 666,
+                    "hash": "b7e8ea6aa95b0057c3fc4136363640cc467ebb47178f02672c784bcc98a593a0"
+                  }
+                ]
+              }
+            ],
+            "openQuestions": [],
+            "firstInspection": "read_f22fb624706ff08a7827a33f",
+            "candidates": [
+              {
+                "artifactId": "read_f22fb624706ff08a7827a33f",
+                "relevance": "relevant",
+                "whyInspect": "Implements redirect method selection where keep_method_for_redirects conditionally preserves the original method for 301 and 302 while ensuring 303 still switches to GET.",
+                "reviewQuestion": "Does keep_method_for_redirects correctly preserve the HTTP method specifically for 301 and 302 responses without bypassing expected RFC handling for 303 SEE_OTHER?",
+                "uncertainty": "Body preservation and stream handling during redirected non-GET methods are not defined in this helper."
+              },
+              {
+                "artifactId": "read_de49637f2c037126aa8ae5e3",
+                "relevance": "relevant",
+                "whyInspect": "Contains tests validating 301 redirect method preservation when keep_method_for_redirects is enabled versus disabled.",
+                "reviewQuestion": "Does the test suite verify keep_method_for_redirects behavior for both 301 and 302 redirects across synchronous and asynchronous clients?",
+                "uncertainty": "The visible snippet only shows 301 keep_method and standard 302 without showing whether 302 keep_method is tested."
+              },
+              {
+                "artifactId": "read_62f0876235afbf68681e71ef",
+                "relevance": "relevant",
+                "whyInspect": "Defines BaseClient constructor accepting and storing keep_method_for_redirects.",
+                "reviewQuestion": "Is keep_method_for_redirects initialized with an appropriate default value on BaseClient without breaking backwards compatibility?",
+                "uncertainty": "None."
+              },
+              {
+                "artifactId": "read_8ab436d1a0b06621c5419d5f",
+                "relevance": "relevant",
+                "whyInspect": "Exposes keep_method_for_redirects in Client.__init__ and forwards it to BaseClient.",
+                "reviewQuestion": "Is the parameter correctly propagated from Client.__init__ to super().__init__?",
+                "uncertainty": "None."
+              },
+              {
+                "artifactId": "read_82c90b5fc558739640b74e31",
+                "relevance": "relevant",
+                "whyInspect": "Exposes keep_method_for_redirects in AsyncClient.__init__ and forwards it to BaseClient.",
+                "reviewQuestion": "Is the parameter correctly supported and propagated across AsyncClient?",
+                "uncertainty": "None."
+              },
+              {
+                "artifactId": "read_ff250ca49b4efd286f126af8",
+                "relevance": "possible",
+                "whyInspect": "Constructs headers for redirect requests, stripping Content-Length and Transfer-Encoding only if the method switched to GET.",
+                "reviewQuestion": "Are body-related headers properly retained when the original request method is preserved during redirects?",
+                "uncertainty": "Does not reveal how the request body payload itself is replayed during redirects."
+              }
+            ],
+            "uncertainty": [
+              "Whether documentation updates claimed by the PR description exist in other files outside the provided inventory."
+            ]
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "read_62f0876235afbf68681e71ef",
+            "path": "httpx/_client.py",
+            "revision": "c1e73124c5d24aa6d61f0413d217f5810f62eb00",
+            "side": "head",
+            "startLine": 189,
+            "endLine": 223,
+            "hash": "80e290a5020c8888a92ab6f6e8672c8d996685e257df8d5e5d4fd1e124a5dea3",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_f22fb624706ff08a7827a33f",
+            "path": "httpx/_client.py",
+            "revision": "c1e73124c5d24aa6d61f0413d217f5810f62eb00",
+            "side": "head",
+            "startLine": 496,
+            "endLine": 528,
+            "hash": "676848b9b2dba7378207100efbe35e2fa6ae7d8766a28f0134717f2dfacfbe69",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_ff250ca49b4efd286f126af8",
+            "path": "httpx/_client.py",
+            "revision": "c1e73124c5d24aa6d61f0413d217f5810f62eb00",
+            "side": "head",
+            "startLine": 559,
+            "endLine": 584,
+            "hash": "8b2e77819712cadc7b30d3e392cdaa06b0561ab778f5bf97233794a69499a773",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_8ab436d1a0b06621c5419d5f",
+            "path": "httpx/_client.py",
+            "revision": "c1e73124c5d24aa6d61f0413d217f5810f62eb00",
+            "side": "head",
+            "startLine": 656,
+            "endLine": 735,
+            "hash": "733c0b965b0810448dc21c907f31f6016ac5ffd242d3626165bc005ac0fe616c",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_38c36ccabd01ba898b78f12d",
+            "path": "httpx/_client.py",
+            "revision": "c1e73124c5d24aa6d61f0413d217f5810f62eb00",
+            "side": "head",
+            "startLine": 790,
+            "endLine": 844,
+            "hash": "094ccda2608cbcd9304cbf504dbe727b413d0f4b9ab6a026d8e43ae73ad98c5b",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_53e90d2e3c235a50b836c1bb",
+            "path": "httpx/_client.py",
+            "revision": "c1e73124c5d24aa6d61f0413d217f5810f62eb00",
+            "side": "head",
+            "startLine": 898,
+            "endLine": 947,
+            "hash": "e553ba7a35dbc3ffb06bdf5f6e620744429cd08c0afbb765bded061515c28ead",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_82c90b5fc558739640b74e31",
+            "path": "httpx/_client.py",
+            "revision": "c1e73124c5d24aa6d61f0413d217f5810f62eb00",
+            "side": "head",
+            "startLine": 1376,
+            "endLine": 1455,
+            "hash": "a25bad33c97af0cb380e9032fa522ba084657443cbe68382923255dffa99af73",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_73692910771932f5049fd313",
+            "path": "httpx/_client.py",
+            "revision": "c1e73124c5d24aa6d61f0413d217f5810f62eb00",
+            "side": "head",
+            "startLine": 1510,
+            "endLine": 1565,
+            "hash": "5fe482b5f78e0e137dee1d909220e6164df6f8588c825ad1cbb580a9b8a4b923",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_de49637f2c037126aa8ae5e3",
+            "path": "tests/client/test_redirects.py",
+            "revision": "c1e73124c5d24aa6d61f0413d217f5810f62eb00",
+            "side": "head",
+            "startLine": 116,
+            "endLine": 142,
+            "hash": "c706f4d8d622f5319cb2e82da41f86e1112179f95a61280513762d9644050a8f",
+            "kind": "test",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_94d107fa6a5fe267654ec6a3",
+            "path": "tests/client/test_redirects.py",
+            "revision": "c1e73124c5d24aa6d61f0413d217f5810f62eb00",
+            "side": "head",
+            "startLine": 439,
+            "endLine": 467,
+            "hash": "61afce02e909e723c5ef6624cee9b96bb5a3006b3cb9ed00b6cc76c5a3e892fd",
+            "kind": "test",
+            "origin": "snapshot"
+          }
+        ],
+        "unprocessed": [
+          "description:0",
+          "description:360",
+          "description:0",
+          "description:360"
+        ],
+        "limitations": [
+          "diff_context_incomplete",
+          "retrieval_python_indentation",
+          "retrieval_scan_budget_exceeded",
+          "retrieval_unverified_fallback",
+          "retrieval_budget_exceeded"
+        ],
+        "failures": [],
+        "rankingStatus": "ready",
+        "coverageStatus": "partial"
+      }
+    },
+    {
+      "id": "fastapi-16372",
+      "group": "unused",
+      "url": "https://github.com/fastapi/fastapi/pull/16372",
+      "httpStatus": 200,
+      "elapsedMs": 31249,
+      "error": null,
+      "expectedHead": "6f280f6f714b935f246d43a01e82fe509bc74948",
+      "expectedBase": "50113da16fec53b66b80d75e80a89296de4fa5a5",
+      "sameRevision": true,
+      "navigation": {
+        "version": 1,
+        "model": "gemini-3.8-flash",
+        "state": "partial",
+        "repository": "fastapi/fastapi",
+        "headSha": "6f280f6f714b935f246d43a01e82fe509bc74948",
+        "baseSha": "50113da16fec53b66b80d75e80a89296de4fa5a5",
+        "sources": [
+          {
+            "id": "description",
+            "authority": "pr_author_claim",
+            "hash": "230be6e9d863ce191437c9042bc97f65823d9fa593f98b0b21ee7dcb6602cd66",
+            "length": 944,
+            "processedLength": 943,
+            "url": "https://github.com/fastapi/fastapi/pull/16372"
+          },
+          {
+            "id": "title",
+            "authority": "pr_author_claim",
+            "hash": "e3e0efd89181f0a756d00a3313218da61aaacc930738f3469fea908b1a3f7500",
+            "length": 27,
+            "processedLength": 27,
+            "url": "https://github.com/fastapi/fastapi/pull/16372"
+          }
+        ],
+        "goals": [
+          {
+            "id": "goal_1",
+            "summary": "Improve typing for OpenAPI tag metadata by introducing TypedDict definitions for tag structures.",
+            "emphasis": "primary",
+            "authority": "pr_author_claim",
+            "sourceRefs": [
+              {
+                "sourceId": "title",
+                "start": 0,
+                "end": 27,
+                "hash": "e3e0efd89181f0a756d00a3313218da61aaacc930738f3469fea908b1a3f7500"
+              },
+              {
+                "sourceId": "description",
+                "start": 54,
+                "end": 174,
+                "hash": "2348a997867278a57779bc13cf2fcf8983c89314c8f1449e47df206a1798ae27"
+              }
+            ],
+            "facets": [
+              {
+                "kind": "motivation",
+                "summary": "Provide enhanced IDE autocompletion and static type checking for fields like name, description, and externalDocs.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 176,
+                    "end": 394,
+                    "hash": "48ea5afdabbb54dc49d4afb8d988cf9ec2210a4065b90a13957873b882116593"
+                  }
+                ]
+              },
+              {
+                "kind": "constraint",
+                "summary": "Maintain backward compatibility with existing configurations using generic string-keyed dictionaries.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 176,
+                    "end": 394,
+                    "hash": "48ea5afdabbb54dc49d4afb8d988cf9ec2210a4065b90a13957873b882116593"
+                  }
+                ]
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "The tag parameter type annotation accommodates both the new TypedDict representation and the previous generic dictionary list, or None.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 396,
+                    "end": 429,
+                    "hash": "8a1689658f73b03daf51cd96119d49a901be21a1c4b4430b9f0d33f883e8d690"
+                  },
+                  {
+                    "sourceId": "description",
+                    "start": 431,
+                    "end": 496,
+                    "hash": "23ebf334ccb366347fe960e9d9dfdf44688fb3e6cb0b2dce480eb4e49aa5e081"
+                  }
+                ]
+              },
+              {
+                "kind": "context",
+                "summary": "Relates to GitHub discussion #16362.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 17,
+                    "end": 36,
+                    "hash": "e3556e90d7856f8332bf8277a281762c4a29757c7558adc430be0a0ad3a3dd81"
+                  },
+                  {
+                    "sourceId": "description",
+                    "start": 674,
+                    "end": 943,
+                    "hash": "1d61891e5fc9becae82b4670a437b02e951962d3699d3ccfdde5025036034cec"
+                  }
+                ]
+              }
+            ],
+            "openQuestions": [],
+            "firstInspection": "read_32fc7810f3f3c62ba03b3b67",
+            "candidates": [
+              {
+                "artifactId": "read_32fc7810f3f3c62ba03b3b67",
+                "relevance": "relevant",
+                "whyInspect": "Defines the TypedDict structures for OpenAPITag and OpenAPIExternalDocs with required versus optional fields.",
+                "reviewQuestion": "Do OpenAPITag and OpenAPIExternalDocs accurately capture the OpenAPI 3.x tag specification with appropriate required and optional attributes?",
+                "uncertainty": "Whether other OpenAPI tag properties like summary or extensions are supported or omitted."
+              },
+              {
+                "artifactId": "read_15fb7d7cbae20ec1028e7b1c",
+                "relevance": "relevant",
+                "whyInspect": "Updates the openapi_tags parameter signature in FastAPI to accept OpenAPITag while preserving generic dictionary support.",
+                "reviewQuestion": "Does the openapi_tags parameter type union maintain complete backward compatibility without causing type narrowing issues?",
+                "uncertainty": "None."
+              },
+              {
+                "artifactId": "read_388986ae5dca071d8c18e32b",
+                "relevance": "relevant",
+                "whyInspect": "Applies the OpenAPITag type annotation to the get_openapi utility function.",
+                "reviewQuestion": "Is the tags parameter annotation in get_openapi consistent with FastAPI applications and OpenAPI generation requirements?",
+                "uncertainty": "None."
+              },
+              {
+                "artifactId": "read_050365992b88e51fd17bc887",
+                "relevance": "possible",
+                "whyInspect": "Illustrates tutorial usage and documentation imports for OpenAPITag.",
+                "reviewQuestion": "Is the tutorial sample code valid and properly demonstrating the new OpenAPITag annotation?",
+                "uncertainty": "None."
+              },
+              {
+                "artifactId": "read_106a80c74cafc31bc754269d",
+                "relevance": "possible",
+                "whyInspect": "Verifies that the tutorial app using OpenAPITag still produces the expected OpenAPI schema output.",
+                "reviewQuestion": "Do existing schema snapshots continue to match when using OpenAPITag type annotations?",
+                "uncertainty": "Snapshot tests verify runtime dictionary output rather than static typing correctness."
+              },
+              {
+                "artifactId": "read_492077f039ddcb6ca46df533",
+                "relevance": "possible",
+                "whyInspect": "Shows the updated docstring example in FastAPI.__init__ demonstrating OpenAPITag usage.",
+                "reviewQuestion": "Does the docstring correctly reflect the new type annotation in code snippets?",
+                "uncertainty": "None"
+              }
+            ],
+            "uncertainty": []
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "read_050365992b88e51fd17bc887",
+            "path": "docs_src/metadata/tutorial004_py310.py",
+            "revision": "6f280f6f714b935f246d43a01e82fe509bc74948",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 7,
+            "hash": "7609330c5aba84d502cf97ed8634e2d26ee77196e089421bbf96ffb48988dcd1",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_9c8cf759728fa37789fb7e8b",
+            "path": "docs_src/metadata/tutorial004_py310.py",
+            "revision": "50113da16fec53b66b80d75e80a89296de4fa5a5",
+            "side": "base",
+            "startLine": 1,
+            "endLine": 6,
+            "hash": "48133bc811e5375da309b98030b7ba2ea62ecf82891512320c0b79603762fc45",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_92f1f1122f3cde92bbc97785",
+            "path": "fastapi/applications.py",
+            "revision": "50113da16fec53b66b80d75e80a89296de4fa5a5",
+            "side": "base",
+            "startLine": 21,
+            "endLine": 27,
+            "hash": "79bfbb6dca330bf430482621f88f3310226efac84f8986275344c252efa65c81",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_68f2abf576599af4fde92681",
+            "path": "fastapi/applications.py",
+            "revision": "50113da16fec53b66b80d75e80a89296de4fa5a5",
+            "side": "base",
+            "startLine": 220,
+            "endLine": 226,
+            "hash": "16600bd0025f450cd88513b5f6cf492b25003531a84d58c7413776a9704ac8c8",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_5f05b19ca6a0c2f13c2ac5bb",
+            "path": "fastapi/applications.py",
+            "revision": "50113da16fec53b66b80d75e80a89296de4fa5a5",
+            "side": "base",
+            "startLine": 259,
+            "endLine": 262,
+            "hash": "70ec8df567f809c9e79c84cd72b816ba587b76a5d5e201a840a87c74fa097de9",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_e0c6f343c653f77e498bc70b",
+            "path": "fastapi/openapi/utils.py",
+            "revision": "6f280f6f714b935f246d43a01e82fe509bc74948",
+            "side": "head",
+            "startLine": 36,
+            "endLine": 42,
+            "hash": "658092417f405b869152f7ac2c6b543b5f38fc826e3d8364b9d14ea1d190124a",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_9c942cfc4dfd2796c419ba9b",
+            "path": "fastapi/openapi/utils.py",
+            "revision": "50113da16fec53b66b80d75e80a89296de4fa5a5",
+            "side": "base",
+            "startLine": 36,
+            "endLine": 42,
+            "hash": "4bf3800f8ff84b3cf983315fe85b7964f27846d9ffaf9d9cf68103e6f6589897",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_388986ae5dca071d8c18e32b",
+            "path": "fastapi/openapi/utils.py",
+            "revision": "6f280f6f714b935f246d43a01e82fe509bc74948",
+            "side": "head",
+            "startLine": 591,
+            "endLine": 597,
+            "hash": "e9f5502cd77ed66f6dbd73f50b6feeaebb2acbefc2037fdbe6168ec54daf4772",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_4cd288404e04b1b3aa4f98a6",
+            "path": "fastapi/openapi/utils.py",
+            "revision": "50113da16fec53b66b80d75e80a89296de4fa5a5",
+            "side": "base",
+            "startLine": 591,
+            "endLine": 597,
+            "hash": "4dc727833150f42ad53b68170c7923c0007efca8c13e9ff876a25a560f0446d9",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_0a6c74a137ca932f2383cdf6",
+            "path": "fastapi/types.py",
+            "revision": "6f280f6f714b935f246d43a01e82fe509bc74948",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 7,
+            "hash": "1e1fdce8520e22eee5de2c70b86da6bec110f8828ea53ac65ea9b4e6aa76a212",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_e74230cff2a242126825e670",
+            "path": "fastapi/types.py",
+            "revision": "50113da16fec53b66b80d75e80a89296de4fa5a5",
+            "side": "base",
+            "startLine": 1,
+            "endLine": 7,
+            "hash": "0e6bba9061d32aeac195eba2cc95d0988264206f269a31b189ed6a5e1624fa68",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_32fc7810f3f3c62ba03b3b67",
+            "path": "fastapi/types.py",
+            "revision": "6f280f6f714b935f246d43a01e82fe509bc74948",
+            "side": "head",
+            "startLine": 10,
+            "endLine": 29,
+            "hash": "75c597036d5e2aba536944099b14390a5055cc85229077208e4b4953b36ba92f",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_e0a5814279545bf5ab9febac",
+            "path": "fastapi/applications.py",
+            "revision": "6f280f6f714b935f246d43a01e82fe509bc74948",
+            "side": "head",
+            "startLine": 17,
+            "endLine": 30,
+            "hash": "b011c6254dad09c6eacd958bc89e533d0d635de16126fe0081e7419c07742112",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_15fb7d7cbae20ec1028e7b1c",
+            "path": "fastapi/applications.py",
+            "revision": "6f280f6f714b935f246d43a01e82fe509bc74948",
+            "side": "head",
+            "startLine": 216,
+            "endLine": 235,
+            "hash": "709556da0b7cfeb7c2cdbc468bd81ddb462ac504ea3e2c04b5c7ac0c36ca6567",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_492077f039ddcb6ca46df533",
+            "path": "fastapi/applications.py",
+            "revision": "6f280f6f714b935f246d43a01e82fe509bc74948",
+            "side": "head",
+            "startLine": 259,
+            "endLine": 269,
+            "hash": "f75ca2c5660c26f5ff571e31ee2e99e0a46e0ce8695f7dc8700604de1e706779",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_65ae392443606d1c2b2ac0b0",
+            "path": "tests/test_tutorial/test_metadata/test_tutorial004.py",
+            "revision": "6f280f6f714b935f246d43a01e82fe509bc74948",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 9,
+            "hash": "d722424baf704ce6089b0e19e3d0a400b46f34c1748a27ba68f92dd59a9de490",
+            "kind": "test",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_106a80c74cafc31bc754269d",
+            "path": "tests/test_tutorial/test_metadata/test_tutorial004.py",
+            "revision": "6f280f6f714b935f246d43a01e82fe509bc74948",
+            "side": "head",
+            "startLine": 16,
+            "endLine": 66,
+            "hash": "3561e040992b53b3ee1805719bdfa39e552420cf15019edf5aa036e779a0256c",
+            "kind": "test",
+            "origin": "snapshot"
+          }
+        ],
+        "unprocessed": [
+          "description:0",
+          "description:38",
+          "description:498",
+          "description:558",
+          "description:602",
+          "description:648",
+          "description:660",
+          "description:0",
+          "description:38",
+          "description:498",
+          "description:558",
+          "description:602",
+          "description:648",
+          "description:660"
+        ],
+        "limitations": [
+          "diff_context_incomplete",
+          "retrieval_python_indentation",
+          "retrieval_scan_budget_exceeded",
+          "retrieval_unverified_fallback",
+          "retrieval_budget_exceeded"
+        ],
+        "failures": [],
+        "rankingStatus": "ready",
+        "coverageStatus": "partial"
+      }
+    },
+    {
+      "id": "pydantic-13836",
+      "group": "unused",
+      "url": "https://github.com/pydantic/pydantic/pull/13836",
+      "httpStatus": 200,
+      "elapsedMs": 23232,
+      "error": null,
+      "expectedHead": "e78b82f0dd20622a18a9fa439b5ca3ca5514d87d",
+      "expectedBase": "915896d163835a57fd7987180087409a3229bd71",
+      "sameRevision": true,
+      "navigation": {
+        "version": 1,
+        "model": "gemini-3.8-flash",
+        "state": "partial",
+        "repository": "pydantic/pydantic",
+        "headSha": "e78b82f0dd20622a18a9fa439b5ca3ca5514d87d",
+        "baseSha": "915896d163835a57fd7987180087409a3229bd71",
+        "sources": [
+          {
+            "id": "description",
+            "authority": "pr_author_claim",
+            "hash": "a093ef5d9f41432c8897ddf400fa4623928b5c585ed9bdd90c48b163b7c0a3c9",
+            "length": 1709,
+            "processedLength": 1707,
+            "url": "https://github.com/pydantic/pydantic/pull/13836"
+          },
+          {
+            "id": "title",
+            "authority": "pr_author_claim",
+            "hash": "58d34bd8872a153089f30e4326dc147e3f05007351435f65eba75f052772f587",
+            "length": 56,
+            "processedLength": 56,
+            "url": "https://github.com/pydantic/pydantic/pull/13836"
+          }
+        ],
+        "goals": [
+          {
+            "id": "goal_1",
+            "summary": "Fix imports in the V1 Hypothesis plugin under Pydantic V2",
+            "emphasis": "primary",
+            "authority": "pr_author_claim",
+            "sourceRefs": [
+              {
+                "sourceId": "title",
+                "start": 0,
+                "end": 56,
+                "hash": "58d34bd8872a153089f30e4326dc147e3f05007351435f65eba75f052772f587"
+              },
+              {
+                "sourceId": "description",
+                "start": 62,
+                "end": 461,
+                "hash": "bb4c669af8d4a58be62a5ff0725d4fd6e8824315a54da664d37512fb0c67efb0"
+              },
+              {
+                "sourceId": "description",
+                "start": 463,
+                "end": 513,
+                "hash": "a5431bbab408eb119507d6912134d1a214373866af2019df5be96fe3f168f378"
+              },
+              {
+                "sourceId": "description",
+                "start": 515,
+                "end": 625,
+                "hash": "f04b64bd1a37699f2a51a3259cd3e3c239e10cfa0b6a710b6bdc70e84ad4a0c4"
+              }
+            ],
+            "facets": [
+              {
+                "kind": "motivation",
+                "summary": "In Pydantic V2, importing top-level `pydantic`, `pydantic.color`, and `pydantic.types` in `pydantic/v1/_hypothesis_plugin.py` caused `AttributeError` at import time because those point to V2 modules lacking V1-specific attributes like `color.r_rgba` and `types.ConstrainedNumberMeta`.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 62,
+                    "end": 461,
+                    "hash": "bb4c669af8d4a58be62a5ff0725d4fd6e8824315a54da664d37512fb0c67efb0"
+                  }
+                ]
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "Imports `pydantic.v1 as pydantic`, relying on `pydantic.v1` exposing `color` and `types` directly and avoiding unaliased submodule imports that overwrite top-level bindings.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 463,
+                    "end": 513,
+                    "hash": "a5431bbab408eb119507d6912134d1a214373866af2019df5be96fe3f168f378"
+                  },
+                  {
+                    "sourceId": "description",
+                    "start": 515,
+                    "end": 625,
+                    "hash": "f04b64bd1a37699f2a51a3259cd3e3c239e10cfa0b6a710b6bdc70e84ad4a0c4"
+                  },
+                  {
+                    "sourceId": "description",
+                    "start": 627,
+                    "end": 913,
+                    "hash": "237c39132e8178c5c5caaddf2f78a1188eb41bfdced10d9d91262ad7fa79d850"
+                  }
+                ]
+              },
+              {
+                "kind": "reproduction",
+                "summary": "Reproduced CI test failures when `pydantic.generics` was loaded, and confirmed regression tests fail if original imports are restored.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 930,
+                    "end": 1328,
+                    "hash": "dd1f29feb0538fcd721487abfb4e3bef5cc2574f20e231c2859e47b6fca4e341"
+                  }
+                ]
+              },
+              {
+                "kind": "test_claim",
+                "summary": "Author reports 53 related tests pass on Python 3.13, tests filter the known Hypothesis deprecation warning, and Ruff lint, formatting, and diff checks pass.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 930,
+                    "end": 1328,
+                    "hash": "dd1f29feb0538fcd721487abfb4e3bef5cc2574f20e231c2859e47b6fca4e341"
+                  }
+                ]
+              },
+              {
+                "kind": "context",
+                "summary": "Addresses issue #13835.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 1355,
+                    "end": 1365,
+                    "hash": "37c9e7b362d8f4d98b6de373c9f55ea505a9bc8dae37ed01b4e290d942aa4412"
+                  }
+                ]
+              }
+            ],
+            "openQuestions": [],
+            "firstInspection": "read_de64e2d3fa8442a9879281b7",
+            "candidates": [
+              {
+                "artifactId": "read_de64e2d3fa8442a9879281b7",
+                "relevance": "relevant",
+                "whyInspect": "Shows the implementation change replacing unaliased top-level pydantic and submodule imports with aliased pydantic.v1.",
+                "reviewQuestion": "Does aliasing pydantic.v1 as pydantic ensure that all downstream color and types attribute lookups inside the module resolve to V1 structures without shadowing?",
+                "uncertainty": "Surrounding plugin code using pydantic.color and pydantic.types is not fully visible in this diff slice."
+              },
+              {
+                "artifactId": "read_442a1011ab0a46e62d835727",
+                "relevance": "relevant",
+                "whyInspect": "Contains regression tests asserting that the V1 hypothesis plugin imports cleanly under V2 and registers expected strategies.",
+                "reviewQuestion": "Do the regression tests adequately exercise the previously failing attribute lookups from color and types during strategy registration?",
+                "uncertainty": "Tests only evaluate StrictBool and conint; coverage for color or other constrained types is not directly exercised in this test."
+              },
+              {
+                "artifactId": "read_fbc6e09175bf9acc04d5cda9",
+                "relevance": "possible",
+                "whyInspect": "Shows the base version imports that previously caused AttributeError under V2.",
+                "reviewQuestion": "Which exact imports were removed and could any external code rely on them being imported in this namespace?",
+                "uncertainty": "Internal plugin module, typically not imported directly by end users."
+              }
+            ],
+            "uncertainty": []
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "read_de64e2d3fa8442a9879281b7",
+            "path": "pydantic/v1/_hypothesis_plugin.py",
+            "revision": "e78b82f0dd20622a18a9fa439b5ca3ca5514d87d",
+            "side": "head",
+            "startLine": 32,
+            "endLine": 38,
+            "hash": "53d4dcad50301791f6fd93514b7251b2e4b6fd801ba91a9af84d62e94930484b",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_fbc6e09175bf9acc04d5cda9",
+            "path": "pydantic/v1/_hypothesis_plugin.py",
+            "revision": "915896d163835a57fd7987180087409a3229bd71",
+            "side": "base",
+            "startLine": 32,
+            "endLine": 40,
+            "hash": "e428181f9dfb3b79e71f4c60fedebb41cee86c52c0a388f03d63d6af1339094a",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_442a1011ab0a46e62d835727",
+            "path": "tests/test_v1_hypothesis_plugin.py",
+            "revision": "e78b82f0dd20622a18a9fa439b5ca3ca5514d87d",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 45,
+            "hash": "57b0ed4773f59c564ff3b708a19040c82279a5a7d6557e70519d1df0035a1dc6",
+            "kind": "test",
+            "origin": "snapshot"
+          }
+        ],
+        "unprocessed": [
+          "description:0",
+          "description:43",
+          "description:915",
+          "description:1330",
+          "description:1367",
+          "description:1381",
+          "description:0",
+          "description:43",
+          "description:915",
+          "description:1330",
+          "description:1367",
+          "description:1381"
+        ],
+        "limitations": [
+          "diff_context_incomplete",
+          "retrieval_python_indentation",
+          "retrieval_unverified_fallback"
+        ],
+        "failures": [],
+        "rankingStatus": "ready",
+        "coverageStatus": "partial"
+      }
+    },
+    {
+      "id": "requests-7589",
+      "group": "unused",
+      "url": "https://github.com/psf/requests/pull/7589",
+      "httpStatus": 200,
+      "elapsedMs": 33850,
+      "error": null,
+      "expectedHead": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+      "expectedBase": "f361ead047be5cb873174218582f7d8b9fcd9f49",
+      "sameRevision": true,
+      "navigation": {
+        "version": 1,
+        "model": "gemini-3.8-flash",
+        "state": "partial",
+        "repository": "psf/requests",
+        "headSha": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+        "baseSha": "f361ead047be5cb873174218582f7d8b9fcd9f49",
+        "sources": [
+          {
+            "id": "description",
+            "authority": "pr_author_claim",
+            "hash": "9fb8cbba7ebbf4dcbb9717d77b921bffa3c52c672fe333feee156adf2e69ecac",
+            "length": 2957,
+            "processedLength": 2956,
+            "url": "https://github.com/psf/requests/pull/7589"
+          },
+          {
+            "id": "title",
+            "authority": "pr_author_claim",
+            "hash": "958456d295c5d6bd109c9c217c4827ffbdb31e9fc51eb9e9af4a2703bf88007c",
+            "length": 38,
+            "processedLength": 38,
+            "url": "https://github.com/psf/requests/pull/7589"
+          }
+        ],
+        "goals": [
+          {
+            "id": "goal_1",
+            "summary": "Implement performance optimizations and clock timing improvements across requests core components.",
+            "emphasis": "primary",
+            "authority": "pr_author_claim",
+            "sourceRefs": [
+              {
+                "sourceId": "title",
+                "start": 0,
+                "end": 38,
+                "hash": "958456d295c5d6bd109c9c217c4827ffbdb31e9fc51eb9e9af4a2703bf88007c"
+              },
+              {
+                "sourceId": "description",
+                "start": 16,
+                "end": 212,
+                "hash": "485333860eb016e53d52afad751444a16a03159c5970499f197030c3ec9c5f70"
+              },
+              {
+                "sourceId": "description",
+                "start": 214,
+                "end": 539,
+                "hash": "8d9f09534fb31d919dabdc1e33c45e7b97a6785b8626429344c304ddc707ed7a"
+              }
+            ],
+            "facets": [
+              {
+                "kind": "motivation",
+                "summary": "Aims to lower CPU and memory overhead on large responses, speed up cookie and ASCII checks, prevent non-monotonic timing inaccuracies, and avoid redundant proxy checks.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 214,
+                    "end": 539,
+                    "hash": "8d9f09534fb31d919dabdc1e33c45e7b97a6785b8626429344c304ddc707ed7a"
+                  }
+                ]
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "Limits character encoding auto-detection in Response.apparent_encoding to the first 32 KB of response content.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 567,
+                    "end": 1135,
+                    "hash": "7c9c02d0528a5596b0ca5ba158c42a94ab0c5785baf3e1c4898b89ca62b9ff5e"
+                  }
+                ]
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "Replaces exception-based encoding checks with native str.isascii() in unicode_is_ascii.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 1137,
+                    "end": 1529,
+                    "hash": "6614ac114857e9aa4da70a7e097734d6bba030c2feccb860b03b17af08daedc6"
+                  }
+                ]
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "Converts cookie name lookup collection in cookiejar_from_dict from a list to a set comprehension for O(1) checks.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 1531,
+                    "end": 1904,
+                    "hash": "d0ae0b4c5a8d8f271ac702de46b9b875375081af13b79787a447f58109ab3f8b"
+                  }
+                ]
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "Eliminates duplicate proxy-bypass evaluation in resolve_proxies by directly calling getproxies() when bypass evaluates to False.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 1906,
+                    "end": 2369,
+                    "hash": "fc520c074fbfb22c58f08b6542237b23423430c8d71f6d0aef0c5b487bdffbbd"
+                  }
+                ]
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "Sets preferred_clock to time.perf_counter universally across platforms in sessions.py to ensure monotonic timing.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 2371,
+                    "end": 2739,
+                    "hash": "1002f5f70a555d7ab286f2952bfce0538666d26b9d3472f3cf5e08c7fb8e65ec"
+                  }
+                ]
+              },
+              {
+                "kind": "test_claim",
+                "summary": "Reports running pytest with all component-specific tests and the full suite passing as expected.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 2763,
+                    "end": 2956,
+                    "hash": "7d7597e601f5569b3cf64db458352a9b1b06bacfe915504fb553753cc3698a3f"
+                  }
+                ]
+              }
+            ],
+            "openQuestions": [],
+            "firstInspection": "read_089b4a2d085fa5a453964e5a",
+            "candidates": [
+              {
+                "artifactId": "read_089b4a2d085fa5a453964e5a",
+                "relevance": "relevant",
+                "whyInspect": "Shows the updated proxy resolution logic in resolve_proxies that avoids redundant proxy bypass checks by directly querying system proxies.",
+                "reviewQuestion": "Does replacing get_environ_proxies with getproxies preserve identical environment proxy retrieval and scheme matching semantics?",
+                "uncertainty": "Behavior on platforms with custom proxy bypass configurations requires checking how getproxies behaves compared to get_environ_proxies."
+              },
+              {
+                "artifactId": "read_01f6f101ccffc866e28af178",
+                "relevance": "relevant",
+                "whyInspect": "Implements the 32 KB slice limit for character encoding detection on response content in apparent_encoding.",
+                "reviewQuestion": "Could truncating content at 32 KB degrade charset detection accuracy on HTML or XML documents where charset declarations appear later?",
+                "uncertainty": "None regarding the code change itself; chardet/charset_normalizer accuracy on sliced content depends on input length."
+              },
+              {
+                "artifactId": "read_b0f5d4521830ad61076481c6",
+                "relevance": "relevant",
+                "whyInspect": "Contains the conversion of cookiejar name inspection to a set comprehension for constant-time membership lookups.",
+                "reviewQuestion": "Does the set comprehension correctly match the previous behavior without altering cookie overwrite rules or order?",
+                "uncertainty": "None."
+              },
+              {
+                "artifactId": "read_a73897c2be9b9063e2234518",
+                "relevance": "relevant",
+                "whyInspect": "Contains the replacement of codec encoding trial logic with the native str.isascii method in unicode_is_ascii.",
+                "reviewQuestion": "Are there any edge cases or type assertions where u_string.isascii differs from the previous ascii encode trial?",
+                "uncertainty": "None."
+              },
+              {
+                "artifactId": "read_9f0e7ca2443715f8023a5cb2",
+                "relevance": "relevant",
+                "whyInspect": "Shows the assignment of preferred_clock to time.perf_counter across all platforms.",
+                "reviewQuestion": "Does standardizing on time.perf_counter avoid time drifting or backwards adjustments across all supported operating systems?",
+                "uncertainty": "None."
+              },
+              {
+                "artifactId": "read_700dd479a09a48362baa72d1",
+                "relevance": "possible",
+                "whyInspect": "Defines should_bypass_proxies, which interacts with resolve_proxies when determining whether environment proxies should be bypassed.",
+                "reviewQuestion": "Is should_bypass_proxies still functioning properly when resolve_proxies consumes its return value?",
+                "uncertainty": "None."
+              },
+              {
+                "artifactId": "read_e03d00b81b05f10c53a7ea1e",
+                "relevance": "possible",
+                "whyInspect": "Tests environment proxy bypass logic against various no_proxy fixtures and configurations.",
+                "reviewQuestion": "Do existing proxy test suites sufficiently cover resolve_proxies and getproxies pathways?",
+                "uncertainty": "Existing tests test get_environ_proxies rather than resolve_proxies directly."
+              }
+            ],
+            "uncertainty": []
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "read_a73897c2be9b9063e2234518",
+            "path": "src/requests/_internal_utils.py",
+            "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+            "side": "head",
+            "startLine": 44,
+            "endLine": 47,
+            "hash": "22739a41d8930ec56f2836523059648e6a2a977d21c9adac4624a451c2ae4863",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_e3eb4fb1dfe6a09283f354c7",
+            "path": "src/requests/_internal_utils.py",
+            "revision": "f361ead047be5cb873174218582f7d8b9fcd9f49",
+            "side": "base",
+            "startLine": 44,
+            "endLine": 51,
+            "hash": "a5fe1494dad5641f33906317e8c571a9de348a5c84c39bddca61eb1db127a8fa",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_b0f5d4521830ad61076481c6",
+            "path": "src/requests/cookies.py",
+            "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+            "side": "head",
+            "startLine": 593,
+            "endLine": 599,
+            "hash": "d0ee0ebadb6f07734c61dfc25a0a64f7aa5a4d602c378fe7af6428e763b08efb",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_867e3a08fad1adef9395b0e3",
+            "path": "src/requests/cookies.py",
+            "revision": "f361ead047be5cb873174218582f7d8b9fcd9f49",
+            "side": "base",
+            "startLine": 593,
+            "endLine": 599,
+            "hash": "73013eb1d4d6a20029cbf4f3b3db72aab6a2a96edf74f79e10eefdedd2dddce0",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_01f6f101ccffc866e28af178",
+            "path": "src/requests/models.py",
+            "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+            "side": "head",
+            "startLine": 897,
+            "endLine": 903,
+            "hash": "7409b326afdb63e9919b92948457b85a880195cc626a63a6d9af44608da45038",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_e12b819dbdaeffea08077417",
+            "path": "src/requests/models.py",
+            "revision": "f361ead047be5cb873174218582f7d8b9fcd9f49",
+            "side": "base",
+            "startLine": 897,
+            "endLine": 903,
+            "hash": "561a31a31d19d2bc913ec457005b3188b0ae757018c71da5db3738bc4a3e6d94",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_9f0e7ca2443715f8023a5cb2",
+            "path": "src/requests/sessions.py",
+            "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+            "side": "head",
+            "startLine": 67,
+            "endLine": 73,
+            "hash": "c265219c2f2cd58415297928f35dd53c176defa5917cf431e9094e827b060c43",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_7c287e3501ef0a3cde845e0a",
+            "path": "src/requests/sessions.py",
+            "revision": "f361ead047be5cb873174218582f7d8b9fcd9f49",
+            "side": "base",
+            "startLine": 67,
+            "endLine": 76,
+            "hash": "fe1ffc61a3f7cd8f2cedb3fee6d7fb48947367105c793d5f8d182334db298a2f",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_fef0c366d7161a57f60e4ee5",
+            "path": "src/requests/utils.py",
+            "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+            "side": "head",
+            "startLine": 930,
+            "endLine": 935,
+            "hash": "a5c01dc68fbf4089b46fbf9b06aa89f37315f18de70a4e8fc601e0233b2b0355",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_d6c6e45a82c3a4344d35fb49",
+            "path": "src/requests/utils.py",
+            "revision": "f361ead047be5cb873174218582f7d8b9fcd9f49",
+            "side": "base",
+            "startLine": 930,
+            "endLine": 935,
+            "hash": "265ef2325107aa49df1b2be9b1708528606d792e5a233b7d01303a7d1d6871a4",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_fd1e365ef8f378bf233fe49e",
+            "path": "src/requests/utils.py",
+            "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+            "side": "head",
+            "startLine": 99,
+            "endLine": 135,
+            "hash": "e5496d2ce8db2e16aab534d0c9a677a87113d58d6e9e80556bc7aa9d4b8b159d",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_3ee465ca107c814468709468",
+            "path": "src/requests/utils.py",
+            "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+            "side": "head",
+            "startLine": 376,
+            "endLine": 407,
+            "hash": "d92453a5adbfe87cb23f34dc9373e2cd31ba241386f7a00b4ad29859e68c5f63",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_a460b7dc641386df3abb63ec",
+            "path": "src/requests/utils.py",
+            "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+            "side": "head",
+            "startLine": 408,
+            "endLine": 439,
+            "hash": "7a016ebe88e80a697d57b371d7c3277c9c6d45db1ef5eafb06befc3eeb27ff28",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_2368a6715465e2d6695245e3",
+            "path": "src/requests/utils.py",
+            "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+            "side": "head",
+            "startLine": 522,
+            "endLine": 544,
+            "hash": "13933e6bbc3131d0e3460100604a9c696ada8fd795000ffb18649c76ba4d97f8",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_90aa11ad4b0626d4d2fee471",
+            "path": "src/requests/utils.py",
+            "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+            "side": "head",
+            "startLine": 569,
+            "endLine": 591,
+            "hash": "fd2b35a406ecd6393d5893a70fd9c964459d09410cd6162b0060e6d190ac3867",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_20750be6986f8e751ea72cb6",
+            "path": "src/requests/utils.py",
+            "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+            "side": "head",
+            "startLine": 633,
+            "endLine": 674,
+            "hash": "e37162a2f3c98bc8844ac9e16c278c4f5fd5d5ac2a10d0cf78765d4e35fb7f5a",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_b5f84a99eb1220221d021634",
+            "path": "src/requests/utils.py",
+            "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+            "side": "head",
+            "startLine": 763,
+            "endLine": 784,
+            "hash": "a1e8abe31b8fcc070b5f4c654c3f8edfbaaccbcdaa1a611cc5e5d1fa69556325",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_9a68dce8f75fe4d2e3a9e853",
+            "path": "src/requests/utils.py",
+            "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+            "side": "head",
+            "startLine": 787,
+            "endLine": 807,
+            "hash": "b144f4e19866ee76c48d7d798ae930a5d5841de025b64a8ffa2d3082d3c9d5f8",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_700dd479a09a48362baa72d1",
+            "path": "src/requests/utils.py",
+            "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+            "side": "head",
+            "startLine": 810,
+            "endLine": 870,
+            "hash": "1113a55be201c3063bb5f9cf3eb7e1cd0ffeb21fe78a3f0dcdb9b2215a86bd2b",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_9a08040818eaaade6ce0da73",
+            "path": "src/requests/utils.py",
+            "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+            "side": "head",
+            "startLine": 885,
+            "endLine": 908,
+            "hash": "f9f2837a7033b2c936cf225258dc44ae3fda5f0b889fed8c3ea10d9b53f54996",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_089b4a2d085fa5a453964e5a",
+            "path": "src/requests/utils.py",
+            "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+            "side": "head",
+            "startLine": 911,
+            "endLine": 939,
+            "hash": "796e9876a50377c7e9bffb9203c03d742e8e5871646f392cb609782e1aa6a61e",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_e03d00b81b05f10c53a7ea1e",
+            "path": "tests/test_utils.py",
+            "revision": "1e2517e537eb5483771aefc72ca1aeb1f6b99962",
+            "side": "head",
+            "startLine": 220,
+            "endLine": 282,
+            "hash": "08e900fca5575146becbf380441b8961591101f2166b5439586c405db587cf0b",
+            "kind": "test",
+            "origin": "snapshot"
+          }
+        ],
+        "unprocessed": [
+          "description:0",
+          "description:541",
+          "description:546",
+          "description:2741",
+          "description:2746",
+          "description:0",
+          "description:541",
+          "description:546",
+          "description:2741",
+          "description:2746"
+        ],
+        "limitations": [
+          "retrieval_python_indentation",
+          "retrieval_scan_budget_exceeded",
+          "retrieval_unverified_fallback",
+          "retrieval_budget_exceeded"
+        ],
+        "failures": [],
+        "rankingStatus": "ready",
+        "coverageStatus": "partial"
+      }
+    },
+    {
+      "id": "svelte-18839",
+      "group": "unused",
+      "url": "https://github.com/sveltejs/svelte/pull/18839",
+      "httpStatus": 200,
+      "elapsedMs": 18869,
+      "error": null,
+      "expectedHead": "e4c22c15d2143b63f1cb2f2d8c2d9f9bf9570bc4",
+      "expectedBase": "a72dc8eadbf63189d9ae12e9ea18711378f8f12f",
+      "sameRevision": true,
+      "navigation": {
+        "version": 1,
+        "model": "gemini-3.8-flash",
+        "state": "ranked",
+        "repository": "sveltejs/svelte",
+        "headSha": "e4c22c15d2143b63f1cb2f2d8c2d9f9bf9570bc4",
+        "baseSha": "a72dc8eadbf63189d9ae12e9ea18711378f8f12f",
+        "sources": [
+          {
+            "id": "description",
+            "authority": "pr_author_claim",
+            "hash": "18609000e4012f62e32ce02fcc57e6d922fdda7de16b42a05480714b494bb242",
+            "length": 314,
+            "processedLength": 314,
+            "url": "https://github.com/sveltejs/svelte/pull/18839"
+          },
+          {
+            "id": "title",
+            "authority": "pr_author_claim",
+            "hash": "24747dbf8a903341fd32a2f508309978ca0084e0721b4e71a25a4ce56c1adbdd",
+            "length": 66,
+            "processedLength": 66,
+            "url": "https://github.com/sveltejs/svelte/pull/18839"
+          }
+        ],
+        "goals": [
+          {
+            "id": "goal_1",
+            "summary": "Remove incorrect special handling of export pseudo-selectors.",
+            "emphasis": "primary",
+            "authority": "pr_author_claim",
+            "sourceRefs": [
+              {
+                "sourceId": "title",
+                "start": 0,
+                "end": 66,
+                "hash": "24747dbf8a903341fd32a2f508309978ca0084e0721b4e71a25a4ce56c1adbdd"
+              },
+              {
+                "sourceId": "description",
+                "start": 0,
+                "end": 314,
+                "hash": "18609000e4012f62e32ce02fcc57e6d922fdda7de16b42a05480714b494bb242"
+              }
+            ],
+            "facets": [
+              {
+                "kind": "motivation",
+                "summary": "Export selectors were added previously but belong to Interoperable CSS, which Svelte should not specifically handle.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 0,
+                    "end": 314,
+                    "hash": "18609000e4012f62e32ce02fcc57e6d922fdda7de16b42a05480714b494bb242"
+                  }
+                ]
+              },
+              {
+                "kind": "context",
+                "summary": "A changeset is omitted because the prior change is unreleased and its changeset did not mention ICSS.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 0,
+                    "end": 314,
+                    "hash": "18609000e4012f62e32ce02fcc57e6d922fdda7de16b42a05480714b494bb242"
+                  }
+                ]
+              }
+            ],
+            "openQuestions": [],
+            "firstInspection": "read_2f7d1d8bbb8f88a054a6efbe",
+            "candidates": [
+              {
+                "artifactId": "read_2f7d1d8bbb8f88a054a6efbe",
+                "relevance": "relevant",
+                "whyInspect": "Shows the implementation change removing ICSS export check from complex selector pruning in the CSS analysis phase.",
+                "reviewQuestion": "Does removing the ICSS export selector branch cleanly revert the behavior without leaving outdated comments or unhandled selector states?",
+                "uncertainty": "The comment above the condition still mentions 'and ICSS export rules'."
+              },
+              {
+                "artifactId": "read_8353cd3273e80368f6592a05",
+                "relevance": "relevant",
+                "whyInspect": "Shows the updated test fixture input removing the :export selector sample.",
+                "reviewQuestion": "Does removing :export from this test case accurately restore the test fixture to its intended scope?",
+                "uncertainty": "None."
+              },
+              {
+                "artifactId": "read_290d9e5f256e9e4e58cba8d9",
+                "relevance": "relevant",
+                "whyInspect": "Shows the expected CSS output after removing the :export rule from the test.",
+                "reviewQuestion": "Does the expected CSS output match the input changes and reflect expected compiler output?",
+                "uncertainty": "None."
+              },
+              {
+                "artifactId": "read_7d3531d39fcf0382b9defc1d",
+                "relevance": "possible",
+                "whyInspect": "Provides the base implementation context for what selector logic was previously applied to :export.",
+                "reviewQuestion": "Were any other parts of the codebase touching ICSS export handling outside css-prune.js?",
+                "uncertainty": "Repository-wide references outside the diff were not searched."
+              }
+            ],
+            "uncertainty": []
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "read_2f7d1d8bbb8f88a054a6efbe",
+            "path": "packages/svelte/src/compiler/phases/2-analyze/css/css-prune.js",
+            "revision": "e4c22c15d2143b63f1cb2f2d8c2d9f9bf9570bc4",
+            "side": "head",
+            "startLine": 146,
+            "endLine": 153,
+            "hash": "4a4d953f288a55ceef1746ec6ad0b0b5b89a95828f440cafaccc4547c05e2245",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_7d3531d39fcf0382b9defc1d",
+            "path": "packages/svelte/src/compiler/phases/2-analyze/css/css-prune.js",
+            "revision": "a72dc8eadbf63189d9ae12e9ea18711378f8f12f",
+            "side": "base",
+            "startLine": 146,
+            "endLine": 160,
+            "hash": "8bd73e3e76439ddd8f2a02d72d786d641730f9b4368cf46c2b983bea57cd55e1",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_290d9e5f256e9e4e58cba8d9",
+            "path": "packages/svelte/tests/css/samples/global-head-only/expected.css",
+            "revision": "e4c22c15d2143b63f1cb2f2d8c2d9f9bf9570bc4",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 1,
+            "hash": "89adb5166106d9b1afe7bf9eb2796c8ed54ef090519520dae7f4d2cc8e6aa1cc",
+            "kind": "test",
+            "origin": "diff"
+          },
+          {
+            "id": "read_b0eeecb6297488122aec4693",
+            "path": "packages/svelte/tests/css/samples/global-head-only/expected.css",
+            "revision": "a72dc8eadbf63189d9ae12e9ea18711378f8f12f",
+            "side": "base",
+            "startLine": 1,
+            "endLine": 2,
+            "hash": "5953052cf48d4f48dabbc1a4fe16b0421c375492ec7b32a2375b09ba30e5e611",
+            "kind": "test",
+            "origin": "diff"
+          },
+          {
+            "id": "read_8353cd3273e80368f6592a05",
+            "path": "packages/svelte/tests/css/samples/global-head-only/input.svelte",
+            "revision": "e4c22c15d2143b63f1cb2f2d8c2d9f9bf9570bc4",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 5,
+            "hash": "836ddc37df4ad38149813b86391fbe553ae03bf485373e2beb2fae6ad655ce2c",
+            "kind": "test",
+            "origin": "diff"
+          },
+          {
+            "id": "read_13f9325c49d53cfcc9829b00",
+            "path": "packages/svelte/tests/css/samples/global-head-only/input.svelte",
+            "revision": "a72dc8eadbf63189d9ae12e9ea18711378f8f12f",
+            "side": "base",
+            "startLine": 1,
+            "endLine": 6,
+            "hash": "2c1f36a23350c4538a0016530b74a02460f10c0af421fd75a822e3b3f17f5ec0",
+            "kind": "test",
+            "origin": "diff"
+          }
+        ],
+        "unprocessed": [],
+        "limitations": [],
+        "failures": [],
+        "rankingStatus": "ready",
+        "coverageStatus": "complete"
+      }
+    },
+    {
+      "id": "express-7477",
+      "group": "unused",
+      "url": "https://github.com/expressjs/express/pull/7477",
+      "httpStatus": 200,
+      "elapsedMs": 14743,
+      "error": null,
+      "expectedHead": "b8e0273646a2fd14d2a74899251919ea0d705315",
+      "expectedBase": "9a34acf03cb818ff3f8bc40e44176e277a25cbb9",
+      "sameRevision": true,
+      "navigation": {
+        "version": 1,
+        "model": "gemini-3.8-flash",
+        "state": "fallback",
+        "repository": "expressjs/express",
+        "headSha": "b8e0273646a2fd14d2a74899251919ea0d705315",
+        "baseSha": "9a34acf03cb818ff3f8bc40e44176e277a25cbb9",
+        "sources": [
+          {
+            "id": "description",
+            "authority": "pr_author_claim",
+            "hash": "cfbc4a168cdd076bdffb718228a0c9dad5c8dd5e4dfd9c3f73e0d39ee9a76b1d",
+            "length": 1257,
+            "processedLength": 1256,
+            "url": "https://github.com/expressjs/express/pull/7477"
+          },
+          {
+            "id": "title",
+            "authority": "pr_author_claim",
+            "hash": "dc8e56229f2c028fd9f95300a9322e3a7f55f69eff132b295911dfa01f5a53be",
+            "length": 10,
+            "processedLength": 10,
+            "url": "https://github.com/expressjs/express/pull/7477"
+          }
+        ],
+        "goals": [],
+        "artifacts": [],
+        "unprocessed": [
+          "description:0",
+          "description:112",
+          "description:117",
+          "description:161",
+          "description:220",
+          "description:378",
+          "description:787",
+          "description:924",
+          "title:0"
+        ],
+        "limitations": [
+          "no_interpreted_goal"
+        ],
+        "failures": [],
+        "rankingStatus": "unavailable",
+        "coverageStatus": "partial"
+      }
+    },
+    {
+      "id": "vite-23534",
+      "group": "unused",
+      "url": "https://github.com/vitejs/vite/pull/23534",
+      "httpStatus": 200,
+      "elapsedMs": 35423,
+      "error": null,
+      "expectedHead": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+      "expectedBase": "e9078f865cdff6bed77cd729214a7e2868f126b5",
+      "sameRevision": true,
+      "navigation": {
+        "version": 1,
+        "model": "gemini-3.8-flash",
+        "state": "partial",
+        "repository": "vitejs/vite",
+        "headSha": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+        "baseSha": "e9078f865cdff6bed77cd729214a7e2868f126b5",
+        "sources": [
+          {
+            "id": "task",
+            "authority": "issue_source",
+            "hash": "e28a83409a6249e95ab1c7804ef6af0b324d4bbbe182f2d3bfc586b771ad5259",
+            "length": 3496,
+            "processedLength": 3496,
+            "url": "https://github.com/vitejs/vite/issues/23512"
+          },
+          {
+            "id": "description",
+            "authority": "pr_author_claim",
+            "hash": "f83b5eff209b56142cb46bd8f8ed43f7b47cc945006dc910107864883c5259c4",
+            "length": 1021,
+            "processedLength": 1021,
+            "url": "https://github.com/vitejs/vite/pull/23534"
+          },
+          {
+            "id": "title",
+            "authority": "pr_author_claim",
+            "hash": "313c540b277df77c006346846c069fc8236c7c4cd0e9c814c19ef781f76f832a",
+            "length": 57,
+            "processedLength": 57,
+            "url": "https://github.com/vitejs/vite/pull/23534"
+          }
+        ],
+        "goals": [
+          {
+            "id": "goal_1",
+            "summary": "Avoid browser-external warnings for imports explicitly disabled by package browser mappings",
+            "emphasis": "primary",
+            "authority": "mixed_sources",
+            "sourceRefs": [
+              {
+                "sourceId": "task",
+                "start": 0,
+                "end": 115,
+                "hash": "0d4d47f97294483ba0760335472f2719f2c53d0b451afaa966f13517ce26459e"
+              },
+              {
+                "sourceId": "task",
+                "start": 134,
+                "end": 272,
+                "hash": "79170f80dc9eda7aaad74355655f8aa577313d3f1e3d72505b8dc29ca968980a"
+              },
+              {
+                "sourceId": "task",
+                "start": 917,
+                "end": 1124,
+                "hash": "e7c58ea54f648cef56730e8bfbcd896c11c0a3d5e9b15de0d75aa5f93789b815"
+              },
+              {
+                "sourceId": "title",
+                "start": 0,
+                "end": 57,
+                "hash": "313c540b277df77c006346846c069fc8236c7c4cd0e9c814c19ef781f76f832a"
+              },
+              {
+                "sourceId": "description",
+                "start": 0,
+                "end": 13,
+                "hash": "65dbe752d84baafa4f9ae80da1ac588063e784236a244848948ce652287b17cb"
+              }
+            ],
+            "facets": [
+              {
+                "kind": "context",
+                "summary": "Packages like PostCSS declare modules as false in package.json browser fields, and browser-safe runtime code inspects properties on those modules to check API availability",
+                "sourceRefs": [
+                  {
+                    "sourceId": "task",
+                    "start": 274,
+                    "end": 678,
+                    "hash": "65717659e61a4234cfa6987243a3963c9d43e3abb9b60b39855841482440ec00"
+                  },
+                  {
+                    "sourceId": "task",
+                    "start": 680,
+                    "end": 891,
+                    "hash": "3dcc0d40a05e5138c860adbc6e4f414bc783cb6a42a44d0b7bffa18b270a0a48"
+                  }
+                ]
+              },
+              {
+                "kind": "motivation",
+                "summary": "Property accesses on explicitly disabled browser modules trigger numerous externalized warnings during dev mode, despite succeeding and behaving cleanly in production build",
+                "sourceRefs": [
+                  {
+                    "sourceId": "task",
+                    "start": 274,
+                    "end": 678,
+                    "hash": "65717659e61a4234cfa6987243a3963c9d43e3abb9b60b39855841482440ec00"
+                  },
+                  {
+                    "sourceId": "description",
+                    "start": 15,
+                    "end": 298,
+                    "hash": "fdac1b88383fe515a3cedca7509aa9d769276dc41663fd46ef7eb96d9c8ae7e1"
+                  }
+                ]
+              },
+              {
+                "kind": "constraint",
+                "summary": "Do not suppress warnings globally or provide Node polyfills; preserve existing diagnostics for unsupported Node built-in imports without an explicit false mapping",
+                "sourceRefs": [
+                  {
+                    "sourceId": "task",
+                    "start": 917,
+                    "end": 1124,
+                    "hash": "e7c58ea54f648cef56730e8bfbcd896c11c0a3d5e9b15de0d75aa5f93789b815"
+                  },
+                  {
+                    "sourceId": "task",
+                    "start": 1126,
+                    "end": 1396,
+                    "hash": "bf88fec4fbf981435248f708acd8ad9169ed2f36c42c373f02a00ae841a0731e"
+                  },
+                  {
+                    "sourceId": "task",
+                    "start": 1841,
+                    "end": 2137,
+                    "hash": "9b01e6c23d1154973ea57529dafc0e80034d1b21185970e3ae2ef448e50c47f5"
+                  }
+                ]
+              },
+              {
+                "kind": "acceptance",
+                "summary": "Return an empty module for imports explicitly mapped to false by browser field specifications, consistent across development and production dependency optimization",
+                "sourceRefs": [
+                  {
+                    "sourceId": "task",
+                    "start": 917,
+                    "end": 1124,
+                    "hash": "e7c58ea54f648cef56730e8bfbcd896c11c0a3d5e9b15de0d75aa5f93789b815"
+                  },
+                  {
+                    "sourceId": "task",
+                    "start": 1126,
+                    "end": 1396,
+                    "hash": "bf88fec4fbf981435248f708acd8ad9169ed2f36c42c373f02a00ae841a0731e"
+                  },
+                  {
+                    "sourceId": "description",
+                    "start": 300,
+                    "end": 512,
+                    "hash": "a8201b5e1df7e49d33ad1b0201e1bb685c6409bd4964b35686cab6d3d0cba5c5"
+                  }
+                ]
+              },
+              {
+                "kind": "reproduction",
+                "summary": "Vite dev server with PostCSS initializing runs cleanly without page error but emits 23 externalization warnings in the console, whereas build and preview do not emit warnings",
+                "sourceRefs": [
+                  {
+                    "sourceId": "task",
+                    "start": 2158,
+                    "end": 2273,
+                    "hash": "d52e2e5fbb64c0571630b4b6634820bebdfd776d47693bcd7ae29867647c691f"
+                  },
+                  {
+                    "sourceId": "task",
+                    "start": 2275,
+                    "end": 2415,
+                    "hash": "a8a017af56cf54285dab3e50b76f39613004243ab59d5200196a551e71247fd0"
+                  },
+                  {
+                    "sourceId": "task",
+                    "start": 2417,
+                    "end": 2720,
+                    "hash": "113202e67ae00602d973f0304c6e9681dac7d059e37c28da908356e00bcce7a1"
+                  },
+                  {
+                    "sourceId": "task",
+                    "start": 2722,
+                    "end": 2746,
+                    "hash": "11b87c96e55ebb86ff94f815ddb5b482f03a46f6ac3d11f025c6e8bec7dd8fb3"
+                  },
+                  {
+                    "sourceId": "task",
+                    "start": 2748,
+                    "end": 3225,
+                    "hash": "bbbf6fccefd8523e548a82bd93b0a85c4486150ed659ca574b472fffd3a45b40"
+                  },
+                  {
+                    "sourceId": "task",
+                    "start": 3227,
+                    "end": 3404,
+                    "hash": "6d275f960be5b4f647f639ede3838e30a238184184bb9ae3a185afe8bd53be16"
+                  }
+                ]
+              },
+              {
+                "kind": "context",
+                "summary": "Downstream consumers currently need package-specific resolver workarounds or upstream package changes to avoid availability check warnings",
+                "sourceRefs": [
+                  {
+                    "sourceId": "task",
+                    "start": 1415,
+                    "end": 1815,
+                    "hash": "a8919409defb1c643f75fca47ccab109a9ceb0b8102641d5a8dd033e550024a9"
+                  }
+                ]
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "Routes the bare browser external sentinel to an empty CJS module in dev and prod, while preserving proxy routing and diagnostics for suffixed sentinel IDs",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 15,
+                    "end": 298,
+                    "hash": "fdac1b88383fe515a3cedca7509aa9d769276dc41663fd46ef7eb96d9c8ae7e1"
+                  },
+                  {
+                    "sourceId": "description",
+                    "start": 300,
+                    "end": 512,
+                    "hash": "a8201b5e1df7e49d33ad1b0201e1bb685c6409bd4964b35686cab6d3d0cba5c5"
+                  }
+                ]
+              },
+              {
+                "kind": "test_claim",
+                "summary": "Builds vite and runs test-serve and test-build on optimize-deps and resolve playground specs along with lint and diff checks",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 514,
+                    "end": 912,
+                    "hash": "5b0563d46b5e549123bba5980fd996bd6cb1e2cf54a9431cafd39ecf6bc61655"
+                  }
+                ]
+              }
+            ],
+            "openQuestions": [],
+            "firstInspection": "read_b9a632902cdc287be3e98337",
+            "candidates": [
+              {
+                "artifactId": "read_b9a632902cdc287be3e98337",
+                "relevance": "relevant",
+                "whyInspect": "Defines how resolution results differentiate between the bare browser external sentinel and suffixed browser external identifiers.",
+                "reviewQuestion": "Does resolution properly route exact browser external sentinel matches to the empty namespace while leaving prefixed sentinels on the warning namespace?",
+                "uncertainty": "Whether any other resolver flows produce browserExternalId or suffixed variants that might bypass this branching."
+              },
+              {
+                "artifactId": "read_140238de5f870a30aed337de",
+                "relevance": "relevant",
+                "whyInspect": "Contains the load handler emitting an empty module export for empty namespace IDs while keeping the proxy warning for standard browser-external namespace IDs.",
+                "reviewQuestion": "Does loading an empty browser-external module return an empty CJS module without triggering dev-mode proxy warnings?",
+                "uncertainty": "Whether ESM consumers handle the empty module exports identically in both dev and production dependency optimization."
+              },
+              {
+                "artifactId": "read_f7fc56f804151e55ab3b9ba2",
+                "relevance": "relevant",
+                "whyInspect": "Shows the plugin filter regex setup and delegation from resolveId into resolveResult and load.",
+                "reviewQuestion": "Does the load filter regex for browserExternalNamespace also match the sub-namespace browserExternalEmptyNamespace without additional patterns?",
+                "uncertainty": "None; browserExternalEmptyNamespace starts with browserExternalNamespace."
+              },
+              {
+                "artifactId": "read_1396c8fe7194cb713555e774",
+                "relevance": "relevant",
+                "whyInspect": "Declares the namespace constants, including browserExternalEmptyNamespace derived from browserExternalNamespace.",
+                "reviewQuestion": "Is the browserExternalEmptyNamespace prefix formatted and isolated cleanly so as not to collide with other virtual module schemes?",
+                "uncertainty": "None."
+              },
+              {
+                "artifactId": "read_aa38ef4d77d4cdecdb7db1eb",
+                "relevance": "relevant",
+                "whyInspect": "Test verifying that accessing properties on a module mapped to false in package browser field avoids emitting warning logs in serve mode.",
+                "reviewQuestion": "Does the test assert that client console logs are free of browser-externalized warnings when properties are accessed on disabled modules?",
+                "uncertainty": "Whether build/preview mode is also validated against this test fixture."
+              },
+              {
+                "artifactId": "read_ae1f62776f241a1ad7ea9102",
+                "relevance": "possible",
+                "whyInspect": "Sample internal file requiring disabled module fs alongside mapped module events to verify runtime property access.",
+                "reviewQuestion": "Does the test dep exercise property checking on the externalized import in a realistic client pattern?",
+                "uncertainty": "None."
+              },
+              {
+                "artifactId": "read_600cf1ae540e480ba281df37",
+                "relevance": "possible",
+                "whyInspect": "Reproduction package configuration showing browser mapping with fs mapped to false.",
+                "reviewQuestion": "Does this package manifest match typical library browser field declarations like PostCSS?",
+                "uncertainty": "None."
+              },
+              {
+                "artifactId": "read_d923fbe2a44012d189ae686f",
+                "relevance": "possible",
+                "whyInspect": "Shows the definition and documentation of browserExternalId originating from package browser field spec.",
+                "reviewQuestion": "How does Vite define and construct the browserExternalId sentinel when resolving package browser fields?",
+                "uncertainty": "None."
+              }
+            ],
+            "uncertainty": []
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "read_aa38ef4d77d4cdecdb7db1eb",
+            "path": "playground/optimize-deps/__tests__/optimize-deps.spec.ts",
+            "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+            "side": "head",
+            "startLine": 116,
+            "endLine": 134,
+            "hash": "ff22d8e08a53e1e910d58061639f1872d67c7b031f7e92827b5727bba852cc86",
+            "kind": "test",
+            "origin": "diff"
+          },
+          {
+            "id": "read_ae1f62776f241a1ad7ea9102",
+            "path": "playground/optimize-deps/dep-cjs-browser-field-bare/internal.js",
+            "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+            "side": "head",
+            "startLine": 2,
+            "endLine": 9,
+            "hash": "276f995deef85526dbafc75be2fcb2f59b01e75f3929c46847ca2e877a4433e4",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_93817df4a9fce63d68775d1b",
+            "path": "playground/optimize-deps/dep-cjs-browser-field-bare/internal.js",
+            "revision": "e9078f865cdff6bed77cd729214a7e2868f126b5",
+            "side": "base",
+            "startLine": 2,
+            "endLine": 6,
+            "hash": "20deef961b39a733e38bee5212e8aa3264b3b14b4cbc1103d58cd38186121bda",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_600cf1ae540e480ba281df37",
+            "path": "playground/optimize-deps/dep-cjs-browser-field-bare/package.json",
+            "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+            "side": "head",
+            "startLine": 4,
+            "endLine": 10,
+            "hash": "b69a54fe95b520436549a7410df752d36d29e4e8c820342da06fa4d48fc7e9fc",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_1b5f8997a1feabfc4b2dcf30",
+            "path": "playground/optimize-deps/dep-cjs-browser-field-bare/package.json",
+            "revision": "e9078f865cdff6bed77cd729214a7e2868f126b5",
+            "side": "base",
+            "startLine": 4,
+            "endLine": 9,
+            "hash": "450853e34f08cc18ee80b27c0616ea3531d243f7aeaca6496bb9d2539a1fcdb7",
+            "kind": "code",
+            "origin": "diff"
+          },
+          {
+            "id": "read_1396c8fe7194cb713555e774",
+            "path": "packages/vite/src/node/optimizer/rolldownDepPlugin.ts",
+            "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+            "side": "head",
+            "startLine": 54,
+            "endLine": 71,
+            "hash": "10d9d0d1759ca9d1195a81664508118cd97fff539371b1236fbbbe50f4d96b59",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_b9a632902cdc287be3e98337",
+            "path": "packages/vite/src/node/optimizer/rolldownDepPlugin.ts",
+            "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+            "side": "head",
+            "startLine": 112,
+            "endLine": 155,
+            "hash": "30f4c957c69399f17d48c20c9835779cd714ca9efc3f376ced196821e7aa9e01",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_d766351da022e0ee05de283c",
+            "path": "packages/vite/src/node/optimizer/rolldownDepPlugin.ts",
+            "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+            "side": "head",
+            "startLine": 179,
+            "endLine": 203,
+            "hash": "c812e55cbded3a847c1d6d0c21fe812b16d469b86f2397b39aceae00444a88b3",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_f7fc56f804151e55ab3b9ba2",
+            "path": "packages/vite/src/node/optimizer/rolldownDepPlugin.ts",
+            "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+            "side": "head",
+            "startLine": 232,
+            "endLine": 272,
+            "hash": "4d6a77b314ee1810d4d36d30c56d6b7dc949f2e35109f04c08a6dc5d7e024c02",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_140238de5f870a30aed337de",
+            "path": "packages/vite/src/node/optimizer/rolldownDepPlugin.ts",
+            "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+            "side": "head",
+            "startLine": 268,
+            "endLine": 325,
+            "hash": "a5a2a6f5da7f291c82cc926fd8a3c3456148e9d0ce2cfe7d181a9716876119f3",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_81ccca29a941cd9f3bb6546e",
+            "path": "packages/vite/src/node/optimizer/rolldownDepPlugin.ts",
+            "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+            "side": "head",
+            "startLine": 331,
+            "endLine": 378,
+            "hash": "e8142d7850e8572340605c246eb0ed3fa21de8b95085c0aaf0930810e1dd8e26",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_d712d6d7cd88080fe5b64bfd",
+            "path": "packages/vite/src/node/optimizer/rolldownDepPlugin.ts",
+            "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+            "side": "head",
+            "startLine": 388,
+            "endLine": 443,
+            "hash": "d0915aa98a39012ae419adb0d97447ec7f174e9e4611b873996858f66ed991e5",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_d923fbe2a44012d189ae686f",
+            "path": "packages/vite/src/node/plugins/resolve.ts",
+            "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+            "side": "head",
+            "startLine": 56,
+            "endLine": 68,
+            "hash": "3bb31e5b90eff7510abf244a0bdaf5a7b552a38d6060015d5837548c096efb1b",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_8f7f612f49e5a6741941430c",
+            "path": "packages/vite/src/node/plugins/resolve.ts",
+            "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+            "side": "head",
+            "startLine": 75,
+            "endLine": 104,
+            "hash": "28799be5f4b601577a39d6ee122a63b1c3fa12cfac7a4d08834aadcf7ec966bb",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_3d1231fd90c6a043f8fd8762",
+            "path": "packages/vite/src/node/plugins/resolve.ts",
+            "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+            "side": "head",
+            "startLine": 119,
+            "endLine": 171,
+            "hash": "80b32c9ad670a1e85e0457ca6cee03609e84e6ea9e9bbd466ad45e91aaff2d60",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_9c530193bfa0bd9ff995b39c",
+            "path": "packages/vite/src/node/plugins/resolve.ts",
+            "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+            "side": "head",
+            "startLine": 295,
+            "endLine": 341,
+            "hash": "64374d4d2ea0615970d77ab2e73aaf489c617d84748f931ce86b9a7311c11040",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_5a5edd17254f70d061f1779f",
+            "path": "packages/vite/src/node/plugins/resolve.ts",
+            "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+            "side": "head",
+            "startLine": 413,
+            "endLine": 487,
+            "hash": "7153ca2e0688431d9835c96d0c4da285fb67db3c0539b3bd5f36213bbaba4bff",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_dd1af7f96d4e664752dc4565",
+            "path": "packages/vite/src/node/plugins/resolve.ts",
+            "revision": "fd030aea79caa116d40f3c6f2990d0b9b15b9784",
+            "side": "head",
+            "startLine": 559,
+            "endLine": 582,
+            "hash": "63e4480a5e64d11dbc22fdb44f5ddc65d71114f9709a23ed8f5bd0d3064c0a75",
+            "kind": "code",
+            "origin": "snapshot"
+          }
+        ],
+        "unprocessed": [
+          "task:117",
+          "task:893",
+          "task:1398",
+          "task:1817",
+          "task:2139",
+          "task:3406",
+          "description:914",
+          "task:117",
+          "task:893",
+          "task:1398",
+          "task:1817",
+          "task:2139",
+          "task:3406",
+          "description:914"
+        ],
+        "limitations": [
+          "diff_context_incomplete",
+          "retrieval_unverified_fallback",
+          "retrieval_budget_exceeded"
+        ],
+        "failures": [],
+        "rankingStatus": "ready",
+        "coverageStatus": "partial"
+      }
+    },
+    {
+      "id": "typer-1956",
+      "group": "unused",
+      "url": "https://github.com/fastapi/typer/pull/1956",
+      "httpStatus": 200,
+      "elapsedMs": 30585,
+      "error": null,
+      "expectedHead": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+      "expectedBase": "82b83959d9e900215ed8ff2a56a766ff066e1c75",
+      "sameRevision": true,
+      "navigation": {
+        "version": 1,
+        "model": "gemini-3.8-flash",
+        "state": "partial",
+        "repository": "fastapi/typer",
+        "headSha": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+        "baseSha": "82b83959d9e900215ed8ff2a56a766ff066e1c75",
+        "sources": [
+          {
+            "id": "description",
+            "authority": "pr_author_claim",
+            "hash": "6125159bf90e96555081854ad1c280f8b3e620cf4fc8aebe5af033a2604b5801",
+            "length": 795,
+            "processedLength": 795,
+            "url": "https://github.com/fastapi/typer/pull/1956"
+          },
+          {
+            "id": "title",
+            "authority": "pr_author_claim",
+            "hash": "5d4f8a8a964db0f469b3015100e46fe7af7eb7b416dad3a53f6f0e58f160c048",
+            "length": 49,
+            "processedLength": 49,
+            "url": "https://github.com/fastapi/typer/pull/1956"
+          }
+        ],
+        "goals": [
+          {
+            "id": "goal_1",
+            "summary": "Introduce a command suggestion mechanism to Typer that detects typos and suggests similar commands upon execution errors.",
+            "emphasis": "primary",
+            "authority": "pr_author_claim",
+            "sourceRefs": [
+              {
+                "sourceId": "title",
+                "start": 0,
+                "end": 49,
+                "hash": "5d4f8a8a964db0f469b3015100e46fe7af7eb7b416dad3a53f6f0e58f160c048"
+              },
+              {
+                "sourceId": "description",
+                "start": 0,
+                "end": 108,
+                "hash": "0611093deb440827358759da89b80e6bf650d90a419b51ac035cf6d2ca967138"
+              },
+              {
+                "sourceId": "description",
+                "start": 203,
+                "end": 326,
+                "hash": "dd20f3e8b883267144ff1c1b27019524fe7c7ef35e19a469e91d888dd8d71890"
+              }
+            ],
+            "facets": [
+              {
+                "kind": "motivation",
+                "summary": "Users face unhelpful errors like 'No such command' without guidance when mistyping CLI commands.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 110,
+                    "end": 201,
+                    "hash": "1898f61cd7fcb910c6395de1c055fac214ba6b2c5d55f4fcf89da664cfb7d3bd"
+                  }
+                ]
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "Detects similar commands via difflib and SequenceMatcher, prompting users with 'Did you mean ...?' suggestions.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 203,
+                    "end": 326,
+                    "hash": "dd20f3e8b883267144ff1c1b27019524fe7c7ef35e19a469e91d888dd8d71890"
+                  }
+                ]
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "Implements CommandSuggester supporting missing/extra characters, vowel/consonant omissions, substring/case-insensitive matching, confidence-ranked suggestions, SmartTyperApp integration, and zero external dependencies.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 328,
+                    "end": 699,
+                    "hash": "2c9a315ac0c360fd2ee214c173e959729af2cd015631c5f16262faaf7c6dda66"
+                  }
+                ]
+              },
+              {
+                "kind": "test_claim",
+                "summary": "Author reports 28 passing unit tests covering all scenarios, unaffected existing tests, and evaluation against Git, Docker, and NPM patterns.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 328,
+                    "end": 699,
+                    "hash": "2c9a315ac0c360fd2ee214c173e959729af2cd015631c5f16262faaf7c6dda66"
+                  },
+                  {
+                    "sourceId": "description",
+                    "start": 701,
+                    "end": 795,
+                    "hash": "188f4341eecb454b53eb47a2133f2f4370d9e29cf234e68c72e7749c3feddf41"
+                  }
+                ]
+              }
+            ],
+            "openQuestions": [],
+            "firstInspection": "read_153aa81b26fdb8e8b379dfe4",
+            "candidates": [
+              {
+                "artifactId": "read_153aa81b26fdb8e8b379dfe4",
+                "relevance": "relevant",
+                "whyInspect": "Implements the core matching logic using SequenceMatcher and close matches to produce ordered typo suggestions.",
+                "reviewQuestion": "Does the matching algorithm accurately identify typos and handle edge cases like short command names or casing without excessive false positives?",
+                "uncertainty": "Lines 68-72 and helper formatting methods are truncated between this chunk and subsequent methods."
+              },
+              {
+                "artifactId": "read_bca90f4e98e249fda3a9438d",
+                "relevance": "relevant",
+                "whyInspect": "Implements SmartTyperApp, command dispatching, and error raising with suggestion messages when a command is not found.",
+                "reviewQuestion": "How does SmartTyperApp integrate with standard Typer CLI execution and error reporting rather than just raising generic ValueErrors?",
+                "uncertainty": "Implementation details of format_suggestion_message and format_multiple_suggestions_message are not shown in this chunk."
+              },
+              {
+                "artifactId": "read_aab0c60be8399f227044990d",
+                "relevance": "relevant",
+                "whyInspect": "Defines CommandSuggester initialization, alias handling, and typo category classification.",
+                "reviewQuestion": "Are alias mappings properly tracked and isolated to avoid duplicate suggestion candidates?",
+                "uncertainty": "The default threshold and configuration options are fixed in init without CLI-level exposure shown here."
+              },
+              {
+                "artifactId": "read_7e64c649591d0058f9c18277",
+                "relevance": "relevant",
+                "whyInspect": "Shows how Typer wires suggest_commands into group creation from Typer instances.",
+                "reviewQuestion": "How is suggest_commands configured on Typer instances and propagated down to Click group resolution?",
+                "uncertainty": "The definition of suggest_commands on Typer and get_group_from_info implementation are located in unread sections."
+              },
+              {
+                "artifactId": "read_e6bb4970cbfd8a8a0d77c311",
+                "relevance": "relevant",
+                "whyInspect": "Provides suggestions alongside calculated confidence ratios sorted descending.",
+                "reviewQuestion": "Does the confidence-scoring logic stay consistent with get_suggestions when handling exact matches and thresholds?",
+                "uncertainty": "Exact matching early returns present in get_suggestions appear differently structured here."
+              },
+              {
+                "artifactId": "read_7af121f813b544c04a78bf8e",
+                "relevance": "relevant",
+                "whyInspect": "Tests SmartTyperApp error raising and suggestion inclusion when invoking unknown commands.",
+                "reviewQuestion": "Do these tests verify integration with Click and rich console output or only standalone ValueError raising?",
+                "uncertainty": "Tests only assert substring inclusion in ValueError."
+              },
+              {
+                "artifactId": "read_2ad280c0536a9c368fc54177",
+                "relevance": "possible",
+                "whyInspect": "Unit tests verifying missing character, extra character, and substring matching for CommandSuggester.",
+                "reviewQuestion": "Are get_suggestion single-match return tests aligned with the list-returning implementation in suggestions.py?",
+                "uncertainty": "Method get_suggestion called in tests is not visible in the provided suggestions.py chunks."
+              },
+              {
+                "artifactId": "read_dd5ea0104728ec15d9c57b7c",
+                "relevance": "possible",
+                "whyInspect": "Validates suggestion behavior against CLI command sets modeled after Git, Docker, and NPM.",
+                "reviewQuestion": "Do typical real-world command sets yield acceptable suggestion accuracy under standard thresholds?",
+                "uncertainty": "Tests check basic single-typo assertions without checking edge cases or command collision."
+              }
+            ],
+            "uncertainty": [
+              "How TyperGroup and Click handle CommandSuggester inside actual Typer CLI command dispatch is unverified.",
+              "Helper methods such as get_suggestion and message formatting in suggestions.py were truncated in the provided artifacts."
+            ]
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "read_aab0c60be8399f227044990d",
+            "path": "typer/suggestions.py",
+            "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 35,
+            "hash": "e44483b373ab123bdc49ca4d96e891d3d59ff5261e9e21ed5c8e574fc4d37253",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_153aa81b26fdb8e8b379dfe4",
+            "path": "typer/suggestions.py",
+            "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+            "side": "head",
+            "startLine": 37,
+            "endLine": 67,
+            "hash": "481ee10b127194b12a947d1dcc2d936c063f16d38b6c56df3e79e545e25f148d",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_e6bb4970cbfd8a8a0d77c311",
+            "path": "typer/suggestions.py",
+            "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+            "side": "head",
+            "startLine": 73,
+            "endLine": 99,
+            "hash": "929b67fae2fc7bac53d6c08df786fd0ecac19f4cc4418469d729f1b0971c43a6",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_bca90f4e98e249fda3a9438d",
+            "path": "typer/suggestions.py",
+            "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+            "side": "head",
+            "startLine": 135,
+            "endLine": 178,
+            "hash": "bde7e4a03e021efce57f1a8f4cc735723dfb55a5b63f4e7a1db6c94991437a6b",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_2ad280c0536a9c368fc54177",
+            "path": "typer/tests/test_suggestions.py",
+            "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 35,
+            "hash": "6459d7b6334c697c71b47dced0375fc677c7436a8e6abfac0e31d5b6ce6d786d",
+            "kind": "test",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_7af121f813b544c04a78bf8e",
+            "path": "typer/tests/test_suggestions.py",
+            "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+            "side": "head",
+            "startLine": 38,
+            "endLine": 59,
+            "hash": "58bc3f34dc2811acebeec69d35892d704a21f73e2d94f67c6a91fd26653f39da",
+            "kind": "test",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_dd5ea0104728ec15d9c57b7c",
+            "path": "typer/tests/test_suggestions.py",
+            "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+            "side": "head",
+            "startLine": 62,
+            "endLine": 78,
+            "hash": "9472b2de07c5de989b1644d411ee21a322ac10324bfbd4a1c7d458392958c29f",
+            "kind": "test",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_48827f2c49d706497cba7923",
+            "path": "typer/__init__.py",
+            "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 6,
+            "hash": "255a4273759e771e7e6d5cf28c753c5f125f37bc3ac7d465afbf5f57ad032521",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_abe896fae822f8e762548196",
+            "path": "typer/main.py",
+            "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+            "side": "head",
+            "startLine": 61,
+            "endLine": 109,
+            "hash": "bdb1f8a26c7f698f8efce31e7762cdd2d162e4256001deed3e088fa3cc1f14cf",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_03a7e1b033dbff03b603c6ec",
+            "path": "typer/main.py",
+            "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+            "side": "head",
+            "startLine": 115,
+            "endLine": 129,
+            "hash": "d7d0baaf1d366c012c65a3e7a48416738ac8a363669f4ef30f8bb53977155511",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_193341aa7669d2a9c836953d",
+            "path": "typer/main.py",
+            "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+            "side": "head",
+            "startLine": 163,
+            "endLine": 172,
+            "hash": "0c2ef15a8c2dfe2058f9cbc68674e2b97ff5b64bf091396965c4e4f428b78038",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_f9971bfa95eb45f77b89091c",
+            "path": "typer/main.py",
+            "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+            "side": "head",
+            "startLine": 262,
+            "endLine": 271,
+            "hash": "858611919f6ba65d0644e2d97b076964ecb222e0acd95b592a6aac011bf3a4ef",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_dfc9d58cf77077e573182314",
+            "path": "typer/main.py",
+            "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+            "side": "head",
+            "startLine": 874,
+            "endLine": 883,
+            "hash": "800cde7e13e86ea64b0cb4cf64980fa37d3bc41f0abf3880ab986e4c0c1575da",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_6e73e2c693b646b737795d38",
+            "path": "typer/main.py",
+            "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+            "side": "head",
+            "startLine": 1101,
+            "endLine": 1110,
+            "hash": "d90881386bd4b8d8dfb8469384d5f6beff2277ec1d6dfd194fc2e244196bb5a6",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_7e64c649591d0058f9c18277",
+            "path": "typer/main.py",
+            "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+            "side": "head",
+            "startLine": 1163,
+            "endLine": 1170,
+            "hash": "70e922e5203a1da6f11fef3212e072c0a1a619046c2e660eebcf2e04fd77786a",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_f1a092b77f9b661524dc3db9",
+            "path": "typer/main.py",
+            "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+            "side": "head",
+            "startLine": 1173,
+            "endLine": 1208,
+            "hash": "c3739cf74ee25ad835020b1cbd457b6c3502d233e6f7cec06596236e2e53dcab",
+            "kind": "code",
+            "origin": "snapshot"
+          }
+        ],
+        "unprocessed": [],
+        "limitations": [
+          "diff_context_incomplete",
+          "retrieval_python_indentation",
+          "retrieval_unverified_fallback",
+          "retrieval_budget_exceeded",
+          "retrieval_scan_budget_exceeded"
+        ],
+        "failures": [],
+        "rankingStatus": "ready",
+        "coverageStatus": "partial"
+      }
+    }
+  ]
+}

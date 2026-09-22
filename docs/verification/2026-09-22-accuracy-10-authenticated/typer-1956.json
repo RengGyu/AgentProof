@@ -1,0 +1,1932 @@
+{
+  "deployment": "https://agentproof-hy1rvlmf2-renggyus-projects.vercel.app",
+  "id": "typer-1956",
+  "group": "unused",
+  "url": "https://github.com/fastapi/typer/pull/1956",
+  "httpStatus": 200,
+  "elapsedMs": 30585,
+  "error": null,
+  "expectedHead": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+  "expectedBase": "82b83959d9e900215ed8ff2a56a766ff066e1c75",
+  "sameRevision": true,
+  "navigation": {
+    "version": 1,
+    "model": "gemini-3.8-flash",
+    "state": "partial",
+    "repository": "fastapi/typer",
+    "headSha": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+    "baseSha": "82b83959d9e900215ed8ff2a56a766ff066e1c75",
+    "sources": [
+      {
+        "id": "description",
+        "authority": "pr_author_claim",
+        "hash": "6125159bf90e96555081854ad1c280f8b3e620cf4fc8aebe5af033a2604b5801",
+        "length": 795,
+        "processedLength": 795,
+        "url": "https://github.com/fastapi/typer/pull/1956"
+      },
+      {
+        "id": "title",
+        "authority": "pr_author_claim",
+        "hash": "5d4f8a8a964db0f469b3015100e46fe7af7eb7b416dad3a53f6f0e58f160c048",
+        "length": 49,
+        "processedLength": 49,
+        "url": "https://github.com/fastapi/typer/pull/1956"
+      }
+    ],
+    "goals": [
+      {
+        "id": "goal_1",
+        "summary": "Introduce a command suggestion mechanism to Typer that detects typos and suggests similar commands upon execution errors.",
+        "emphasis": "primary",
+        "authority": "pr_author_claim",
+        "sourceRefs": [
+          {
+            "sourceId": "title",
+            "start": 0,
+            "end": 49,
+            "hash": "5d4f8a8a964db0f469b3015100e46fe7af7eb7b416dad3a53f6f0e58f160c048"
+          },
+          {
+            "sourceId": "description",
+            "start": 0,
+            "end": 108,
+            "hash": "0611093deb440827358759da89b80e6bf650d90a419b51ac035cf6d2ca967138"
+          },
+          {
+            "sourceId": "description",
+            "start": 203,
+            "end": 326,
+            "hash": "dd20f3e8b883267144ff1c1b27019524fe7c7ef35e19a469e91d888dd8d71890"
+          }
+        ],
+        "facets": [
+          {
+            "kind": "motivation",
+            "summary": "Users face unhelpful errors like 'No such command' without guidance when mistyping CLI commands.",
+            "sourceRefs": [
+              {
+                "sourceId": "description",
+                "start": 110,
+                "end": 201,
+                "hash": "1898f61cd7fcb910c6395de1c055fac214ba6b2c5d55f4fcf89da664cfb7d3bd"
+              }
+            ]
+          },
+          {
+            "kind": "implementation_claim",
+            "summary": "Detects similar commands via difflib and SequenceMatcher, prompting users with 'Did you mean ...?' suggestions.",
+            "sourceRefs": [
+              {
+                "sourceId": "description",
+                "start": 203,
+                "end": 326,
+                "hash": "dd20f3e8b883267144ff1c1b27019524fe7c7ef35e19a469e91d888dd8d71890"
+              }
+            ]
+          },
+          {
+            "kind": "implementation_claim",
+            "summary": "Implements CommandSuggester supporting missing/extra characters, vowel/consonant omissions, substring/case-insensitive matching, confidence-ranked suggestions, SmartTyperApp integration, and zero external dependencies.",
+            "sourceRefs": [
+              {
+                "sourceId": "description",
+                "start": 328,
+                "end": 699,
+                "hash": "2c9a315ac0c360fd2ee214c173e959729af2cd015631c5f16262faaf7c6dda66"
+              }
+            ]
+          },
+          {
+            "kind": "test_claim",
+            "summary": "Author reports 28 passing unit tests covering all scenarios, unaffected existing tests, and evaluation against Git, Docker, and NPM patterns.",
+            "sourceRefs": [
+              {
+                "sourceId": "description",
+                "start": 328,
+                "end": 699,
+                "hash": "2c9a315ac0c360fd2ee214c173e959729af2cd015631c5f16262faaf7c6dda66"
+              },
+              {
+                "sourceId": "description",
+                "start": 701,
+                "end": 795,
+                "hash": "188f4341eecb454b53eb47a2133f2f4370d9e29cf234e68c72e7749c3feddf41"
+              }
+            ]
+          }
+        ],
+        "openQuestions": [],
+        "firstInspection": "read_153aa81b26fdb8e8b379dfe4",
+        "candidates": [
+          {
+            "artifactId": "read_153aa81b26fdb8e8b379dfe4",
+            "relevance": "relevant",
+            "whyInspect": "Implements the core matching logic using SequenceMatcher and close matches to produce ordered typo suggestions.",
+            "reviewQuestion": "Does the matching algorithm accurately identify typos and handle edge cases like short command names or casing without excessive false positives?",
+            "uncertainty": "Lines 68-72 and helper formatting methods are truncated between this chunk and subsequent methods."
+          },
+          {
+            "artifactId": "read_bca90f4e98e249fda3a9438d",
+            "relevance": "relevant",
+            "whyInspect": "Implements SmartTyperApp, command dispatching, and error raising with suggestion messages when a command is not found.",
+            "reviewQuestion": "How does SmartTyperApp integrate with standard Typer CLI execution and error reporting rather than just raising generic ValueErrors?",
+            "uncertainty": "Implementation details of format_suggestion_message and format_multiple_suggestions_message are not shown in this chunk."
+          },
+          {
+            "artifactId": "read_aab0c60be8399f227044990d",
+            "relevance": "relevant",
+            "whyInspect": "Defines CommandSuggester initialization, alias handling, and typo category classification.",
+            "reviewQuestion": "Are alias mappings properly tracked and isolated to avoid duplicate suggestion candidates?",
+            "uncertainty": "The default threshold and configuration options are fixed in init without CLI-level exposure shown here."
+          },
+          {
+            "artifactId": "read_7e64c649591d0058f9c18277",
+            "relevance": "relevant",
+            "whyInspect": "Shows how Typer wires suggest_commands into group creation from Typer instances.",
+            "reviewQuestion": "How is suggest_commands configured on Typer instances and propagated down to Click group resolution?",
+            "uncertainty": "The definition of suggest_commands on Typer and get_group_from_info implementation are located in unread sections."
+          },
+          {
+            "artifactId": "read_e6bb4970cbfd8a8a0d77c311",
+            "relevance": "relevant",
+            "whyInspect": "Provides suggestions alongside calculated confidence ratios sorted descending.",
+            "reviewQuestion": "Does the confidence-scoring logic stay consistent with get_suggestions when handling exact matches and thresholds?",
+            "uncertainty": "Exact matching early returns present in get_suggestions appear differently structured here."
+          },
+          {
+            "artifactId": "read_7af121f813b544c04a78bf8e",
+            "relevance": "relevant",
+            "whyInspect": "Tests SmartTyperApp error raising and suggestion inclusion when invoking unknown commands.",
+            "reviewQuestion": "Do these tests verify integration with Click and rich console output or only standalone ValueError raising?",
+            "uncertainty": "Tests only assert substring inclusion in ValueError."
+          },
+          {
+            "artifactId": "read_2ad280c0536a9c368fc54177",
+            "relevance": "possible",
+            "whyInspect": "Unit tests verifying missing character, extra character, and substring matching for CommandSuggester.",
+            "reviewQuestion": "Are get_suggestion single-match return tests aligned with the list-returning implementation in suggestions.py?",
+            "uncertainty": "Method get_suggestion called in tests is not visible in the provided suggestions.py chunks."
+          },
+          {
+            "artifactId": "read_dd5ea0104728ec15d9c57b7c",
+            "relevance": "possible",
+            "whyInspect": "Validates suggestion behavior against CLI command sets modeled after Git, Docker, and NPM.",
+            "reviewQuestion": "Do typical real-world command sets yield acceptable suggestion accuracy under standard thresholds?",
+            "uncertainty": "Tests check basic single-typo assertions without checking edge cases or command collision."
+          }
+        ],
+        "uncertainty": [
+          "How TyperGroup and Click handle CommandSuggester inside actual Typer CLI command dispatch is unverified.",
+          "Helper methods such as get_suggestion and message formatting in suggestions.py were truncated in the provided artifacts."
+        ]
+      }
+    ],
+    "artifacts": [
+      {
+        "id": "read_aab0c60be8399f227044990d",
+        "path": "typer/suggestions.py",
+        "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+        "side": "head",
+        "startLine": 1,
+        "endLine": 35,
+        "hash": "e44483b373ab123bdc49ca4d96e891d3d59ff5261e9e21ed5c8e574fc4d37253",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_153aa81b26fdb8e8b379dfe4",
+        "path": "typer/suggestions.py",
+        "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+        "side": "head",
+        "startLine": 37,
+        "endLine": 67,
+        "hash": "481ee10b127194b12a947d1dcc2d936c063f16d38b6c56df3e79e545e25f148d",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_e6bb4970cbfd8a8a0d77c311",
+        "path": "typer/suggestions.py",
+        "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+        "side": "head",
+        "startLine": 73,
+        "endLine": 99,
+        "hash": "929b67fae2fc7bac53d6c08df786fd0ecac19f4cc4418469d729f1b0971c43a6",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_bca90f4e98e249fda3a9438d",
+        "path": "typer/suggestions.py",
+        "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+        "side": "head",
+        "startLine": 135,
+        "endLine": 178,
+        "hash": "bde7e4a03e021efce57f1a8f4cc735723dfb55a5b63f4e7a1db6c94991437a6b",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_2ad280c0536a9c368fc54177",
+        "path": "typer/tests/test_suggestions.py",
+        "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+        "side": "head",
+        "startLine": 1,
+        "endLine": 35,
+        "hash": "6459d7b6334c697c71b47dced0375fc677c7436a8e6abfac0e31d5b6ce6d786d",
+        "kind": "test",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_7af121f813b544c04a78bf8e",
+        "path": "typer/tests/test_suggestions.py",
+        "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+        "side": "head",
+        "startLine": 38,
+        "endLine": 59,
+        "hash": "58bc3f34dc2811acebeec69d35892d704a21f73e2d94f67c6a91fd26653f39da",
+        "kind": "test",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_dd5ea0104728ec15d9c57b7c",
+        "path": "typer/tests/test_suggestions.py",
+        "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+        "side": "head",
+        "startLine": 62,
+        "endLine": 78,
+        "hash": "9472b2de07c5de989b1644d411ee21a322ac10324bfbd4a1c7d458392958c29f",
+        "kind": "test",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_48827f2c49d706497cba7923",
+        "path": "typer/__init__.py",
+        "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+        "side": "head",
+        "startLine": 1,
+        "endLine": 6,
+        "hash": "255a4273759e771e7e6d5cf28c753c5f125f37bc3ac7d465afbf5f57ad032521",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_abe896fae822f8e762548196",
+        "path": "typer/main.py",
+        "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+        "side": "head",
+        "startLine": 61,
+        "endLine": 109,
+        "hash": "bdb1f8a26c7f698f8efce31e7762cdd2d162e4256001deed3e088fa3cc1f14cf",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_03a7e1b033dbff03b603c6ec",
+        "path": "typer/main.py",
+        "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+        "side": "head",
+        "startLine": 115,
+        "endLine": 129,
+        "hash": "d7d0baaf1d366c012c65a3e7a48416738ac8a363669f4ef30f8bb53977155511",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_193341aa7669d2a9c836953d",
+        "path": "typer/main.py",
+        "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+        "side": "head",
+        "startLine": 163,
+        "endLine": 172,
+        "hash": "0c2ef15a8c2dfe2058f9cbc68674e2b97ff5b64bf091396965c4e4f428b78038",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_f9971bfa95eb45f77b89091c",
+        "path": "typer/main.py",
+        "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+        "side": "head",
+        "startLine": 262,
+        "endLine": 271,
+        "hash": "858611919f6ba65d0644e2d97b076964ecb222e0acd95b592a6aac011bf3a4ef",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_dfc9d58cf77077e573182314",
+        "path": "typer/main.py",
+        "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+        "side": "head",
+        "startLine": 874,
+        "endLine": 883,
+        "hash": "800cde7e13e86ea64b0cb4cf64980fa37d3bc41f0abf3880ab986e4c0c1575da",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_6e73e2c693b646b737795d38",
+        "path": "typer/main.py",
+        "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+        "side": "head",
+        "startLine": 1101,
+        "endLine": 1110,
+        "hash": "d90881386bd4b8d8dfb8469384d5f6beff2277ec1d6dfd194fc2e244196bb5a6",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_7e64c649591d0058f9c18277",
+        "path": "typer/main.py",
+        "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+        "side": "head",
+        "startLine": 1163,
+        "endLine": 1170,
+        "hash": "70e922e5203a1da6f11fef3212e072c0a1a619046c2e660eebcf2e04fd77786a",
+        "kind": "code",
+        "origin": "snapshot"
+      },
+      {
+        "id": "read_f1a092b77f9b661524dc3db9",
+        "path": "typer/main.py",
+        "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+        "side": "head",
+        "startLine": 1173,
+        "endLine": 1208,
+        "hash": "c3739cf74ee25ad835020b1cbd457b6c3502d233e6f7cec06596236e2e53dcab",
+        "kind": "code",
+        "origin": "snapshot"
+      }
+    ],
+    "unprocessed": [],
+    "limitations": [
+      "diff_context_incomplete",
+      "retrieval_python_indentation",
+      "retrieval_unverified_fallback",
+      "retrieval_budget_exceeded",
+      "retrieval_scan_budget_exceeded"
+    ],
+    "failures": [],
+    "rankingStatus": "ready",
+    "coverageStatus": "partial"
+  },
+  "report": {
+    "analysisId": "ap_muc2f6pq_u653a3",
+    "createdAt": "2026-09-22T02:39:02.078Z",
+    "source": {
+      "title": "Add smart command suggestions for improved CLI UX",
+      "url": "https://github.com/fastapi/typer/pull/1956",
+      "author": "Aadhithyavarman-Techan",
+      "baseBranch": "master",
+      "headBranch": "master",
+      "provenance": {
+        "version": 1,
+        "origin": "github_snapshot",
+        "headSha": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+        "baseSha": "82b83959d9e900215ed8ff2a56a766ff066e1c75",
+        "changedFileInventory": {
+          "version": 1,
+          "completeness": "complete",
+          "headSha": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8"
+        },
+        "evidenceCapturedAt": "2026-09-22T02:39:02.071Z",
+        "inputFingerprint": {
+          "version": 1,
+          "algorithm": "sha256",
+          "value": "b794a4df7ff402c49e8eaf6bf94ba4c857627e23417253278157769789087136",
+          "coverage": "github_metadata"
+        }
+      }
+    },
+    "summary": {
+      "oneLine": "Some evidence is weak. Coverage 23%. Some requirements are too vague or weakly evidenced.",
+      "confidence": 0.2,
+      "priority": "medium",
+      "evidenceCoverage": 23,
+      "topRisks": [
+        "Some requirements are too vague or weakly evidenced.",
+        "Some requirements have only partial evidence.",
+        "Behavior changed without strong test evidence."
+      ]
+    },
+    "requirements": [
+      {
+        "requirementId": "req_1",
+        "requirementText": "Added intelligent command suggestion system to Typer that detects typos and suggests corrections",
+        "status": "unclear",
+        "evidenceRefs": [
+          "ev_2"
+        ],
+        "gaps": [
+          "Implementation evidence exists, but no matching test, log, or check evidence verifies this criterion.",
+          "No deterministic test/build execution evidence was collected for this requirement."
+        ],
+        "reviewerNote": "Treat diff evidence as implementation evidence, not proof that behavior is verified.",
+        "confidence": 0.62,
+        "evidenceStatus": "partial",
+        "sourceAuthority": "pr_description",
+        "proofAxes": [
+          {
+            "subject": "execution",
+            "polarity": "present",
+            "state": "incomplete",
+            "evidenceRefs": [],
+            "axisId": "obs_req_1_execution_1",
+            "role": "observation"
+          },
+          {
+            "subject": "implementation",
+            "polarity": "present",
+            "state": "satisfied",
+            "evidenceRefs": [
+              "ev_2"
+            ],
+            "collectionBasis": "matching_artifact_evidence",
+            "axisId": "obs_req_1_implementation_1",
+            "role": "observation"
+          }
+        ]
+      },
+      {
+        "requirementId": "req_2",
+        "requirementText": "28 comprehensive test cases",
+        "status": "unclear",
+        "evidenceRefs": [
+          "ev_1",
+          "ev_3",
+          "ev_5"
+        ],
+        "gaps": [
+          "No changed-file evidence clearly maps to this criterion.",
+          "No implementation artifact evidence clearly maps to this requirement.",
+          "Requirement needs human interpretation before trusting the report."
+        ],
+        "reviewerNote": "Ask the coding agent to connect implementation changes to this requirement.",
+        "confidence": 0.38,
+        "evidenceStatus": "unclear",
+        "sourceAuthority": "pr_description",
+        "proofAxes": [
+          {
+            "subject": "execution",
+            "polarity": "present",
+            "state": "incomplete",
+            "evidenceRefs": [],
+            "axisId": "obs_req_2_execution_1",
+            "role": "observation"
+          },
+          {
+            "subject": "implementation",
+            "polarity": "present",
+            "state": "violated",
+            "evidenceRefs": [],
+            "collectionBasis": "complete_changed_file_inventory",
+            "axisId": "obs_req_2_implementation_1",
+            "role": "observation"
+          }
+        ]
+      },
+      {
+        "requirementId": "req_3",
+        "requirementText": "Real-world tested on Git, Docker, NPM command patterns",
+        "status": "unclear",
+        "evidenceRefs": [
+          "ev_2"
+        ],
+        "gaps": [
+          "A matching test artifact changed, but no passing test check or implementation diff proves this criterion.",
+          "No deterministic test/build execution evidence was collected for this requirement."
+        ],
+        "reviewerNote": "Treat test-file changes as reviewer leads until execution and implementation evidence are connected.",
+        "confidence": 0.48,
+        "evidenceStatus": "partial",
+        "sourceAuthority": "pr_description",
+        "proofAxes": [
+          {
+            "subject": "execution",
+            "polarity": "present",
+            "state": "incomplete",
+            "evidenceRefs": [],
+            "axisId": "obs_req_3_execution_1",
+            "role": "observation"
+          },
+          {
+            "subject": "implementation",
+            "polarity": "present",
+            "state": "satisfied",
+            "evidenceRefs": [
+              "ev_2"
+            ],
+            "collectionBasis": "matching_artifact_evidence",
+            "axisId": "obs_req_3_implementation_1",
+            "role": "observation"
+          }
+        ]
+      },
+      {
+        "requirementId": "req_4",
+        "requirementText": "28 unit tests covering all scenarios",
+        "status": "unclear",
+        "evidenceRefs": [
+          "ev_1",
+          "ev_3",
+          "ev_5"
+        ],
+        "gaps": [
+          "No changed-file evidence clearly maps to this criterion.",
+          "No implementation artifact evidence clearly maps to this requirement.",
+          "Requirement needs human interpretation before trusting the report."
+        ],
+        "reviewerNote": "Ask the coding agent to connect implementation changes to this requirement.",
+        "confidence": 0.38,
+        "evidenceStatus": "unclear",
+        "sourceAuthority": "pr_description",
+        "proofAxes": [
+          {
+            "subject": "execution",
+            "polarity": "present",
+            "state": "incomplete",
+            "evidenceRefs": [],
+            "axisId": "obs_req_4_execution_1",
+            "role": "observation"
+          },
+          {
+            "subject": "implementation",
+            "polarity": "present",
+            "state": "violated",
+            "evidenceRefs": [],
+            "collectionBasis": "complete_changed_file_inventory",
+            "axisId": "obs_req_4_implementation_1",
+            "role": "observation"
+          }
+        ]
+      },
+      {
+        "requirementId": "req_5",
+        "requirementText": "All tests pass",
+        "status": "unclear",
+        "evidenceRefs": [
+          "ev_3",
+          "ev_5",
+          "ev_4"
+        ],
+        "gaps": [
+          "No changed-file evidence clearly maps to this criterion.",
+          "No implementation artifact evidence clearly maps to this requirement.",
+          "Requirement needs human interpretation before trusting the report."
+        ],
+        "reviewerNote": "Ask the coding agent to connect implementation changes to this requirement.",
+        "confidence": 0.38,
+        "evidenceStatus": "unclear",
+        "sourceAuthority": "pr_description",
+        "proofAxes": [
+          {
+            "subject": "execution",
+            "polarity": "present",
+            "state": "incomplete",
+            "evidenceRefs": [],
+            "axisId": "obs_req_5_execution_1",
+            "role": "observation"
+          },
+          {
+            "subject": "implementation",
+            "polarity": "present",
+            "state": "violated",
+            "evidenceRefs": [],
+            "collectionBasis": "complete_changed_file_inventory",
+            "axisId": "obs_req_5_implementation_1",
+            "role": "observation"
+          }
+        ]
+      },
+      {
+        "requirementId": "req_6",
+        "requirementText": "Existing tests unaffected",
+        "status": "unclear",
+        "evidenceRefs": [
+          "ev_1",
+          "ev_3",
+          "ev_5"
+        ],
+        "gaps": [
+          "No changed-file evidence clearly maps to this criterion.",
+          "No implementation artifact evidence clearly maps to this requirement.",
+          "Requirement needs human interpretation before trusting the report."
+        ],
+        "reviewerNote": "Ask the coding agent to connect implementation changes to this requirement.",
+        "confidence": 0.38,
+        "evidenceStatus": "unclear",
+        "sourceAuthority": "pr_description",
+        "proofAxes": [
+          {
+            "subject": "execution",
+            "polarity": "present",
+            "state": "incomplete",
+            "evidenceRefs": [],
+            "axisId": "obs_req_6_execution_1",
+            "role": "observation"
+          },
+          {
+            "subject": "implementation",
+            "polarity": "present",
+            "state": "violated",
+            "evidenceRefs": [],
+            "collectionBasis": "complete_changed_file_inventory",
+            "axisId": "obs_req_6_implementation_1",
+            "role": "observation"
+          }
+        ]
+      }
+    ],
+    "claims": [
+      {
+        "id": "claim_1",
+        "text": "Added intelligent command suggestion system to Typer that detects typos",
+        "evidenceRefs": [
+          "ev_2",
+          "ev_3"
+        ],
+        "supported": false
+      },
+      {
+        "id": "claim_2",
+        "text": "Added suggests corrections",
+        "evidenceRefs": [
+          "ev_2",
+          "ev_3"
+        ],
+        "supported": false
+      },
+      {
+        "id": "claim_3",
+        "text": "- 28 comprehensive test cases",
+        "evidenceRefs": [
+          "ev_5",
+          "ev_3"
+        ],
+        "supported": false
+      },
+      {
+        "id": "claim_4",
+        "text": "- Real-world tested on Git, Docker, NPM command patterns",
+        "evidenceRefs": [],
+        "supported": false
+      },
+      {
+        "id": "claim_5",
+        "text": "- All tests pass",
+        "evidenceRefs": [],
+        "supported": false
+      }
+    ],
+    "scope": {
+      "suspected": false,
+      "outOfScopeFiles": [],
+      "reasons": [],
+      "evidenceRefs": [],
+      "provenance": []
+    },
+    "testing": {
+      "ciStatus": "unknown",
+      "lintStatus": "unknown",
+      "typecheckStatus": "unknown",
+      "missingTests": [
+        {
+          "path": "typer/suggestions.py",
+          "why": "A related test file changed, but no passing test check or log was provided.",
+          "evidenceRefs": [
+            "ev_2",
+            "ev_5",
+            "ev_3",
+            "ev_1"
+          ],
+          "provenance": [
+            {
+              "evidenceRef": "ev_2",
+              "sourceType": "diff",
+              "locator": "typer/suggestions.py",
+              "confidence": 0.85,
+              "evidenceText": "added typer/suggestions.py (+178/-0). Patch excerpt: @@ -0,0 +1,178 @@ +from typing import Optional, List, Dict, Tuple +from difflib import get_close_matches, SequenceMatcher + + +class CommandSuggester: + + def __init__(self, threshold:..."
+            },
+            {
+              "evidenceRef": "ev_5",
+              "sourceType": "check",
+              "locator": "latest-changes/label",
+              "confidence": 0.9,
+              "evidenceText": "Status: pending. latest-changes/label - Waiting for one Latest Changes label"
+            },
+            {
+              "evidenceRef": "ev_3",
+              "sourceType": "test",
+              "locator": "typer/tests/test_suggestions.py",
+              "confidence": 0.85,
+              "evidenceText": "added typer/tests/test_suggestions.py (+78/-0). Test evidence file. Patch excerpt: @@ -0,0 +1,78 @@ +import pytest +from typer.suggestions import CommandSuggester, SmartTyperApp + + +class TestCommandSuggesterBasic: + + def test_register..."
+            },
+            {
+              "evidenceRef": "ev_1",
+              "sourceType": "pr_description",
+              "locator": "PR description",
+              "confidence": 0.7,
+              "evidenceText": "## Summary Added intelligent command suggestion system to Typer that detects typos and suggests corrections. ## Problem Users get confusing errors when they mistype commands: \"No such command: 'gret'\" ## Solution Using difflib and Sequen..."
+            }
+          ]
+        }
+      ]
+    },
+    "reviewPriority": [
+      {
+        "path": "typer/tests/test_suggestions.py",
+        "reason": "4 requirement(s) need human interpretation before trusting the report.",
+        "priority": "medium",
+        "evidenceRefs": [
+          "ev_1",
+          "ev_3",
+          "ev_5",
+          "ev_4"
+        ]
+      },
+      {
+        "path": "typer/suggestions.py",
+        "reason": "2 requirement(s) have only partial evidence.",
+        "priority": "medium",
+        "evidenceRefs": [
+          "ev_2",
+          "ev_5",
+          "ev_3",
+          "ev_1"
+        ]
+      }
+    ],
+    "proofGraph": {
+      "version": 1,
+      "nodes": [
+        {
+          "requirementId": "req_1",
+          "requirementText": "Added intelligent command suggestion system to Typer that detects typos and suggests corrections",
+          "sourceRole": "core_requirement",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Summary",
+          "contextRoles": [],
+          "status": "partial",
+          "confidence": 0.62,
+          "implementationEvidenceRefs": [
+            "ev_2"
+          ],
+          "targetedTestEvidenceRefs": [],
+          "executionEvidenceRefs": [],
+          "gapSignals": [
+            {
+              "kind": "missing_execution",
+              "severity": "medium",
+              "message": "No deterministic test/build execution evidence was collected for this requirement.",
+              "evidenceRefs": [
+                "ev_2"
+              ]
+            }
+          ],
+          "firstFiles": [
+            "typer/suggestions.py",
+            "latest-changes/label",
+            "typer/tests/test_suggestions.py"
+          ]
+        },
+        {
+          "requirementId": "req_2",
+          "requirementText": "28 comprehensive test cases",
+          "sourceRole": "core_requirement",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Implementation",
+          "contextRoles": [],
+          "status": "unclear",
+          "confidence": 0.38,
+          "implementationEvidenceRefs": [],
+          "targetedTestEvidenceRefs": [],
+          "executionEvidenceRefs": [],
+          "gapSignals": [
+            {
+              "kind": "missing_implementation",
+              "severity": "medium",
+              "message": "No implementation artifact evidence clearly maps to this requirement.",
+              "evidenceRefs": [
+                "ev_5",
+                "ev_3",
+                "ev_1"
+              ]
+            },
+            {
+              "kind": "ambiguous_requirement",
+              "severity": "medium",
+              "message": "Requirement needs human interpretation before trusting the report.",
+              "evidenceRefs": [
+                "ev_5",
+                "ev_3",
+                "ev_1"
+              ]
+            }
+          ],
+          "firstFiles": []
+        },
+        {
+          "requirementId": "req_3",
+          "requirementText": "Real-world tested on Git, Docker, NPM command patterns",
+          "sourceRole": "core_requirement",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Implementation",
+          "contextRoles": [],
+          "status": "partial",
+          "confidence": 0.48,
+          "implementationEvidenceRefs": [
+            "ev_2"
+          ],
+          "targetedTestEvidenceRefs": [],
+          "executionEvidenceRefs": [],
+          "gapSignals": [
+            {
+              "kind": "missing_execution",
+              "severity": "medium",
+              "message": "No deterministic test/build execution evidence was collected for this requirement.",
+              "evidenceRefs": [
+                "ev_2"
+              ]
+            }
+          ],
+          "firstFiles": [
+            "typer/suggestions.py",
+            "latest-changes/label",
+            "typer/tests/test_suggestions.py"
+          ]
+        },
+        {
+          "requirementId": "req_4",
+          "requirementText": "28 unit tests covering all scenarios",
+          "sourceRole": "core_requirement",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Testing",
+          "contextRoles": [],
+          "status": "unclear",
+          "confidence": 0.38,
+          "implementationEvidenceRefs": [],
+          "targetedTestEvidenceRefs": [],
+          "executionEvidenceRefs": [],
+          "gapSignals": [
+            {
+              "kind": "missing_implementation",
+              "severity": "medium",
+              "message": "No implementation artifact evidence clearly maps to this requirement.",
+              "evidenceRefs": [
+                "ev_5",
+                "ev_3",
+                "ev_1"
+              ]
+            },
+            {
+              "kind": "ambiguous_requirement",
+              "severity": "medium",
+              "message": "Requirement needs human interpretation before trusting the report.",
+              "evidenceRefs": [
+                "ev_5",
+                "ev_3",
+                "ev_1"
+              ]
+            }
+          ],
+          "firstFiles": []
+        },
+        {
+          "requirementId": "req_5",
+          "requirementText": "All tests pass",
+          "sourceRole": "core_requirement",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Testing",
+          "contextRoles": [],
+          "status": "unclear",
+          "confidence": 0.38,
+          "implementationEvidenceRefs": [],
+          "targetedTestEvidenceRefs": [],
+          "executionEvidenceRefs": [],
+          "gapSignals": [
+            {
+              "kind": "missing_implementation",
+              "severity": "medium",
+              "message": "No implementation artifact evidence clearly maps to this requirement.",
+              "evidenceRefs": [
+                "ev_5",
+                "ev_4",
+                "ev_3"
+              ]
+            },
+            {
+              "kind": "ambiguous_requirement",
+              "severity": "medium",
+              "message": "Requirement needs human interpretation before trusting the report.",
+              "evidenceRefs": [
+                "ev_5",
+                "ev_4",
+                "ev_3"
+              ]
+            }
+          ],
+          "firstFiles": []
+        },
+        {
+          "requirementId": "req_6",
+          "requirementText": "Existing tests unaffected",
+          "sourceRole": "core_requirement",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Testing",
+          "contextRoles": [],
+          "status": "unclear",
+          "confidence": 0.38,
+          "implementationEvidenceRefs": [],
+          "targetedTestEvidenceRefs": [],
+          "executionEvidenceRefs": [],
+          "gapSignals": [
+            {
+              "kind": "missing_implementation",
+              "severity": "medium",
+              "message": "No implementation artifact evidence clearly maps to this requirement.",
+              "evidenceRefs": [
+                "ev_5",
+                "ev_3",
+                "ev_1"
+              ]
+            },
+            {
+              "kind": "ambiguous_requirement",
+              "severity": "medium",
+              "message": "Requirement needs human interpretation before trusting the report.",
+              "evidenceRefs": [
+                "ev_5",
+                "ev_3",
+                "ev_1"
+              ]
+            }
+          ],
+          "firstFiles": []
+        }
+      ],
+      "context": [
+        {
+          "id": "ctx_1",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Summary",
+          "text": "Added intelligent command suggestion system to Typer that detects typos and suggests corrections"
+        },
+        {
+          "id": "ctx_2",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Problem",
+          "text": "Users get confusing errors when they mistype commands:"
+        },
+        {
+          "id": "ctx_3",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Problem",
+          "text": "\"No such command: 'gret'\""
+        },
+        {
+          "id": "ctx_4",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Solution",
+          "text": "Using difflib and SequenceMatcher, we detect similar commands:"
+        },
+        {
+          "id": "ctx_5",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Solution",
+          "text": "\"No such command: 'gret'"
+        },
+        {
+          "id": "ctx_6",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Solution",
+          "text": "Did you mean 'greet'?\""
+        },
+        {
+          "id": "ctx_7",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Implementation",
+          "text": "CommandSuggester class with comprehensive typo detection"
+        },
+        {
+          "id": "ctx_8",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Implementation",
+          "text": "Detects missing/extra characters, missing vowels/consonants"
+        },
+        {
+          "id": "ctx_9",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Implementation",
+          "text": "Substring matching and case-insensitive matching"
+        },
+        {
+          "id": "ctx_10",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Implementation",
+          "text": "Confidence-based suggestion ranking"
+        },
+        {
+          "id": "ctx_11",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Implementation",
+          "text": "SmartTyperApp integration"
+        },
+        {
+          "id": "ctx_12",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Implementation",
+          "text": "28 comprehensive test cases"
+        },
+        {
+          "id": "ctx_13",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Implementation",
+          "text": "Real-world tested on Git, Docker, NPM command patterns"
+        },
+        {
+          "id": "ctx_14",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Implementation",
+          "text": "Zero external dependencies"
+        },
+        {
+          "id": "ctx_15",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Testing",
+          "text": "28 unit tests covering all scenarios"
+        },
+        {
+          "id": "ctx_16",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Testing",
+          "text": "All tests pass"
+        },
+        {
+          "id": "ctx_17",
+          "source": "pr_description",
+          "role": "author_claim",
+          "sourceQuality": "author_claim",
+          "sourceSection": "Testing",
+          "text": "Existing tests unaffected"
+        }
+      ],
+      "summary": {
+        "requirementCount": 6,
+        "requirementsWithImplementation": 2,
+        "requirementsWithTargetedTests": 0,
+        "requirementsWithExecution": 0,
+        "requirementsWithGaps": 6,
+        "gapCount": 10
+      }
+    },
+    "reprompt": {
+      "targetAgent": "codex",
+      "prompt": "You are revising an AI-generated PR for AgentProof verification.\nDo not broaden the PR. Make only changes tied to the original task.\n1. Address requirement \"Added intelligent command suggestion system to Typer that detects typos and suggests corrections\" and provide evidence for the implementation.\n2. Address requirement \"28 comprehensive test cases\" and provide evidence for the implementation.\n3. Address requirement \"Real-world tested on Git, Docker, NPM command patterns\" and provide evidence for the implementation.\n4. Address requirement \"28 unit tests covering all scenarios\" and provide evidence for the implementation.\n5. Add or identify tests that cover: typer/suggestions.py.\n6. Return requirement-by-requirement proof for: \"Added intelligent command suggestion system to Typer that detects typos and suggests corrections\", \"28 comprehensive test cases\", \"Real-world tested on Git, Docker, NPM command patterns\", \"28 unit tests covering all scenarios\".\nReturn a concise summary with changed files, tests run, and remaining risks."
+    },
+    "evidenceIndex": [
+      {
+        "id": "ev_5",
+        "kind": "check",
+        "label": "latest-changes/label",
+        "summary": "Status: pending. latest-changes/label - Waiting for one Latest Changes label",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_4",
+        "kind": "check",
+        "label": "Add to project",
+        "locator": "https://github.com/fastapi/typer/actions/runs/34021155911/job/101453874014",
+        "summary": "Status: passed. Add to project",
+        "confidence": 0.9
+      },
+      {
+        "id": "ev_2",
+        "kind": "diff",
+        "label": "typer/suggestions.py",
+        "locator": "typer/suggestions.py",
+        "codeLocation": {
+          "path": "typer/suggestions.py",
+          "side": "head",
+          "revisionSha": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+          "line": 1
+        },
+        "summary": "added typer/suggestions.py (+178/-0). Patch excerpt: @@ -0,0 +1,178 @@\n+from typing import Optional, List, Dict, Tuple\n+from difflib import get_close_matches, SequenceMatcher\n+\n+\n+class CommandSuggester:\n+    \n+    def __init__(self, threshold: float = 0.6, max_suggestions: i\n...[middle truncated for privacy and token control]\nif alias not in self.registered_commands:\n+                    self.registered_commands.append(alias)\n+    \n+    def register_commands(self, names: List[str]) -> None:\n+        f\n...[truncated for privacy and token control]",
+        "confidence": 0.85
+      },
+      {
+        "id": "ev_3",
+        "kind": "test",
+        "label": "typer/tests/test_suggestions.py",
+        "locator": "typer/tests/test_suggestions.py",
+        "codeLocation": {
+          "path": "typer/tests/test_suggestions.py",
+          "side": "head",
+          "revisionSha": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+          "line": 1
+        },
+        "summary": "added typer/tests/test_suggestions.py (+78/-0). Test evidence file. Patch excerpt: @@ -0,0 +1,78 @@\n+import pytest\n+from typer.suggestions import CommandSuggester, SmartTyperApp\n+\n+\n+class TestCommandSuggesterBasic:\n+    \n+    def test_register_single_command(self):\n+        suggester = CommandSuggester()\n...[middle truncated for privacy and token control]\nupdate'])\n+        assert suggester.get_suggestion('gret') == 'greet'\n+        assert suggester.get_suggestion('crete') == 'create'\n+    \n+    def test_extra_character_typo(self):\n...[truncated for privacy and token control]",
+        "confidence": 0.85
+      },
+      {
+        "id": "ev_1",
+        "kind": "pr_description",
+        "label": "PR description",
+        "summary": "## Summary\nAdded intelligent command suggestion system to Typer that detects typos and suggests corrections.\n\n## Problem\nUsers get confusing errors when they mistype commands:\n\"No such command: 'gret'\"\n\n## Solution\nUsing difflib and SequenceMatcher, we detect similar commands:\n\"No such command: 'gret'. Did you mean 'greet'?\"\n\n## Implementation\n- CommandSuggester class with comprehensive typo detection\n- Detects missing/extra characters, missing vowels/consonants\n- Substring matching and case-insensitive matching\n- Confidence-based suggestion ranking\n- SmartTyperApp integration\n- 28 comprehensive test cases\n- Real\n...[truncated for privacy and token control]",
+        "confidence": 0.7
+      }
+    ],
+    "limitations": [
+      "Public commit status metadata was available, but only non-execution statuses were found.",
+      "No public test/build workflow run, check, or raw CI log was available from the collected metadata. No verified execution evidence was established.",
+      "Raw CI logs were not fetched or stored.",
+      "No original task text was provided and no single valid linked issue was available; the PR description is retained only as unverified author context.",
+      "Confidence is based only on issue, diff, and test-artifact evidence because no public test/build execution evidence was found.",
+      "At least one requirement needs human interpretation."
+    ],
+    "analysisContext": "unlinked_pr",
+    "reportSchemaVersion": "verification-report.v2",
+    "verificationContract": {
+      "version": 2,
+      "policy": "strict_typed_contract",
+      "state": "absent",
+      "source": null,
+      "gaps": [
+        {
+          "kind": "verification_contract_missing",
+          "message": "Approved verification contract is missing."
+        }
+      ],
+      "objectives": []
+    },
+    "reviewCandidates": {
+      "version": 1,
+      "intentGraph": {
+        "version": 1,
+        "source": {
+          "kind": "description",
+          "hash": "6125159bf90e96555081854ad1c280f8b3e620cf4fc8aebe5af033a2604b5801",
+          "length": 795,
+          "coordinates": "redacted_lf_utf16"
+        },
+        "repository": "fastapi/typer",
+        "goals": [
+          {
+            "id": "intent_bd29d357f725a81e",
+            "requirementIds": [
+              "req_1",
+              "req_2",
+              "req_3",
+              "req_4",
+              "req_5",
+              "req_6"
+            ],
+            "sourceRefs": [
+              {
+                "start": 11,
+                "end": 108,
+                "hash": "ebf812fdf4e0a4ce2322c6572380692cdea39dc832a7ebf2629b470d2cfd42ad"
+              },
+              {
+                "start": 121,
+                "end": 201,
+                "hash": "6698188efc7248b51aad82e5f455ed75003dc1ecd94c589f33bda4e20e6bb21e"
+              },
+              {
+                "start": 215,
+                "end": 326,
+                "hash": "7cecd303168bbe96f00724b9eec82c0159500e180ee3532b90353041fc41b50a"
+              },
+              {
+                "start": 346,
+                "end": 404,
+                "hash": "1d1acb8782ed953729b1322f2a15a1eea48f9d67f615d31fa71c5375b356c274"
+              },
+              {
+                "start": 405,
+                "end": 466,
+                "hash": "734bbbd1b8e0f394c2a89734fc342648742e7e8ad9009847023d6c8889b07d98"
+              },
+              {
+                "start": 467,
+                "end": 517,
+                "hash": "0367d9c8e94c541a49fc9017d0f0eb9e54af88bdb735d693a6d8e876c540871a"
+              },
+              {
+                "start": 518,
+                "end": 555,
+                "hash": "1f5734eaa8c4b38530c163ebe87ddfa4cfd7eaa355c7e3c8b257ea4fb5c761ac"
+              },
+              {
+                "start": 556,
+                "end": 583,
+                "hash": "e0c5b200d997e86f3a412fda5a3c2a10689abe376f811908b06823168d3d93f7"
+              },
+              {
+                "start": 584,
+                "end": 613,
+                "hash": "0c3de3c36d3d19a0e1f571f1e7ede66d7ba9fecc7db39cc09c84e830723215d2"
+              },
+              {
+                "start": 614,
+                "end": 670,
+                "hash": "c6c0e1bbf95115c218efafe8956c960d74af4ffac6268c159c71082711c3e315"
+              },
+              {
+                "start": 671,
+                "end": 699,
+                "hash": "dc6abd9839ebee68274d659a986eb9aa131ea8c7e0774e4cfaa4b033abedbb6e"
+              },
+              {
+                "start": 712,
+                "end": 750,
+                "hash": "ce85522ca5249e921fc3310c4c3a24fbc472683d4d5ec4fd9dce078d2d0c309a"
+              },
+              {
+                "start": 751,
+                "end": 767,
+                "hash": "a1360c83ab8a04ca61be2f0124a207c3a10ce5b3f50ba7847bf2a104a1c96625"
+              },
+              {
+                "start": 768,
+                "end": 795,
+                "hash": "dda8867d5263a581f9fda9f7974cf623e9fd534d17baa4e8fed2a102a95fb9dd"
+              }
+            ],
+            "facets": [
+              {
+                "kind": "condition",
+                "sourceRef": {
+                  "start": 148,
+                  "end": 201,
+                  "hash": "07cc7512241c3734735f196b874f585b9da217e566985153ce6107aae8cd0c0f"
+                }
+              }
+            ]
+          }
+        ],
+        "chunks": [
+          {
+            "id": "chunk_4bcff1da9e72bbb7be21acff",
+            "pool": "changed",
+            "path": "typer/suggestions.py",
+            "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 1,
+            "hash": "8dd2881f993b403cec1466a572328b5db65ccf715000937e6d21189874194e2c",
+            "evidenceId": "ev_2"
+          },
+          {
+            "id": "chunk_57a1fdc90b3491c9a096a6aa",
+            "pool": "changed",
+            "path": "typer/tests/test_suggestions.py",
+            "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 1,
+            "hash": "35c5c8b6e346398fd47bb762bf05abf6124261855ae1021c510d7438f762cd35",
+            "evidenceId": "ev_3"
+          }
+        ],
+        "edges": [
+          {
+            "goalId": "intent_bd29d357f725a81e",
+            "chunkId": "chunk_4bcff1da9e72bbb7be21acff",
+            "relation": "candidate",
+            "basis": [
+              "identifier",
+              "lexical",
+              "changed_declaration"
+            ],
+            "score": 144
+          },
+          {
+            "goalId": "intent_bd29d357f725a81e",
+            "chunkId": "chunk_57a1fdc90b3491c9a096a6aa",
+            "relation": "candidate",
+            "basis": [
+              "identifier",
+              "lexical"
+            ],
+            "score": 136
+          }
+        ],
+        "capabilities": {
+          "wholeRepository": "unavailable",
+          "embeddings": "unavailable",
+          "symbolResolution": "unavailable",
+          "semantic": "existing_relations_only",
+          "snapshotChunks": 0,
+          "rejectedSnapshots": 0,
+          "truncated": false
+        }
+      },
+      "requirements": [
+        {
+          "requirementId": "req_1",
+          "sourceHash": "af5324aab99c53f1e21cf4a79aad08441ca607d69ed5a8baacbcb793ad153c42",
+          "candidates": [
+            {
+              "evidenceId": "ev_2",
+              "basis": "source_identifier",
+              "score": 144,
+              "evidenceHash": "8dd2881f993b403cec1466a572328b5db65ccf715000937e6d21189874194e2c"
+            },
+            {
+              "evidenceId": "ev_3",
+              "basis": "source_identifier",
+              "score": 136,
+              "evidenceHash": "35c5c8b6e346398fd47bb762bf05abf6124261855ae1021c510d7438f762cd35"
+            }
+          ]
+        },
+        {
+          "requirementId": "req_2",
+          "sourceHash": "af5324aab99c53f1e21cf4a79aad08441ca607d69ed5a8baacbcb793ad153c42",
+          "candidates": [
+            {
+              "evidenceId": "ev_2",
+              "basis": "source_identifier",
+              "score": 144,
+              "evidenceHash": "8dd2881f993b403cec1466a572328b5db65ccf715000937e6d21189874194e2c"
+            },
+            {
+              "evidenceId": "ev_3",
+              "basis": "source_identifier",
+              "score": 136,
+              "evidenceHash": "35c5c8b6e346398fd47bb762bf05abf6124261855ae1021c510d7438f762cd35"
+            }
+          ]
+        },
+        {
+          "requirementId": "req_3",
+          "sourceHash": "af5324aab99c53f1e21cf4a79aad08441ca607d69ed5a8baacbcb793ad153c42",
+          "candidates": [
+            {
+              "evidenceId": "ev_2",
+              "basis": "source_identifier",
+              "score": 144,
+              "evidenceHash": "8dd2881f993b403cec1466a572328b5db65ccf715000937e6d21189874194e2c"
+            },
+            {
+              "evidenceId": "ev_3",
+              "basis": "source_identifier",
+              "score": 136,
+              "evidenceHash": "35c5c8b6e346398fd47bb762bf05abf6124261855ae1021c510d7438f762cd35"
+            }
+          ]
+        },
+        {
+          "requirementId": "req_4",
+          "sourceHash": "af5324aab99c53f1e21cf4a79aad08441ca607d69ed5a8baacbcb793ad153c42",
+          "candidates": [
+            {
+              "evidenceId": "ev_2",
+              "basis": "source_identifier",
+              "score": 144,
+              "evidenceHash": "8dd2881f993b403cec1466a572328b5db65ccf715000937e6d21189874194e2c"
+            },
+            {
+              "evidenceId": "ev_3",
+              "basis": "source_identifier",
+              "score": 136,
+              "evidenceHash": "35c5c8b6e346398fd47bb762bf05abf6124261855ae1021c510d7438f762cd35"
+            }
+          ]
+        },
+        {
+          "requirementId": "req_5",
+          "sourceHash": "af5324aab99c53f1e21cf4a79aad08441ca607d69ed5a8baacbcb793ad153c42",
+          "candidates": [
+            {
+              "evidenceId": "ev_2",
+              "basis": "source_identifier",
+              "score": 144,
+              "evidenceHash": "8dd2881f993b403cec1466a572328b5db65ccf715000937e6d21189874194e2c"
+            },
+            {
+              "evidenceId": "ev_3",
+              "basis": "source_identifier",
+              "score": 136,
+              "evidenceHash": "35c5c8b6e346398fd47bb762bf05abf6124261855ae1021c510d7438f762cd35"
+            }
+          ]
+        },
+        {
+          "requirementId": "req_6",
+          "sourceHash": "af5324aab99c53f1e21cf4a79aad08441ca607d69ed5a8baacbcb793ad153c42",
+          "candidates": [
+            {
+              "evidenceId": "ev_2",
+              "basis": "source_identifier",
+              "score": 144,
+              "evidenceHash": "8dd2881f993b403cec1466a572328b5db65ccf715000937e6d21189874194e2c"
+            },
+            {
+              "evidenceId": "ev_3",
+              "basis": "source_identifier",
+              "score": 136,
+              "evidenceHash": "35c5c8b6e346398fd47bb762bf05abf6124261855ae1021c510d7438f762cd35"
+            }
+          ]
+        }
+      ],
+      "retainedRelations": [
+        {
+          "requirementId": "req_1",
+          "evidenceId": "ev_2",
+          "relation": "observed"
+        },
+        {
+          "requirementId": "req_3",
+          "evidenceId": "ev_2",
+          "relation": "observed"
+        }
+      ],
+      "navigation": {
+        "version": 1,
+        "model": "gemini-3.8-flash",
+        "state": "partial",
+        "repository": "fastapi/typer",
+        "headSha": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+        "baseSha": "82b83959d9e900215ed8ff2a56a766ff066e1c75",
+        "sources": [
+          {
+            "id": "description",
+            "authority": "pr_author_claim",
+            "hash": "6125159bf90e96555081854ad1c280f8b3e620cf4fc8aebe5af033a2604b5801",
+            "length": 795,
+            "processedLength": 795,
+            "url": "https://github.com/fastapi/typer/pull/1956"
+          },
+          {
+            "id": "title",
+            "authority": "pr_author_claim",
+            "hash": "5d4f8a8a964db0f469b3015100e46fe7af7eb7b416dad3a53f6f0e58f160c048",
+            "length": 49,
+            "processedLength": 49,
+            "url": "https://github.com/fastapi/typer/pull/1956"
+          }
+        ],
+        "goals": [
+          {
+            "id": "goal_1",
+            "summary": "Introduce a command suggestion mechanism to Typer that detects typos and suggests similar commands upon execution errors.",
+            "emphasis": "primary",
+            "authority": "pr_author_claim",
+            "sourceRefs": [
+              {
+                "sourceId": "title",
+                "start": 0,
+                "end": 49,
+                "hash": "5d4f8a8a964db0f469b3015100e46fe7af7eb7b416dad3a53f6f0e58f160c048"
+              },
+              {
+                "sourceId": "description",
+                "start": 0,
+                "end": 108,
+                "hash": "0611093deb440827358759da89b80e6bf650d90a419b51ac035cf6d2ca967138"
+              },
+              {
+                "sourceId": "description",
+                "start": 203,
+                "end": 326,
+                "hash": "dd20f3e8b883267144ff1c1b27019524fe7c7ef35e19a469e91d888dd8d71890"
+              }
+            ],
+            "facets": [
+              {
+                "kind": "motivation",
+                "summary": "Users face unhelpful errors like 'No such command' without guidance when mistyping CLI commands.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 110,
+                    "end": 201,
+                    "hash": "1898f61cd7fcb910c6395de1c055fac214ba6b2c5d55f4fcf89da664cfb7d3bd"
+                  }
+                ]
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "Detects similar commands via difflib and SequenceMatcher, prompting users with 'Did you mean ...?' suggestions.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 203,
+                    "end": 326,
+                    "hash": "dd20f3e8b883267144ff1c1b27019524fe7c7ef35e19a469e91d888dd8d71890"
+                  }
+                ]
+              },
+              {
+                "kind": "implementation_claim",
+                "summary": "Implements CommandSuggester supporting missing/extra characters, vowel/consonant omissions, substring/case-insensitive matching, confidence-ranked suggestions, SmartTyperApp integration, and zero external dependencies.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 328,
+                    "end": 699,
+                    "hash": "2c9a315ac0c360fd2ee214c173e959729af2cd015631c5f16262faaf7c6dda66"
+                  }
+                ]
+              },
+              {
+                "kind": "test_claim",
+                "summary": "Author reports 28 passing unit tests covering all scenarios, unaffected existing tests, and evaluation against Git, Docker, and NPM patterns.",
+                "sourceRefs": [
+                  {
+                    "sourceId": "description",
+                    "start": 328,
+                    "end": 699,
+                    "hash": "2c9a315ac0c360fd2ee214c173e959729af2cd015631c5f16262faaf7c6dda66"
+                  },
+                  {
+                    "sourceId": "description",
+                    "start": 701,
+                    "end": 795,
+                    "hash": "188f4341eecb454b53eb47a2133f2f4370d9e29cf234e68c72e7749c3feddf41"
+                  }
+                ]
+              }
+            ],
+            "openQuestions": [],
+            "firstInspection": "read_153aa81b26fdb8e8b379dfe4",
+            "candidates": [
+              {
+                "artifactId": "read_153aa81b26fdb8e8b379dfe4",
+                "relevance": "relevant",
+                "whyInspect": "Implements the core matching logic using SequenceMatcher and close matches to produce ordered typo suggestions.",
+                "reviewQuestion": "Does the matching algorithm accurately identify typos and handle edge cases like short command names or casing without excessive false positives?",
+                "uncertainty": "Lines 68-72 and helper formatting methods are truncated between this chunk and subsequent methods."
+              },
+              {
+                "artifactId": "read_bca90f4e98e249fda3a9438d",
+                "relevance": "relevant",
+                "whyInspect": "Implements SmartTyperApp, command dispatching, and error raising with suggestion messages when a command is not found.",
+                "reviewQuestion": "How does SmartTyperApp integrate with standard Typer CLI execution and error reporting rather than just raising generic ValueErrors?",
+                "uncertainty": "Implementation details of format_suggestion_message and format_multiple_suggestions_message are not shown in this chunk."
+              },
+              {
+                "artifactId": "read_aab0c60be8399f227044990d",
+                "relevance": "relevant",
+                "whyInspect": "Defines CommandSuggester initialization, alias handling, and typo category classification.",
+                "reviewQuestion": "Are alias mappings properly tracked and isolated to avoid duplicate suggestion candidates?",
+                "uncertainty": "The default threshold and configuration options are fixed in init without CLI-level exposure shown here."
+              },
+              {
+                "artifactId": "read_7e64c649591d0058f9c18277",
+                "relevance": "relevant",
+                "whyInspect": "Shows how Typer wires suggest_commands into group creation from Typer instances.",
+                "reviewQuestion": "How is suggest_commands configured on Typer instances and propagated down to Click group resolution?",
+                "uncertainty": "The definition of suggest_commands on Typer and get_group_from_info implementation are located in unread sections."
+              },
+              {
+                "artifactId": "read_e6bb4970cbfd8a8a0d77c311",
+                "relevance": "relevant",
+                "whyInspect": "Provides suggestions alongside calculated confidence ratios sorted descending.",
+                "reviewQuestion": "Does the confidence-scoring logic stay consistent with get_suggestions when handling exact matches and thresholds?",
+                "uncertainty": "Exact matching early returns present in get_suggestions appear differently structured here."
+              },
+              {
+                "artifactId": "read_7af121f813b544c04a78bf8e",
+                "relevance": "relevant",
+                "whyInspect": "Tests SmartTyperApp error raising and suggestion inclusion when invoking unknown commands.",
+                "reviewQuestion": "Do these tests verify integration with Click and rich console output or only standalone ValueError raising?",
+                "uncertainty": "Tests only assert substring inclusion in ValueError."
+              },
+              {
+                "artifactId": "read_2ad280c0536a9c368fc54177",
+                "relevance": "possible",
+                "whyInspect": "Unit tests verifying missing character, extra character, and substring matching for CommandSuggester.",
+                "reviewQuestion": "Are get_suggestion single-match return tests aligned with the list-returning implementation in suggestions.py?",
+                "uncertainty": "Method get_suggestion called in tests is not visible in the provided suggestions.py chunks."
+              },
+              {
+                "artifactId": "read_dd5ea0104728ec15d9c57b7c",
+                "relevance": "possible",
+                "whyInspect": "Validates suggestion behavior against CLI command sets modeled after Git, Docker, and NPM.",
+                "reviewQuestion": "Do typical real-world command sets yield acceptable suggestion accuracy under standard thresholds?",
+                "uncertainty": "Tests check basic single-typo assertions without checking edge cases or command collision."
+              }
+            ],
+            "uncertainty": [
+              "How TyperGroup and Click handle CommandSuggester inside actual Typer CLI command dispatch is unverified.",
+              "Helper methods such as get_suggestion and message formatting in suggestions.py were truncated in the provided artifacts."
+            ]
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "read_aab0c60be8399f227044990d",
+            "path": "typer/suggestions.py",
+            "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 35,
+            "hash": "e44483b373ab123bdc49ca4d96e891d3d59ff5261e9e21ed5c8e574fc4d37253",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_153aa81b26fdb8e8b379dfe4",
+            "path": "typer/suggestions.py",
+            "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+            "side": "head",
+            "startLine": 37,
+            "endLine": 67,
+            "hash": "481ee10b127194b12a947d1dcc2d936c063f16d38b6c56df3e79e545e25f148d",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_e6bb4970cbfd8a8a0d77c311",
+            "path": "typer/suggestions.py",
+            "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+            "side": "head",
+            "startLine": 73,
+            "endLine": 99,
+            "hash": "929b67fae2fc7bac53d6c08df786fd0ecac19f4cc4418469d729f1b0971c43a6",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_bca90f4e98e249fda3a9438d",
+            "path": "typer/suggestions.py",
+            "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+            "side": "head",
+            "startLine": 135,
+            "endLine": 178,
+            "hash": "bde7e4a03e021efce57f1a8f4cc735723dfb55a5b63f4e7a1db6c94991437a6b",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_2ad280c0536a9c368fc54177",
+            "path": "typer/tests/test_suggestions.py",
+            "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 35,
+            "hash": "6459d7b6334c697c71b47dced0375fc677c7436a8e6abfac0e31d5b6ce6d786d",
+            "kind": "test",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_7af121f813b544c04a78bf8e",
+            "path": "typer/tests/test_suggestions.py",
+            "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+            "side": "head",
+            "startLine": 38,
+            "endLine": 59,
+            "hash": "58bc3f34dc2811acebeec69d35892d704a21f73e2d94f67c6a91fd26653f39da",
+            "kind": "test",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_dd5ea0104728ec15d9c57b7c",
+            "path": "typer/tests/test_suggestions.py",
+            "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+            "side": "head",
+            "startLine": 62,
+            "endLine": 78,
+            "hash": "9472b2de07c5de989b1644d411ee21a322ac10324bfbd4a1c7d458392958c29f",
+            "kind": "test",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_48827f2c49d706497cba7923",
+            "path": "typer/__init__.py",
+            "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+            "side": "head",
+            "startLine": 1,
+            "endLine": 6,
+            "hash": "255a4273759e771e7e6d5cf28c753c5f125f37bc3ac7d465afbf5f57ad032521",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_abe896fae822f8e762548196",
+            "path": "typer/main.py",
+            "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+            "side": "head",
+            "startLine": 61,
+            "endLine": 109,
+            "hash": "bdb1f8a26c7f698f8efce31e7762cdd2d162e4256001deed3e088fa3cc1f14cf",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_03a7e1b033dbff03b603c6ec",
+            "path": "typer/main.py",
+            "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+            "side": "head",
+            "startLine": 115,
+            "endLine": 129,
+            "hash": "d7d0baaf1d366c012c65a3e7a48416738ac8a363669f4ef30f8bb53977155511",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_193341aa7669d2a9c836953d",
+            "path": "typer/main.py",
+            "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+            "side": "head",
+            "startLine": 163,
+            "endLine": 172,
+            "hash": "0c2ef15a8c2dfe2058f9cbc68674e2b97ff5b64bf091396965c4e4f428b78038",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_f9971bfa95eb45f77b89091c",
+            "path": "typer/main.py",
+            "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+            "side": "head",
+            "startLine": 262,
+            "endLine": 271,
+            "hash": "858611919f6ba65d0644e2d97b076964ecb222e0acd95b592a6aac011bf3a4ef",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_dfc9d58cf77077e573182314",
+            "path": "typer/main.py",
+            "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+            "side": "head",
+            "startLine": 874,
+            "endLine": 883,
+            "hash": "800cde7e13e86ea64b0cb4cf64980fa37d3bc41f0abf3880ab986e4c0c1575da",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_6e73e2c693b646b737795d38",
+            "path": "typer/main.py",
+            "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+            "side": "head",
+            "startLine": 1101,
+            "endLine": 1110,
+            "hash": "d90881386bd4b8d8dfb8469384d5f6beff2277ec1d6dfd194fc2e244196bb5a6",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_7e64c649591d0058f9c18277",
+            "path": "typer/main.py",
+            "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+            "side": "head",
+            "startLine": 1163,
+            "endLine": 1170,
+            "hash": "70e922e5203a1da6f11fef3212e072c0a1a619046c2e660eebcf2e04fd77786a",
+            "kind": "code",
+            "origin": "snapshot"
+          },
+          {
+            "id": "read_f1a092b77f9b661524dc3db9",
+            "path": "typer/main.py",
+            "revision": "c254c0f25a36be2d2a92ac8a408bb2be7215e6c8",
+            "side": "head",
+            "startLine": 1173,
+            "endLine": 1208,
+            "hash": "c3739cf74ee25ad835020b1cbd457b6c3502d233e6f7cec06596236e2e53dcab",
+            "kind": "code",
+            "origin": "snapshot"
+          }
+        ],
+        "unprocessed": [],
+        "limitations": [
+          "diff_context_incomplete",
+          "retrieval_python_indentation",
+          "retrieval_unverified_fallback",
+          "retrieval_budget_exceeded",
+          "retrieval_scan_budget_exceeded"
+        ],
+        "failures": [],
+        "rankingStatus": "ready",
+        "coverageStatus": "partial"
+      }
+    },
+    "generalPrAssessmentSummary": {
+      "version": 1,
+      "mode": "ordinary_pr",
+      "sourceState": "pr_author_claim",
+      "overallConclusion": "no_assessable_claims",
+      "counts": {
+        "evidence_supported": 0,
+        "evidence_partial": 0,
+        "not_demonstrated": 0,
+        "contradicted": 0,
+        "blocked": 0,
+        "not_assessable": 0
+      },
+      "reasonCodes": [
+        "author_claim_requires_confirmation",
+        "deterministic_candidate_missing",
+        "semantic_observer_unavailable"
+      ],
+      "observations": {
+        "version": 1,
+        "inventory": {
+          "state": "complete",
+          "changedArtifacts": 2,
+          "changedTestCandidates": 1
+        },
+        "links": {
+          "state": "unavailable",
+          "linkedObjectives": 0,
+          "supports": 0,
+          "tests": 0,
+          "implements": 0,
+          "contradicts": 0
+        },
+        "coverage": {
+          "source": null,
+          "evidence": null
+        }
+      }
+    },
+    "ordinaryRequirementOutcomes": {
+      "version": 1,
+      "scope": "selected_source_requirements",
+      "requirements": [
+        {
+          "requirementId": "req_1",
+          "authority": "author_claim",
+          "interpretation": "unavailable",
+          "criterion": null,
+          "reason": "source_interpretation_unavailable"
+        },
+        {
+          "requirementId": "req_2",
+          "authority": "author_claim",
+          "interpretation": "unavailable",
+          "criterion": null,
+          "reason": "source_interpretation_unavailable"
+        },
+        {
+          "requirementId": "req_3",
+          "authority": "author_claim",
+          "interpretation": "unavailable",
+          "criterion": null,
+          "reason": "source_interpretation_unavailable"
+        },
+        {
+          "requirementId": "req_4",
+          "authority": "author_claim",
+          "interpretation": "unavailable",
+          "criterion": null,
+          "reason": "source_interpretation_unavailable"
+        },
+        {
+          "requirementId": "req_5",
+          "authority": "author_claim",
+          "interpretation": "unavailable",
+          "criterion": null,
+          "reason": "source_interpretation_unavailable"
+        },
+        {
+          "requirementId": "req_6",
+          "authority": "author_claim",
+          "interpretation": "unavailable",
+          "criterion": null,
+          "reason": "source_interpretation_unavailable"
+        }
+      ]
+    }
+  }
+}
