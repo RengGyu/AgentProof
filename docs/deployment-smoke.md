@@ -1,12 +1,12 @@
 # Deployment Smoke Checklist
 
-This checklist is the MVP deployment gate for AgentProof. It proves the deployed app can run the no-secret demo path, preserve summary-only saved reports, and keep optional integrations behind explicit trust boundaries.
+This checklist separates the no-secret production boundary check from signed-in PR analysis and connected-repository automation. A no-secret request must not generate a live PR report.
 
 Production alias:
 
 https://agentproof-pearl.vercel.app
 
-Last no-secret production gate: 2026-07-03
+Last no-secret production gate: 2026-09-25 (local replay of the workflow step)
 
 Last credentialed live integration pass: 2026-06-29
 
@@ -20,7 +20,7 @@ curl -sS -o /tmp/agentproof-integrations.html -w "integrations:%{http_code}\n" h
 curl -sS -o /tmp/agentproof-webhook-status.json -w "github_webhook_status:%{http_code}\n" https://agentproof-pearl.vercel.app/api/github/webhook/status
 curl -sS -o /tmp/agentproof-ops-status.json -w "github_app_ops_no_token:%{http_code}\n" https://agentproof-pearl.vercel.app/api/ops/github-app/status
 curl -sS -o /tmp/agentproof-api-analyze.txt -w "api_analyze_get:%{http_code}\n" https://agentproof-pearl.vercel.app/api/analyze
-AGENTPROOF_SMOKE_BASE_URL=https://agentproof-pearl.vercel.app CI=true corepack pnpm smoke:production-regression
+curl -sS -o /tmp/agentproof-unauth-analyze.json -w "api_analyze_no_login:%{http_code}\n" -X POST -H 'Content-Type: application/json' --data '{"prUrl":"https://github.com/RengGyu/AgentProof/pull/1"}' https://agentproof-pearl.vercel.app/api/analyze
 ```
 
 Expected:
@@ -30,8 +30,9 @@ Expected:
 - `/api/github/webhook/status` returns 200 with coarse status only; it must not expose env-specific booleans, repository allowlists, private-key validity, secret names, or secret values.
 - `/api/ops/github-app/status` returns 401 without `x-agentproof-ops-token` when operator diagnostics are configured; 501 means the diagnostics token is not configured for that deployment.
 - `/api/analyze` rejects GET with 405.
+- An unauthenticated PR URL POST returns 401 with `github_login_required`; it must not fetch GitHub evidence or call a paid model.
 - If cron auth is intentionally not configured for the public demo, `/api/cron/analysis-jobs/run` and `/api/cron/reports/cleanup` return metadata-only disabled no-ops instead of running work. Invalid configured cron tokens still return 401.
-- Production regression smoke passes for the public AgentProof PR set.
+- Signed-in PR analysis and connected-repository automatic analysis are separate live checks. Use an authorized browser session and a dedicated test PR event; do not weaken login or add a reusable session cookie to this no-secret workflow.
 - Saved reports return `privacy: "summary-only"` and `durability: "summary-only-supabase"` when Supabase env is configured.
 - Saved reports retain zero evidence items, zero claims, no raw re-prompt text, and cleared evidence references.
 - Tenant-scoped saved reports require the generated report key or trusted tenant context; id-only lookup returns the same unavailable response as missing or expired reports.
@@ -47,25 +48,17 @@ Default inputs:
 | Input | Default | Meaning |
 | --- | --- | --- |
 | `base_url` | `https://agentproof-pearl.vercel.app` | Deployment URL to test. Do not include tokens, usernames, passwords, or secret query strings. |
-| `enforce_performance_budget` | `true` | Whether to fail the run when configured p95 budgets are exceeded. |
-| `max_total_p95_ms` | `3000` | Maximum `X-AgentProof-Timing.total` p95. |
-| `max_evidence_p95_ms` | `2500` | Maximum `X-AgentProof-Timing.evidence` p95. |
-| `max_github_checks_p95_ms` | `1500` | Maximum `X-AgentProof-Evidence-Timing.github_checks` p95. |
-| `max_github_statuses_p95_ms` | `1500` | Maximum `X-AgentProof-Evidence-Timing.github_statuses` p95. |
-| `max_github_jobs_p95_ms` | `1500` | Maximum `X-AgentProof-Evidence-Timing.github_jobs` p95. |
-
-The budgets are loose operational guardrails. They are meant to catch repeated regressions, not to prove a public latency SLA. If one run fails during an external GitHub or Vercel slowdown, rerun once before changing code. If the same phase fails repeatedly, investigate the named timing phase before lowering evidence collection quality.
 
 Expected workflow proof:
 
 - `/` and `/integrations` return 200.
 - `GET /api/analyze` returns 405.
+- Unauthenticated `POST /api/analyze` returns 401 with `github_login_required`.
 - `/api/github/webhook/status` returns the public `githubApp` status object only.
 - Unauthenticated `/api/ops/github-app/status` returns 401 when diagnostics are configured or 501 when they are not configured.
-- `pnpm smoke:production-regression` passes for the public AgentProof PR set.
-- The smoke output includes `qualityGateSummary.ok: true` for deterministic report trust checks; this is a guardrail, not a verifier quality score.
-- When budgets are enforced, the smoke output includes `performanceBudget.ok: true`.
 - The run output contains bounded metadata only. It must not include GitHub tokens, private task text, raw diffs, raw logs, full reports, or saved-report contents.
+
+After this no-secret gate, verify a signed-in PR once in the browser and trigger one new head on a connected test PR. Confirm the dashboard shows a current report for that exact head, with comments remaining off unless separately enabled. The old `smoke:production-regression` command makes anonymous PR requests and is not a production gate under the login-required policy.
 
 ## P0 Cron Decision
 

@@ -7,31 +7,6 @@ on:
         description: "Deployment base URL. Do not include tokens or secrets."
         required: true
         default: "https://agentproof-pearl.vercel.app"
-      enforce_performance_budget:
-        description: "Fail when p95 timing budgets are exceeded."
-        type: boolean
-        required: true
-        default: true
-      max_total_p95_ms:
-        description: "Max X-AgentProof-Timing total p95 in ms."
-        required: true
-        default: "3000"
-      max_evidence_p95_ms:
-        description: "Max X-AgentProof-Timing evidence p95 in ms."
-        required: true
-        default: "2500"
-      max_github_checks_p95_ms:
-        description: "Max X-AgentProof-Evidence-Timing github_checks p95 in ms."
-        required: true
-        default: "1500"
-      max_github_statuses_p95_ms:
-        description: "Max X-AgentProof-Evidence-Timing github_statuses p95 in ms."
-        required: true
-        default: "1500"
-      max_github_jobs_p95_ms:
-        description: "Max X-AgentProof-Evidence-Timing github_jobs p95 in ms."
-        required: true
-        default: "1500"
 
 permissions:
   contents: read
@@ -47,30 +22,8 @@ jobs:
     timeout-minutes: 15
     env:
       CI: true
-      NEXT_TELEMETRY_DISABLED: "1"
       AGENTPROOF_SMOKE_BASE_URL: ${{ inputs.base_url }}
-      SMOKE_ENFORCE_PERFORMANCE_BUDGET: ${{ inputs.enforce_performance_budget }}
-      SMOKE_MAX_TOTAL_P95_MS: ${{ inputs.max_total_p95_ms }}
-      SMOKE_MAX_EVIDENCE_P95_MS: ${{ inputs.max_evidence_p95_ms }}
-      SMOKE_MAX_GITHUB_CHECKS_P95_MS: ${{ inputs.max_github_checks_p95_ms }}
-      SMOKE_MAX_GITHUB_STATUSES_P95_MS: ${{ inputs.max_github_statuses_p95_ms }}
-      SMOKE_MAX_GITHUB_JOBS_P95_MS: ${{ inputs.max_github_jobs_p95_ms }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Enable pnpm
-        run: corepack enable
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
       - name: Validate smoke inputs
         run: |
           set -euo pipefail
@@ -120,8 +73,24 @@ jobs:
             echo "Expected GET /api/analyze to return 405, received $analyze_status"
             exit 1
           fi
+          # Real PR analysis requires a GitHub session. This no-secret gate verifies
+          # the boundary; a connected test PR event verifies the paid analysis path.
+          unauth_status="$(curl -sS -o /tmp/agentproof-unauth-analyze.json -w "%{http_code}" \
+            -X POST -H "Content-Type: application/json" \
+            --data '{"prUrl":"https://github.com/RengGyu/AgentProof/pull/1"}' \
+            "$base/api/analyze")"
+          if [ "$unauth_status" != "401" ]; then
+            echo "Expected unauthenticated PR analysis to return 401, received $unauth_status"
+            exit 1
+          fi
           node <<'NODE'
           const fs = require("node:fs");
+
+          const unauthenticated = JSON.parse(fs.readFileSync("/tmp/agentproof-unauth-analyze.json", "utf8"));
+          if (unauthenticated?.code !== "github_login_required") {
+            console.error("Unauthenticated PR analysis did not enforce the GitHub login boundary.");
+            process.exit(1);
+          }
 
           const payload = JSON.parse(fs.readFileSync("/tmp/agentproof-webhook-status.json", "utf8"));
           const status = payload?.githubApp;
@@ -192,15 +161,3 @@ jobs:
             process.exit(1);
           }
           NODE
-
-      - name: Run real PR production regression smoke
-        run: |
-          set -euo pipefail
-          if [ "$SMOKE_ENFORCE_PERFORMANCE_BUDGET" = "true" ]; then
-            export AGENTPROOF_SMOKE_MAX_TOTAL_P95_MS="$SMOKE_MAX_TOTAL_P95_MS"
-            export AGENTPROOF_SMOKE_MAX_EVIDENCE_P95_MS="$SMOKE_MAX_EVIDENCE_P95_MS"
-            export AGENTPROOF_SMOKE_MAX_GITHUB_CHECKS_P95_MS="$SMOKE_MAX_GITHUB_CHECKS_P95_MS"
-            export AGENTPROOF_SMOKE_MAX_GITHUB_STATUSES_P95_MS="$SMOKE_MAX_GITHUB_STATUSES_P95_MS"
-            export AGENTPROOF_SMOKE_MAX_GITHUB_JOBS_P95_MS="$SMOKE_MAX_GITHUB_JOBS_P95_MS"
-          fi
-          pnpm smoke:production-regression
