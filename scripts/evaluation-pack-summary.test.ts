@@ -51,6 +51,13 @@ describe("evaluation pack summary", () => {
       "must contain normalized EvaluationCase records"
     );
   });
+
+  it("loads only SWE-bench fixtures for the SWE-bench summary", () => {
+    expect(availableFixtureUrls().map((url) => url.pathname.split("/").at(-1))).toEqual(
+      expect.arrayContaining(["swebench-verified.small.jsonl"])
+    );
+    expect(availableFixtureUrls().every((url) => url.pathname.split("/").at(-1)?.startsWith("swebench-verified."))).toBe(true);
+  });
 });
 
 function loadAvailableEvaluationRecords(): EvaluationCase[] {
@@ -85,7 +92,7 @@ function availableFixtureUrls(): URL[] {
   const fixturesDir = new URL("../eval/fixtures/", import.meta.url);
   const committedFixtureUrls = existsSync(fixturesDir)
     ? readdirSync(fixturesDir)
-      .filter((name) => name.endsWith(".jsonl"))
+      .filter((name) => name.startsWith("swebench-verified.") && name.endsWith(".jsonl"))
       .sort()
       .map((name) => new URL(name, fixturesDir))
     : [];
