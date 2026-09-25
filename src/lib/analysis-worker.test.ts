@@ -7,6 +7,7 @@ import { generateKeyPairSync } from "crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   clearAnalysisJobsForTests,
+  failAnalysisJob,
   claimAnalysisJobForProviderResponse,
   claimNextAnalysisJob,
   enqueueAnalysisJob,
@@ -27,6 +28,8 @@ import {
 } from "./tenant-deletion-state";
 import { clearUsageQuotaForTests } from "./usage-quota";
 import { clearBillingWebhookEventsForTests } from "./billing-beta";
+import * as paidBudget from "./paid-budget";
+import { paidBudgetLedger } from "./test-support/paid-budget-ledger";
 import * as generalPrObservationService from "./general-pr-observation-service";
 
 describe("analysis worker preflight", () => {
@@ -1942,7 +1945,36 @@ describe("analysis worker preflight", () => {
     expect(result.status).toBe("completed");
   });
 
-  it("keeps a known pending check waiting beyond ten minutes", async () => {
+  it("gives a retry after a paid call a fresh budget scope", async () => {
+    stubReadyWorkerEnv({ grant: { saveReportsEnabled: false, commentEnabled: false } });
+    vi.stubEnv("AGENTPROOF_CONTROL_PLANE_SUPABASE_URL", "https://budget.invalid");
+    vi.stubEnv("AGENTPROOF_CONTROL_PLANE_SUPABASE_SERVICE_ROLE_KEY", "test-key");
+    const real = await vi.importActual<typeof import("./paid-budget")>("./paid-budget");
+    const scope = vi.spyOn(paidBudget, "withPaidAnalysis").mockImplementation(real.withPaidAnalysis);
+    const ledger = paidBudgetLedger();
+    const github = mockWorkerFetch();
+    vi.stubGlobal("fetch", vi.fn((url: string | URL | Request, init?: RequestInit) =>
+      String(url).includes("/rpc/agentproof_paid_budget") ? ledger.fetch(init) :
+      String(url).includes("/rest/v1/agentproof_tenant_deletion_state") ? Promise.resolve(new Response(null, { headers: { "content-range": "*/0" } })) : github(url, init)));
+    const original = generalPrObservationService.runGeneralPrObservationNowV2;
+    let calls = 0;
+    const observer = vi.spyOn(generalPrObservationService, "runGeneralPrObservationNowV2").mockImplementation(async options => {
+      await real.paidProviderCall({ provider: "google", model: "test", invoke: async () => ++calls, usage: () => ({ input: 1, output: 1 }) });
+      if (calls === 1) throw new Error("transient failure after paid call");
+      return original(options);
+    });
+    try {
+      await enqueueAnalysisJob(jobInput({ saveReport: false, comment: false }));
+      const run = (now: string) => runNextAnalysisJob({ requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run", now: new Date(now) });
+      expect((await run("2026-06-30T00:01:00Z")).status).toBe("failed_retryable");
+      expect((await run("2026-06-30T00:04:00Z")).status).toBe("completed");
+      expect(calls).toBe(2);
+      expect(new Set(ledger.reserved).size).toBe(2);
+      expect(ledger.closed.size).toBe(2);
+    } finally { observer.mockRestore(); scope.mockRestore(); }
+  });
+
+  it.each([false, true])("keeps a pending check waiting beyond ten minutes, retry=%s", async (retry) => {
     stubReadyWorkerEnv({ grant: { saveReportsEnabled: false, commentEnabled: false } });
     const githubFetch = mockWorkerFetch();
     let pending = true;
@@ -1961,8 +1993,14 @@ describe("analysis worker preflight", () => {
       const run = (now: string) => runNextAnalysisJob({
         requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run", now: new Date(now)
       });
+      if (retry) {
+        const { job } = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:01:00Z") });
+        if (!job) throw new Error("Expected claimed job");
+        await failAnalysisJob({ id: job.id, claimGeneration: job.claim_generation!, retryable: true,
+          code: "transient", summary: "transient", now: new Date("2026-06-30T00:01:00Z") });
+      }
       expect((await run("2026-06-30T00:11:00Z")).status).toBe("waiting_checks");
-      expect(getAnalysisJobsForTests()[0]).toMatchObject({ status: "queued", attempts: 0 });
+      expect(getAnalysisJobsForTests()[0]).toMatchObject({ status: "queued", attempts: retry ? 1 : 0 });
       expect(observationSpy).not.toHaveBeenCalled();
       pending = false;
       expect((await run("2026-06-30T00:11:30Z")).status).toBe("completed");

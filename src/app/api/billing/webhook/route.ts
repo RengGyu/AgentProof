@@ -54,10 +54,10 @@ export async function POST(request: Request) {
     throw error;
   }
 
-  const status = billingWebhookStatusCode(intake.status);
+  const status = subscription.status === "store_unavailable" ? 503 : billingWebhookStatusCode(intake.status);
 
   return noStoreJson({
-    ok: intake.accepted,
+    ok: intake.accepted && status < 400,
     webhook: intake,
     subscription,
     privacy: intake.privacy,

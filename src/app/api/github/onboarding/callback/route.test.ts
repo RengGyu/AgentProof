@@ -349,9 +349,17 @@ describe("GET /api/github/onboarding/callback", () => {
     });
   });
 
-  it("rejects an installation not owned by the signed-in GitHub identity without entering the legacy claim flow", async () => {
+  it.each([
+    { id: 321, app_id: 456, account: { id: 12345, type: "User" } },
+    { id: 999, app_id: 456, account: { id: 12345, type: "User" } },
+    { id: 321, app_id: 789, account: { id: 12345, type: "User" } },
+    { id: 321, app_id: 456, account: { id: 98765, type: "User" } },
+    { id: 321, app_id: 456, account: { id: 12345, type: "Organization" } }
+  ])("requires matching App and personal owner proof: %j", async (installation) => {
     stubOnboardingEnv();
     stubPublicOAuthEnv();
+    vi.stubEnv("GITHUB_APP_ID", "456");
+    vi.stubEnv("AGENTPROOF_GITHUB_INSTALLATIONS_ALLOW_MEMORY", "true");
     vi.stubEnv("AGENTPROOF_TENANT_AUTH_ALLOW_MEMORY", "true");
     vi.stubEnv("AGENTPROOF_TENANT_ACCOUNTS", JSON.stringify([{
       tenantId: "tenant_a",
@@ -386,7 +394,7 @@ describe("GET /api/github/onboarding/callback", () => {
     const install = await createGitHubAppInstallSession({ tenantId: "tenant_a" });
     const installState = new URL(install.installUrl).searchParams.get("state");
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
-      installations: [{ id: 999 }]
+      installations: [installation]
     }), { status: 200, headers: { "Content-Type": "application/json" } })));
 
     const response = await GET(new Request(
@@ -394,9 +402,10 @@ describe("GET /api/github/onboarding/callback", () => {
       { headers: { Cookie: [session.sessionCookie, install.nonceCookie, boundCookie].join("; ") } }
     ));
 
-    expect(response.status).toBe(403);
+    const allowed = installation.id === 321 && installation.app_id === 456 && installation.account.id === 12345 && installation.account.type === "User";
+    expect(response.status).toBe(allowed ? 200 : 403);
     expect(response.headers.get("Set-Cookie")).toContain("agentproof_github_oauth_install=deleted");
-    await expect(response.json()).resolves.toMatchObject({ code: "github_installation_access_denied" });
+    if (!allowed) await expect(response.json()).resolves.toMatchObject({ code: "github_installation_access_denied" });
   });
 
   it("uses the same pending path under strict operator-claim configuration", async () => {

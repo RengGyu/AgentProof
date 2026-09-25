@@ -132,7 +132,7 @@ describe("public GitHub OAuth cookies", () => {
     await expect(verifyGitHubInstallationAccess({
       cookieHeader: identity.installCookie,
       tenantId: "tenant_a",
-      installationId: 321
+      installationId: 321, appId: 456
     }, config, installationFetch, startedAt)).resolves.toBe(false);
   });
 

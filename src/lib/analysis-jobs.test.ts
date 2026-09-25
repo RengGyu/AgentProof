@@ -21,6 +21,7 @@ import {
   getAnalysisJobsForTests,
   getTenantAnalysisJobRollup,
   listTenantAnalysisJobs,
+  listAnalysisJobIdsForHead,
   markAnalysisJobProviderSubmission,
   markAnalysisJobSemanticRetrySubmission,
   parkAnalysisJobForProvider,
@@ -433,17 +434,56 @@ describe("analysis job queue", () => {
     expect(nextHead.id).not.toBe(first.id);
   });
 
-  it("defers an unsealed claimed job without using a retry attempt", async () => {
+  it.each([false, true])("defers an unsealed claimed job preserving planner binding: %s", async (bound) => {
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
     vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
     const first = await enqueueAnalysisJob({ ...jobInput(), oncePerHead: true });
     const claim = (await claimNextAnalysisJob({ now: new Date("2026-06-30T00:00:15Z") })).job!;
+    if (bound) {
+      getAnalysisJobsForTests()[0]!.planner_contract_version = "hybrid_requirement_planner.v1";
+      getAnalysisJobsForTests()[0]!.planner_input_hash = "a".repeat(64);
+    }
     await expect(deferAnalysisJob({
       id: first.id, claimGeneration: claim.claim_generation!, runningRevision: claim.running_revision!, attempts: claim.attempts,
       runAfter: new Date("2026-06-30T00:00:45Z"), now: new Date("2026-06-30T00:00:15Z")
     })).resolves.toBe(true);
     expect(getAnalysisJobsForTests()[0]).toMatchObject({ status: "queued", attempts: 0, run_after: "2026-06-30T00:00:45.000Z" });
+    if (bound) expect(getAnalysisJobsForTests()[0]).toMatchObject({ planner_contract_version: "hybrid_requirement_planner.v1", planner_input_hash: "a".repeat(64) });
     await expect(claimNextAnalysisJob({ now: new Date("2026-06-30T00:00:44Z") })).resolves.toMatchObject({ job: null });
+  });
+
+  it("finds only active jobs for the exact installation, repository and CI head", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+    await enqueueAnalysisJob(jobInput());
+    const first = getAnalysisJobsForTests()[0]!;
+    await enqueueAnalysisJob({ ...jobInput(), idempotencyKey: "second-pr", pullRequestNumber: 8, pullRequestUrl: "https://github.com/RengGyu/AgentProof/pull/8" });
+    const second = getAnalysisJobsForTests().find(row => row.id !== first.id)!;
+    const input = { installationId: first.installation_id, repositoryId: first.repository_id!, headSha: first.head_sha };
+    second.status = "processing";
+    expect(await listAnalysisJobIdsForHead(input)).toEqual([first.id, second.id]);
+    const baseline = { ...second };
+    for (const change of [
+      { installation_id: first.installation_id + 1 }, { repository_id: first.repository_id! + 1 },
+      { head_sha: "def456" }, { status: "completed" as const }, { is_historical: true }
+    ]) {
+      Object.assign(second, baseline, change);
+      expect(await listAnalysisJobIdsForHead(input)).toEqual([first.id]);
+    }
+  });
+
+  it("scopes the durable CI-head lookup and fails closed on a store failure", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://jobs.invalid");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "test-key");
+    const id = "123e4567-e89b-42d3-a456-426614174000";
+    const fetchMock = vi.fn().mockResolvedValueOnce(Response.json([{ id }])).mockResolvedValueOnce(new Response(null, { status: 503 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const input = { installationId: 321, repositoryId: 100, headSha: "abc123" };
+    expect(await listAnalysisJobIdsForHead(input)).toEqual([id]);
+    const query = new URL(String(fetchMock.mock.calls[0][0])).searchParams;
+    expect(Object.fromEntries(query)).toMatchObject({ installation_id: "eq.321", repository_id: "eq.100", head_sha: "eq.abc123", is_historical: "eq.false", status: "in.(queued,processing)", select: "id" });
+    await expect(listAnalysisJobIdsForHead(input)).rejects.toThrow("HTTP 503");
   });
 
   it("keeps separate canonical rows for different heads", async () => {

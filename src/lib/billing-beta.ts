@@ -446,6 +446,8 @@ export function readBillingBetaSubscriptionRecords(env = process.env): BillingBe
   return mergeMemoryBillingSubscriptionRecords(records, env).slice(0, 500);
 }
 
+const pendingBillingReceipts = new WeakMap<BillingWebhookIntakeResult, () => Promise<BillingWebhookReservation>>();
+
 export async function reserveBillingWebhookEvent(
   input: {
     provider?: unknown;
@@ -453,6 +455,7 @@ export async function reserveBillingWebhookEvent(
     tenantId?: unknown;
     eventType?: unknown;
     receivedAt?: Date;
+    readOnly?: boolean;
   },
   env = process.env
 ): Promise<BillingWebhookReservation> {
@@ -467,6 +470,17 @@ export async function reserveBillingWebhookEvent(
   const eventIdHash = hashBillingWebhookEvent(providerEventId);
   const idempotencyKey = `${provider}:${eventIdHash}`;
   const config = getBillingWebhookStoreConfig(env);
+
+  if (config && input.readOnly) {
+    const response = await fetch(`${config.url}/rest/v1/${encodeURIComponent(config.table)}?id=eq.${encodeURIComponent(idempotencyKey)}&select=id&limit=1`, {
+      cache: "no-store",
+      headers: { apikey: config.serviceRoleKey, Authorization: `Bearer ${config.serviceRoleKey}` }
+    });
+    if (!response.ok) throw new BillingBetaStoreError(`Billing webhook idempotency lookup failed with HTTP ${response.status}.`);
+    const rows: unknown = await response.json();
+    if (!Array.isArray(rows)) throw new BillingBetaStoreError("Billing webhook idempotency lookup is invalid.");
+    return { accepted: true, duplicate: rows.length > 0, store: "supabase", provider, tenantId, eventType, privacy: "billing-webhook-idempotency-metadata-only" };
+  }
 
   if (config) {
     return reserveSupabaseBillingWebhookEvent(config, {
@@ -494,7 +508,7 @@ export async function reserveBillingWebhookEvent(
 
   const store = billingWebhookMemoryStore();
   const duplicate = store.has(idempotencyKey);
-  if (!duplicate) store.add(idempotencyKey);
+  if (!duplicate && !input.readOnly) store.add(idempotencyKey);
 
   return {
     accepted: true,
@@ -578,13 +592,16 @@ export async function processSignedBillingWebhook(
     });
   }
 
-  const idempotency = await reserveBillingWebhookEvent({
+  const receipt = {
     provider,
     providerEventId: metadata.providerEventId,
     tenantId: metadata.publicMetadata.tenantId,
     eventType: metadata.publicMetadata.eventType,
     receivedAt
-  }, env);
+  };
+  // A receipt represents completed lifecycle synchronization, so failed writes remain replayable.
+  const deferredReceipt = truthy(env.AGENTPROOF_BILLING_SUBSCRIPTION_SYNC_ENABLED);
+  const idempotency = await reserveBillingWebhookEvent({ ...receipt, readOnly: deferredReceipt }, env);
 
   if (!idempotency.accepted) {
     return webhookIntakeResult({
@@ -599,7 +616,7 @@ export async function processSignedBillingWebhook(
     });
   }
 
-  return webhookIntakeResult({
+  const intake = webhookIntakeResult({
     provider,
     verified: true,
     accepted: true,
@@ -609,6 +626,19 @@ export async function processSignedBillingWebhook(
     idempotency,
     ...metadata.publicMetadata
   });
+  if (deferredReceipt && !idempotency.duplicate) {
+    pendingBillingReceipts.set(intake, () => reserveBillingWebhookEvent(receipt, env));
+  }
+  return intake;
+}
+
+async function completeBillingReceipt(intake: BillingWebhookIntakeResult) {
+  const complete = pendingBillingReceipts.get(intake);
+  if (complete) {
+    const result = await complete();
+    if (!result.accepted) throw new BillingBetaStoreError("Billing webhook completion receipt is unavailable.");
+    pendingBillingReceipts.delete(intake);
+  }
 }
 
 export async function syncBillingSubscriptionLifecycleFromWebhook(
@@ -703,6 +733,7 @@ export async function syncBillingSubscriptionLifecycleFromWebhook(
       plan: intake.plan
     });
 
+    await completeBillingReceipt(intake);
     return billingSubscriptionLifecycleResult({
       enabled: true,
       synced: true,
@@ -743,6 +774,7 @@ export async function syncBillingSubscriptionLifecycleFromWebhook(
     customerPortalEnabled: false
   });
 
+  await completeBillingReceipt(intake);
   return billingSubscriptionLifecycleResult({
     enabled: true,
     synced: true,

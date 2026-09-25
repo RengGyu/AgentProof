@@ -7,6 +7,7 @@ import {
   claimAnalysisJobById,
   DEFAULT_ANALYSIS_JOB_CI_DISCOVERY_MS,
   enqueueAnalysisJob,
+  listAnalysisJobIdsForHead,
   getAnalysisJobQueueStatus
 } from "@/lib/analysis-jobs";
 import { runClaimedAnalysisJob } from "@/lib/analysis-worker";
@@ -98,6 +99,24 @@ export async function POST(request: Request) {
   }
 }
 
+function scheduleAnalysisJobWake(jobId: string, requestUrl: string) {
+  if (process.env.VERCEL !== "1") return;
+  try {
+    const workerUrl = new URL("/api/ops/analysis-jobs/run", requestUrl).toString();
+    after(async () => {
+      try {
+        await new Promise<void>((resolve) => setTimeout(resolve, DEFAULT_ANALYSIS_JOB_CI_DISCOVERY_MS));
+        const claimed = await claimAnalysisJobById(jobId);
+        if (claimed.job) await runClaimedAnalysisJob(claimed.job, { requestUrl: workerUrl });
+      } catch {
+        // The daily cron recovers an unclaimed or expired job.
+      }
+    });
+  } catch {
+    // An unavailable post-response scheduler does not discard the queued job.
+  }
+}
+
 async function handlePost(request: Request) {
   const webhookSecret = process.env.GITHUB_WEBHOOK_SECRET ?? "";
 
@@ -155,6 +174,25 @@ async function handlePost(request: Request) {
     });
   }
 
+  const completedHeadEvent = (meta.event === "check_suite" && action === "completed") ||
+    (meta.event === "status" && ["success", "failure", "error"].includes(getString(payload, "state") ?? ""));
+  if (completedHeadEvent && settings.enabled) {
+    const installationId = getNumber(getNestedRecord(payload, "installation"), "id");
+    const repositoryId = getNumber(getNestedRecord(payload, "repository"), "id");
+    const headSha = meta.event === "status" ? getString(payload, "sha") : getString(getNestedRecord(payload, "check_suite"), "head_sha");
+    if (!installationId || !repositoryId || !headSha || !isGitHubSha(headSha)) {
+      return noStoreJson({ error: "GitHub CI completion metadata is invalid.", code: "github_app_ci_payload_invalid", willAnalyze: false, willComment: false }, { status: 422 });
+    }
+    try {
+      const jobIds = await listAnalysisJobIdsForHead({ installationId, repositoryId, headSha });
+      for (const jobId of jobIds) scheduleAnalysisJobWake(jobId, request.url);
+      return noStoreJson({ ok: true, accepted: true, event: meta.event }, { status: 202 });
+    } catch (error) {
+      if (!(error instanceof AnalysisJobQueueError)) throw error;
+      return noStoreJson({ error: "Analysis job queue is unavailable.", code: "github_app_analysis_queue_unavailable", willAnalyze: false, willComment: false }, { status: 503 });
+    }
+  }
+
   if (meta.event === "check_run" && action === "completed" && settings.enabled) {
     const normalizedPayload = pullRequestPayloadFromCompletedCheckRun(payload);
     if (!normalizedPayload) {
@@ -178,7 +216,7 @@ async function handlePost(request: Request) {
     };
 
     if (process.env.VERCEL === "1") {
-      after(() => handlePullRequestAutomation(normalizedPayload.payload, automationContext).then(() => undefined));
+      after(() => withPaidAnalysis(`webhook:${meta.delivery}`, () => handlePullRequestAutomation(normalizedPayload.payload, automationContext)).then(() => undefined));
       return noStoreJson({
         ok: true,
         accepted: true,
@@ -801,21 +839,8 @@ async function handlePullRequestAutomation(
           : "github_app_head_already_claimed"
       });
 
-      if ((queued || (context.action === "check_run_completed" && job.status === "processing")) && process.env.VERCEL === "1") {
-        try {
-          const workerUrl = new URL("/api/ops/analysis-jobs/run", context.requestUrl).toString();
-          after(async () => {
-            try {
-              await new Promise<void>((resolve) => setTimeout(resolve, DEFAULT_ANALYSIS_JOB_CI_DISCOVERY_MS));
-              const claimed = await claimAnalysisJobById(job.id);
-              if (claimed.job) await runClaimedAnalysisJob(claimed.job, { requestUrl: workerUrl });
-            } catch {
-              // The daily cron recovers an unclaimed or expired job.
-            }
-          });
-        } catch {
-          // An unavailable post-response scheduler does not discard the queued job.
-        }
+      if (queued || (context.action === "check_run_completed" && job.status === "processing")) {
+        scheduleAnalysisJobWake(job.id, context.requestUrl);
       }
 
       return noStoreJson({

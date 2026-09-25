@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { headers } from "next/headers";
+import { resolveTenantAuthAccess } from "@/lib/tenant-auth";
 import { ReportView } from "@/components/ReportView";
 import { getSavedReport, getSavedReportStoreStatus, SavedReportStoreError } from "@/lib/server-report-store";
 
@@ -14,7 +16,9 @@ export default async function SavedReportPage({ params, searchParams }: SavedRep
   let saved;
 
   try {
-    saved = await getSavedReport(id, key ? { accessToken: key.slice(0, 200) } : {});
+    const access = key ? null : await resolveTenantAuthAccess({ cookieHeader: (await headers()).get("cookie") });
+    saved = await getSavedReport(id, key ? { accessToken: key.slice(0, 200) } :
+      access?.authorized && access.tenantId ? { tenantId: access.tenantId } : {});
   } catch (error) {
     if (error instanceof SavedReportStoreError) {
       saved = null;

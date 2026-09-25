@@ -26,6 +26,12 @@ const run=(i:PullRequestInput,provider:any,extra:any={})=>(intent as any).enrich
 const goals=(request:any)=>({goals:[{summary:'Preserve pending work during reconnect',emphasis:'primary',sourceRefs:[request.sources[0].spans[0].id],facets:[{kind:'condition',summary:'During reconnection',sourceRefs:[request.sources[0].spans[0].id]}],openQuestions:[]},{summary:'Consider retiring the switch',emphasis:'optional',sourceRefs:[request.sources[0].spans[1].id],facets:[],openQuestions:['Is retirement in scope?']}],unprocessed:[]});
 const ranks=(request:any)=>({rankings:request.goals.map((g:any)=>{const a=request.artifacts.find((a:any)=>!a.goalIds||a.goalIds.includes(g.id));return {goalId:g.id,firstInspection:a?.id??null,candidates:a?[{artifactId:a.id,relevance:'relevant',whyInspect:'Inspect the pending-work return path',reviewQuestion:'Does reconnect retain pending entries?',uncertainty:'Runtime behavior was not exercised'}]:[],uncertainty:[]};}),readPaths:[]});
 describe('Luna review navigation',()=>{
+ it.each(['src/app/reports/[id]/page.tsx','src/app/(auth)/login/page.tsx','src/app/[...slug]/page.tsx','src/app/[[...slug]]/page.tsx','src/app/@modal/(.)photo/page.tsx'])('retains legitimate framework route %s',async path=>{
+  const i=input();i.changedFiles[0].path=path;
+  const r=await run(i,async(q:any)=>q.stage==='intent'?goals(q):ranks(q));
+  expect(r.reviewCandidates.navigation.artifacts.some((a:any)=>a.path===path)).toBe(true);
+  expect(validateRuntimeReportBoundary({boundary:'generated_private_full',input:i,report:r}).valid).toBe(true);
+ });
  it('interprets goals independently of strict extraction and ranks real code without promoting status',async()=>{
   const i=input(), strict=generateVerificationReportV2FromInput(i);let seen='';
   const r=await run(i,async(q:any)=>{if(q.stage==='intent'){expect(q.sources.map((s:any)=>s.authority)).toEqual(['issue_source','pr_author_claim','pr_author_claim']);return goals(q);}seen=JSON.stringify(q);return ranks(q);});

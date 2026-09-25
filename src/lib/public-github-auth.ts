@@ -149,19 +149,19 @@ export async function finishGitHubOAuth(
 }
 
 export async function verifyGitHubInstallationAccess(
-  input: { cookieHeader?: string | null; tenantId: string; installationId: number },
+  input: { cookieHeader?: string | null; tenantId: string; installationId: number; appId: number },
   config: GitHubOAuthConfig,
   fetchImpl: typeof fetch = fetch,
   now = Date.now()
 ): Promise<boolean> {
   const authorization = openCookie<InstallAuthorization>(input.cookieHeader, GITHUB_OAUTH_INSTALL_COOKIE, config.secret, now);
-  if (!authorization || authorization.tenantId !== input.tenantId) return false;
+  if (!authorization || authorization.tenantId !== input.tenantId || !Number.isSafeInteger(input.appId) || input.appId <= 0) return false;
   const response = await fetchImpl("https://api.github.com/user/installations?per_page=100", {
     headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${authorization.accessToken}`, "X-GitHub-Api-Version": "2022-11-28" },
     cache: "no-store"
   });
-  const body = await response.json().catch(() => null) as { installations?: Array<{ id?: unknown }> } | null;
-  return Boolean(response.ok && body?.installations?.some((item) => item.id === input.installationId));
+  const body = await response.json().catch(() => null) as { installations?: Array<{ id?: unknown; app_id?: unknown; account?: { id?: unknown; type?: unknown } }> } | null;
+  return Boolean(response.ok && Array.isArray(body?.installations) && body.installations.some((item) => item.id === input.installationId && item.app_id === input.appId && item.account?.type === "User" && normalizeGitHubUserId(item.account.id) === authorization.githubUserId));
 }
 
 /**

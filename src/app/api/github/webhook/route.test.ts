@@ -22,15 +22,20 @@ import {
 import { clearUsageQuotaForTests } from "@/lib/usage-quota";
 import { GET as GETSavedReport } from "@/app/api/reports/[id]/route";
 import { POST } from "./route";
+import * as paidBudget from "@/lib/paid-budget";
+import * as semanticRuntime from "@/lib/llm-semantic-runtime";
+import { paidBudgetLedger } from "@/lib/test-support/paid-budget-ledger";
 
 const deferredWebhookTasks = vi.hoisted(() => [] as Promise<unknown>[]);
-const afterBehavior = vi.hoisted(() => ({ failRegistration: false }));
+const afterBehavior = vi.hoisted(() => ({ failRegistration: false, hold: false }));
+const heldCallbacks = vi.hoisted(() => [] as Array<() => unknown>);
 const mockedClaimAnalysisJobById = vi.hoisted(() => vi.fn());
 const mockedRunClaimedAnalysisJob = vi.hoisted(() => vi.fn());
 
 vi.mock("next/server", () => ({
   after(task: Promise<unknown> | (() => unknown)) {
     if (afterBehavior.failRegistration) throw new Error("after unavailable");
+    if (afterBehavior.hold && typeof task === "function") { heldCallbacks.push(task); return; }
     deferredWebhookTasks.push(Promise.resolve().then(() => typeof task === "function" ? task() : task));
   }
 }));
@@ -50,6 +55,8 @@ describe("POST /api/github/webhook", () => {
     vi.stubEnv("VERCEL", "");
     deferredWebhookTasks.length = 0;
     afterBehavior.failRegistration = false;
+    afterBehavior.hold = false;
+    heldCallbacks.length = 0;
     mockedClaimAnalysisJobById.mockReset();
     mockedClaimAnalysisJobById.mockResolvedValue({
       job: { id: "claimed-job" },
@@ -866,6 +873,80 @@ describe("POST /api/github/webhook", () => {
     expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("/issues/7/comments"))).toBe(false);
   });
 
+  it("runs a deferred check webhook inside a live paid budget scope after POST returns", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY", "true");
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    vi.stubEnv("VERCEL", "1");
+    const grant = await createTenantRepositoryGrant({
+      tenantId: "tenant_test",
+      installationId: 321,
+      repositoryId: 100,
+      repositoryFullName: "RengGyu/AgentProof",
+      repositoryPrivate: true,
+      privateAnalysisConsentVersion: "2026-09-24.v1",
+      saveReportsEnabled: false,
+      commentEnabled: false
+    });
+    vi.stubEnv("AGENTPROOF_TENANT_REPOSITORY_GRANTS", JSON.stringify([grant]));
+    afterBehavior.hold = true;
+    vi.stubEnv("AGENTPROOF_CONTROL_PLANE_SUPABASE_URL", "https://budget.invalid");
+    vi.stubEnv("AGENTPROOF_CONTROL_PLANE_SUPABASE_SERVICE_ROLE_KEY", "test-key");
+    const real = await vi.importActual<typeof import("@/lib/paid-budget")>("@/lib/paid-budget");
+    const scope = vi.spyOn(paidBudget, "withPaidAnalysis").mockImplementation(real.withPaidAnalysis);
+    const ledger = paidBudgetLedger();
+    const github = mockAutomationFetch();
+    const fetchMock = vi.fn((url: string | URL | Request, init?: RequestInit) =>
+      String(url).includes("/rpc/agentproof_paid_budget") ? ledger.fetch(init) :
+      String(url).includes("/rest/v1/agentproof_tenant_deletion_state") ? Promise.resolve(new Response(null, { headers: { "content-range": "*/0" } })) : github(url, init));
+    vi.stubGlobal("fetch", fetchMock);
+    const original = semanticRuntime.enrichReportWithHybridPlanning;
+    const invoke = vi.fn(async () => 1);
+    const semantic = vi.spyOn(semanticRuntime, "enrichReportWithHybridPlanning").mockImplementation(async (...args) => {
+      await real.paidProviderCall({ provider: "google", model: "test", invoke, usage: () => ({ input: 1, output: 1 }) });
+      return original(...args);
+    });
+    try {
+      const body = JSON.stringify({
+        action: "completed",
+        repository: { id: 100, full_name: "RengGyu/AgentProof", private: true },
+        installation: { id: 321 },
+        check_run: {
+          id: 999,
+          head_sha: "abc123",
+          pull_requests: [{ number: 7 }]
+        }
+      });
+
+      const response = await POST(signedRequest(body, {
+        event: "check_run",
+        delivery: "delivery-check-completed-reanalysis",
+        secret: "secret"
+      }));
+      const json = await response.json();
+
+      expect(response.status).toBe(202);
+      expect(json).toMatchObject({
+        event: "check_run",
+        automationEnabled: true,
+        willAnalyze: true,
+        willComment: false,
+        deferred: true
+      });
+      expect(json).not.toHaveProperty("analysis");
+      expect(invoke).not.toHaveBeenCalled();
+      expect(heldCallbacks).toHaveLength(1);
+      await heldCallbacks[0]();
+      expect(invoke).toHaveBeenCalledTimes(1);
+      expect(ledger.closed.size).toBe(1);
+      expect(getAuditEventsForTests()[0]).toMatchObject({ action: "github_app_analysis_completed" });
+      expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("/issues/7/comments"))).toBe(false);
+    } finally { semantic.mockRestore(); scope.mockRestore(); }
+  });
+
   it("fails closed when the PR base changes after collection and before publication", async () => {
     vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
     vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
@@ -1129,7 +1210,75 @@ describe("POST /api/github/webhook", () => {
     expect(mockedRunClaimedAnalysisJob).toHaveBeenCalledTimes(1);
   });
 
-  it("wakes a head when check completion races with a processing claim that later waits", async () => {
+  it.each([
+    { event: "status", detail: { state: "pending", sha: "abc123" }, status: 200 },
+    { event: "check_suite", detail: { action: "requested", check_suite: { head_sha: "abc123" } }, status: 200 },
+    { event: "status", detail: { state: "success", sha: "invalid" }, status: 422 },
+    { event: "check_suite", detail: { action: "completed", check_suite: {} }, status: 422 }
+  ])("does not wake on pending or invalid CI metadata: $event $detail", async ({ event, detail, status }) => {
+    vi.stubEnv("VERCEL", "1");
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    const body = JSON.stringify({ ...detail, installation: { id: 321 }, repository: { id: 100 } });
+    const response = await POST(signedRequest(body, { event, delivery: "delivery-no-wake", secret: "secret" }));
+    expect(response.status).toBe(status);
+    expect(deferredWebhookTasks).toHaveLength(0);
+    expect(mockedRunClaimedAnalysisJob).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { event: "check_suite", detail: { action: "completed", check_suite: { head_sha: "abc123", pull_requests: [] } } },
+    ...["success", "failure", "error"].map(state => ({ event: "status", detail: { state, sha: "abc123" } }))
+  ])("wakes an existing waiting head on $event completion without PR links", async ({ event, detail }) => {
+    vi.useFakeTimers();
+    vi.stubEnv("VERCEL", "1");
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY", "true");
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    await createTenantRepositoryGrant({
+      tenantId: "tenant_test", installationId: 321, repositoryId: 100,
+      repositoryFullName: "RengGyu/AgentProof"
+    });
+    const realJobs = await vi.importActual<typeof import("@/lib/analysis-jobs")>("@/lib/analysis-jobs");
+    const waiting = await realJobs.enqueueAnalysisJob({
+      tenantId: "tenant_test", idempotencyKey: "head-abc123", deliveryId: "123e4567-e89b-12d3-a456-426614174391",
+      event: "pull_request", action: "opened", installationId: 321, repositoryId: 100,
+      repositoryFullName: "RengGyu/AgentProof", pullRequestNumber: 7,
+      pullRequestUrl: "https://github.com/RengGyu/AgentProof/pull/7", headSha: "abc123",
+      saveReport: false, comment: false, oncePerHead: true, now: new Date(Date.now() - 60_000)
+    });
+    mockedClaimAnalysisJobById.mockImplementation(realJobs.claimAnalysisJobById);
+    mockedRunClaimedAnalysisJob.mockImplementation(async (job) => {
+      await realJobs.completeAnalysisJob({ id: job.id, claimGeneration: job.claim_generation!, now: new Date() });
+      return { status: "completed" };
+    });
+    const body = JSON.stringify({
+      ...detail, repository: { id: 100, full_name: "RengGyu/AgentProof" }, installation: { id: 321 }
+    });
+    const send = (delivery: string) => POST(signedRequest(body, { event, delivery, secret: "secret" }));
+
+    const first = await send("delivery-check-wake-1");
+    expect(first.status).toBe(202);
+    expect(await first.json()).not.toHaveProperty("analysis");
+    expect(deferredWebhookTasks).toHaveLength(1);
+    expect(mockedRunClaimedAnalysisJob).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(45_000);
+    await Promise.all(deferredWebhookTasks);
+    expect(mockedRunClaimedAnalysisJob).toHaveBeenCalledTimes(1);
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({ id: waiting.id, status: "completed" });
+
+    const duplicate = await send("delivery-check-wake-2");
+    expect(duplicate.status).toBe(202);
+    expect(deferredWebhookTasks).toHaveLength(1);
+    expect(mockedRunClaimedAnalysisJob).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["check_run", "check_suite", "status"])("wakes a head when %s completion races with a processing claim that later waits", async event => {
     vi.useFakeTimers();
     vi.stubEnv("VERCEL", "1");
     vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
@@ -1156,13 +1305,14 @@ describe("POST /api/github/webhook", () => {
     mockedClaimAnalysisJobById.mockImplementation(realJobs.claimAnalysisJobById);
     const body = JSON.stringify({
       action: "completed", repository: { id: 100, full_name: "RengGyu/AgentProof" }, installation: { id: 321 },
-      check_run: { id: 999, head_sha: "abc123", pull_requests: [{ number: 7 }] }
+      check_run: { id: 999, head_sha: "abc123", pull_requests: [{ number: 7 }] },
+      check_suite: { head_sha: "abc123" }, sha: "abc123", state: "success"
     });
     const response = await POST(signedRequest(body, {
-      event: "check_run", delivery: "delivery-check-race", secret: "secret"
+      event, delivery: "delivery-check-race", secret: "secret"
     }));
     expect(response.status).toBe(202);
-    await deferredWebhookTasks[0];
+    if (event === "check_run") await deferredWebhookTasks[0];
     expect(getAnalysisJobsForTests()[0]).toMatchObject({ status: "processing" });
     await realJobs.deferAnalysisJob({
       id: queued.id, claimGeneration: active.claim_generation!, runningRevision: active.running_revision!,

@@ -435,14 +435,6 @@ async function runPreflightedAnalysisJob(
   options: RunAnalysisJobOptions,
   env: NodeJS.ProcessEnv
 ): Promise<AnalysisWorkerRunResult> {
-  return withPaidAnalysis(`job:${preflight.job?.id ?? "none"}`, () => runBudgetedPreflightedJob(preflight, options, env));
-}
-
-async function runBudgetedPreflightedJob(
-  preflight: AnalysisWorkerPreflightResult,
-  options: RunAnalysisJobOptions,
-  env: NodeJS.ProcessEnv
-): Promise<AnalysisWorkerRunResult> {
   if (preflight.status !== "ready" || !preflight.job) {
     return preflight;
   }
@@ -451,303 +443,305 @@ async function runBudgetedPreflightedJob(
   const sideEffects = preflight.sideEffects ?? { saveReport: false, comment: false };
 
   try {
-    await prepareWorkerSideEffects(job, sideEffects, env);
-    await assertWorkerTenantDeletionNotActive(job, env);
-
-    const token = await createGitHubInstallationAccessToken(job.installation_id, env);
-    const llmAnalysisMode = preflight.llmAnalysisMode
-      ?? (await isGitHubRepositoryPublic(job.repository_full_name, token) ? "enhanced" : "essential");
-    const input = await buildGitHubPullRequestInput(job.pull_request_url, token, "", undefined, {
-      expectedHeadSha: job.head_sha,
-      now: () => options.now ?? new Date()
-    });
-
-    if (!input) {
-      throw new AnalysisWorkerRetryableError(
-        "github_app_pr_input_unavailable",
-        "GitHub App worker could not build a pull request input."
-      );
-    }
-    if (input.repositoryPrivate === true && !preflight.privateAnalysisApproved) {
-      throw new AnalysisWorkerTerminalError("private-consent-required", "Private repository analysis is off until its code-analysis notice is accepted.");
-    }
-
-    const now = options.now ?? new Date();
-    const ageMs = Math.max(0, now.getTime() - new Date(job.created_at).getTime());
-    const checksPending = input.checks.some((check) => check.status === "pending") ||
-      input.executionSuites?.some((suite) => suite.status === "pending") === true;
-    if (job.attempts === 1 && (ageMs < DEFAULT_ANALYSIS_JOB_CI_DISCOVERY_MS || checksPending)) {
-      const runAfter = new Date(now.getTime() + Math.max(
-        CHECK_SETTLE_POLL_MS,
-        DEFAULT_ANALYSIS_JOB_CI_DISCOVERY_MS - ageMs
-      ));
-      const deferred = await deferAnalysisJob({
-        id: job.id,
-        claimGeneration: job.claim_generation ?? "",
-        runningRevision: job.running_revision ?? 0,
-        attempts: job.attempts,
-        runAfter,
-        now
-      }, env);
-      if (!deferred) throw new AnalysisWorkerLeaseLostError();
-      return { status: "waiting_checks", job, sideEffects };
-    }
-
-    const generalPrPolicy = resolveGeneralPrAssessmentRuntimePolicyV1(
-      env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE
-    );
-    const generalPrObserverApiKey = env.OPENAI_API_KEY?.trim();
-    const generalPrObserverModel = env.OPENAI_MODEL?.trim();
-    const semanticEligible = generalPrPolicy.semanticObservation === "eligible_public_pr" &&
-      generalPrObservationService.isGeneralPrSemanticObserverEligibleV2(input) &&
-      Boolean(generalPrObserverApiKey && generalPrObserverModel);
-    const navigationProvider = resolveNavigationProvider(env);
-    const navigationEligible = generalPrPolicy.semanticObservation === "eligible_public_pr" &&
-      (generalPrObservationService.isGeneralPrSemanticObserverEligibleV2(input) || Boolean(input.repositoryPrivate === true && preflight.privateAnalysisApproved && input.sourceProvenance?.origin === "github_snapshot" && (input.taskText.trim() === "" || input.taskSource === "issue")));
-    const generalPrObservation = await generalPrObservationService.runGeneralPrObservationNowV2({
-      policy: generalPrPolicy,
-      input,
-      navigation: {
-        model: navigationProvider.model,
-        ...(navigationEligible && navigationProvider.provider ? {
-          provider: navigationProvider.provider,
-          ...(input.repositoryPrivate === true && preflight.privateTenantId && job.repository_id ? { authorizePrivate: () => isPrivateAnalysisGrantCurrent({ tenantId: preflight.privateTenantId!, repositoryFullName: job.repository_full_name, installationId: job.installation_id, repositoryId: job.repository_id! }) } : {}),
-          readRepositoryPrivate: () => readGitHubRepositoryPrivate(job.repository_full_name, token),
-          readArtifacts: (paths,headSha) => collectReviewArtifacts(job.pull_request_url,token,paths,headSha),
-          readCurrentInput: () => buildGitHubPullRequestInput(job.pull_request_url,token,"",undefined,{expectedHeadSha:input.sourceProvenance?.headSha,expectedBaseSha:input.sourceProvenance?.baseSha})
-        } : {})
-      },
-      generateReport: generateVerificationReportV2FromInput,
-      // The generated/semantic report still crosses the existing worker
-      // runtime boundary below; this only keeps observation collection off
-      // when deterministic generation is invalid.
-      validateDeterministicReport: (candidateInput, candidateReport) =>
-        resolveRuntimeReportValidation({
-          input: candidateInput,
-          report: candidateReport,
-          requireV2: true,
-          requireSourceProvenance: true
-        }).valid,
-      ...(semanticEligible && generalPrObserverApiKey && generalPrObserverModel ? {
-        semantic: {
-          provider: {
-            observe: (semanticPackage) => submitGeneralPrSemanticObservationWithOpenAI(semanticPackage, {
-              apiKey: generalPrObserverApiKey
-            })
-          },
-          providerAvailable: true,
-          privateRepository: false,
-          readCurrentInput: () => buildGitHubPullRequestInput(job.pull_request_url, token, "", undefined, {
-            expectedHeadSha: input.sourceProvenance?.headSha,
-            expectedBaseSha: input.sourceProvenance?.baseSha
-          }),
-          modelProfile: {
-            model: generalPrObserverModel,
-            promptVersion: "general-pr-observer.v4",
-            inputFieldPolicyVersion: "general-pr-observer-fields.v1"
-          }
-        }
-      } : {})
-    });
-    const deterministicReport = generalPrObservation.report;
-    if (input.repositoryPrivate === true) {
-      let currentGrant;
-      try {
-        currentGrant = await authorizeTenantRepositoryGrantAsync({
-          installationId: job.installation_id,
-          repositoryId: job.repository_id ?? undefined,
-          repositoryFullName: job.repository_full_name
-        }, env);
-      } catch {
-        throw new AnalysisWorkerRetryableError("github_app_tenant_grant_store_unavailable", "Private repository grant could not be rechecked before model analysis.");
-      }
-      if (currentGrant.reason || currentGrant.grant?.tenantId !== preflight.privateTenantId || currentGrant.grant?.privateAnalysisConsentVersion !== "2026-09-24.v1") {
-        throw new AnalysisWorkerTerminalError("private-consent-required", "Private repository analysis was turned off before model analysis.");
-      }
-    }
-    const protocol = resolveHybridWorkerProtocol(job, preflight.hybridPilotControlled === true);
-    const semanticResult = generalPrPolicy.assessmentProjection === "advisory" && (deterministicReport as import("./types").VerificationReportV2).reviewCandidates?.navigation
-      ? { status: "ready" as const, report: deterministicReport }
-      : protocol === "legacy"
-      ? await advanceQueuedSemanticAnalysis(
-        job,
-        input,
-        deterministicReport,
-        llmAnalysisMode,
-        options.now ?? new Date(),
-        options.clock ?? (() => options.now ?? new Date()),
-        env
-      )
-      : await advanceQueuedHybridPlanning(
-        job,
-        input,
-        protocol,
-        token,
-        options.now ?? new Date(),
-        options.clock ?? (() => options.now ?? new Date()),
-        env
-      );
-    if (semanticResult.status === "waiting_provider") {
-      return {
-        status: "waiting_provider",
-        job,
-        sideEffects
-      };
-    }
-    if (
-      job.semantic_retry_attempts === 1 &&
-      job.provider_response_id == null &&
-      (job.provider_status === "submitting" || job.provider_status === "in_progress")
-    ) {
-      const finalizationClaim = await fenceAnalysisJobSemanticRetryFinalization({
-        id: job.id,
-        claimGeneration: job.claim_generation ?? "",
-        now: options.now
-      }, env);
-      if (!finalizationClaim) throw new AnalysisWorkerLeaseLostError();
-      job.updated_at = finalizationClaim.updated_at;
-      job.locked_at = finalizationClaim.locked_at;
-      job.provider_status = finalizationClaim.provider_status;
-      job.provider_submitted_at = finalizationClaim.provider_submitted_at;
-      job.provider_expires_at = finalizationClaim.provider_expires_at;
-    }
-    const runtimeReport = resolveRuntimeReportValidation({
-      input,
-      report: semanticResult.report,
-      requireV2: true,
-      requireSourceProvenance: true
-    });
-
-    if (!runtimeReport.valid) {
-      throw new AnalysisWorkerTerminalError(
-        "generated_report_validation_failed",
-        `Generated report failed runtime validation: ${runtimeReport.errors.join("; ")}`
-      );
-    }
-    assertPaidAnalysisAllowed();
-    let report = runtimeReport.report;
-
-    const finalAnchor = await fetchGitHubPullRequestAnchor(job.pull_request_url, token);
-    if (!finalAnchor) {
-      throw new AnalysisWorkerRetryableError(
-        "github_app_pr_snapshot_unavailable",
-        "GitHub App worker could not recheck the pull request anchors before publishing evidence."
-      );
-    }
-    if (finalAnchor.headSha !== job.head_sha || finalAnchor.headSha !== input.sourceProvenance?.headSha) {
-      throw new GitHubPullRequestHeadChangedError(job.head_sha, finalAnchor.headSha, "final");
-    }
-    if (finalAnchor.baseSha !== input.sourceProvenance?.baseSha) {
-      throw new GitHubPullRequestHeadChangedError(
-        input.sourceProvenance?.baseSha ?? "missing",
-        finalAnchor.baseSha,
-        "final",
-        "base"
-      );
-    }
-
-    const publishableSideEffects = "publicationSuppressed" in semanticResult && semanticResult.publicationSuppressed === true
-      ? { saveReport: false, comment: false, slackSummary: false }
-      : sideEffects;
-    const sideEffectsBeforeSave = await revalidateWorkerSideEffects(job, publishableSideEffects, env);
-    await sealCurrentAnalysisJobRevision(job, env, options.now);
-    let saved: Awaited<ReturnType<typeof createAutomationSavedReport>> | undefined;
-    if (sideEffectsBeforeSave.saveReport) {
+    return await withPaidAnalysis(`job:${job.id}:claim:${job.claim_generation}`, async () => {
+      await prepareWorkerSideEffects(job, sideEffects, env);
       await assertWorkerTenantDeletionNotActive(job, env);
-      report = requirePublishableGeneratedReport(input, report);
-      saved = await createAutomationSavedReport(report, {
-        requestUrl: options.requestUrl,
-        validationInput: input,
-        ...(job.tenant_id && job.installation_id && job.repository_id ? {
-          tenantId: job.tenant_id,
-          installationId: job.installation_id,
-          repositoryId: job.repository_id,
-          pullRequestNumber: job.pull_request_number,
-          headSha: job.head_sha
+
+      const token = await createGitHubInstallationAccessToken(job.installation_id, env);
+      const llmAnalysisMode = preflight.llmAnalysisMode
+        ?? (await isGitHubRepositoryPublic(job.repository_full_name, token) ? "enhanced" : "essential");
+      const input = await buildGitHubPullRequestInput(job.pull_request_url, token, "", undefined, {
+        expectedHeadSha: job.head_sha,
+        now: () => options.now ?? new Date()
+      });
+
+      if (!input) {
+        throw new AnalysisWorkerRetryableError(
+          "github_app_pr_input_unavailable",
+          "GitHub App worker could not build a pull request input."
+        );
+      }
+      if (input.repositoryPrivate === true && !preflight.privateAnalysisApproved) {
+        throw new AnalysisWorkerTerminalError("private-consent-required", "Private repository analysis is off until its code-analysis notice is accepted.");
+      }
+
+      const now = options.now ?? new Date();
+      const ageMs = Math.max(0, now.getTime() - new Date(job.created_at).getTime());
+      const checksPending = input.checks.some((check) => check.status === "pending") ||
+        input.executionSuites?.some((suite) => suite.status === "pending") === true;
+      if (job.sealed_revision == null && (ageMs < DEFAULT_ANALYSIS_JOB_CI_DISCOVERY_MS || checksPending)) {
+        const runAfter = new Date(now.getTime() + Math.max(
+          CHECK_SETTLE_POLL_MS,
+          DEFAULT_ANALYSIS_JOB_CI_DISCOVERY_MS - ageMs
+        ));
+        const deferred = await deferAnalysisJob({
+          id: job.id,
+          claimGeneration: job.claim_generation ?? "",
+          runningRevision: job.running_revision ?? 0,
+          attempts: job.attempts,
+          runAfter,
+          now
+        }, env);
+        if (!deferred) throw new AnalysisWorkerLeaseLostError();
+        return { status: "waiting_checks", job, sideEffects };
+      }
+
+      const generalPrPolicy = resolveGeneralPrAssessmentRuntimePolicyV1(
+        env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE
+      );
+      const generalPrObserverApiKey = env.OPENAI_API_KEY?.trim();
+      const generalPrObserverModel = env.OPENAI_MODEL?.trim();
+      const semanticEligible = generalPrPolicy.semanticObservation === "eligible_public_pr" &&
+        generalPrObservationService.isGeneralPrSemanticObserverEligibleV2(input) &&
+        Boolean(generalPrObserverApiKey && generalPrObserverModel);
+      const navigationProvider = resolveNavigationProvider(env);
+      const navigationEligible = generalPrPolicy.semanticObservation === "eligible_public_pr" &&
+        (generalPrObservationService.isGeneralPrSemanticObserverEligibleV2(input) || Boolean(input.repositoryPrivate === true && preflight.privateAnalysisApproved && input.sourceProvenance?.origin === "github_snapshot" && (input.taskText.trim() === "" || input.taskSource === "issue")));
+      const generalPrObservation = await generalPrObservationService.runGeneralPrObservationNowV2({
+        policy: generalPrPolicy,
+        input,
+        navigation: {
+          model: navigationProvider.model,
+          ...(navigationEligible && navigationProvider.provider ? {
+            provider: navigationProvider.provider,
+            ...(input.repositoryPrivate === true && preflight.privateTenantId && job.repository_id ? { authorizePrivate: () => isPrivateAnalysisGrantCurrent({ tenantId: preflight.privateTenantId!, repositoryFullName: job.repository_full_name, installationId: job.installation_id, repositoryId: job.repository_id! }) } : {}),
+            readRepositoryPrivate: () => readGitHubRepositoryPrivate(job.repository_full_name, token),
+            readArtifacts: (paths,headSha) => collectReviewArtifacts(job.pull_request_url,token,paths,headSha),
+            readCurrentInput: () => buildGitHubPullRequestInput(job.pull_request_url,token,"",undefined,{expectedHeadSha:input.sourceProvenance?.headSha,expectedBaseSha:input.sourceProvenance?.baseSha})
+          } : {})
+        },
+        generateReport: generateVerificationReportV2FromInput,
+        // The generated/semantic report still crosses the existing worker
+        // runtime boundary below; this only keeps observation collection off
+        // when deterministic generation is invalid.
+        validateDeterministicReport: (candidateInput, candidateReport) =>
+          resolveRuntimeReportValidation({
+            input: candidateInput,
+            report: candidateReport,
+            requireV2: true,
+            requireSourceProvenance: true
+          }).valid,
+        ...(semanticEligible && generalPrObserverApiKey && generalPrObserverModel ? {
+          semantic: {
+            provider: {
+              observe: (semanticPackage) => submitGeneralPrSemanticObservationWithOpenAI(semanticPackage, {
+                apiKey: generalPrObserverApiKey
+              })
+            },
+            providerAvailable: true,
+            privateRepository: false,
+            readCurrentInput: () => buildGitHubPullRequestInput(job.pull_request_url, token, "", undefined, {
+              expectedHeadSha: input.sourceProvenance?.headSha,
+              expectedBaseSha: input.sourceProvenance?.baseSha
+            }),
+            modelProfile: {
+              model: generalPrObserverModel,
+              promptVersion: "general-pr-observer.v4",
+              inputFieldPolicyVersion: "general-pr-observer-fields.v1"
+            }
+          }
         } : {})
       });
-    }
+      const deterministicReport = generalPrObservation.report;
+      if (input.repositoryPrivate === true) {
+        let currentGrant;
+        try {
+          currentGrant = await authorizeTenantRepositoryGrantAsync({
+            installationId: job.installation_id,
+            repositoryId: job.repository_id ?? undefined,
+            repositoryFullName: job.repository_full_name
+          }, env);
+        } catch {
+          throw new AnalysisWorkerRetryableError("github_app_tenant_grant_store_unavailable", "Private repository grant could not be rechecked before model analysis.");
+        }
+        if (currentGrant.reason || currentGrant.grant?.tenantId !== preflight.privateTenantId || currentGrant.grant?.privateAnalysisConsentVersion !== "2026-09-24.v1") {
+          throw new AnalysisWorkerTerminalError("private-consent-required", "Private repository analysis was turned off before model analysis.");
+        }
+      }
+      const protocol = resolveHybridWorkerProtocol(job, preflight.hybridPilotControlled === true);
+      const semanticResult = generalPrPolicy.assessmentProjection === "advisory" && (deterministicReport as import("./types").VerificationReportV2).reviewCandidates?.navigation
+        ? { status: "ready" as const, report: deterministicReport }
+        : protocol === "legacy"
+        ? await advanceQueuedSemanticAnalysis(
+          job,
+          input,
+          deterministicReport,
+          llmAnalysisMode,
+          options.now ?? new Date(),
+          options.clock ?? (() => options.now ?? new Date()),
+          env
+        )
+        : await advanceQueuedHybridPlanning(
+          job,
+          input,
+          protocol,
+          token,
+          options.now ?? new Date(),
+          options.clock ?? (() => options.now ?? new Date()),
+          env
+        );
+      if (semanticResult.status === "waiting_provider") {
+        return {
+          status: "waiting_provider",
+          job,
+          sideEffects
+        };
+      }
+      if (
+        job.semantic_retry_attempts === 1 &&
+        job.provider_response_id == null &&
+        (job.provider_status === "submitting" || job.provider_status === "in_progress")
+      ) {
+        const finalizationClaim = await fenceAnalysisJobSemanticRetryFinalization({
+          id: job.id,
+          claimGeneration: job.claim_generation ?? "",
+          now: options.now
+        }, env);
+        if (!finalizationClaim) throw new AnalysisWorkerLeaseLostError();
+        job.updated_at = finalizationClaim.updated_at;
+        job.locked_at = finalizationClaim.locked_at;
+        job.provider_status = finalizationClaim.provider_status;
+        job.provider_submitted_at = finalizationClaim.provider_submitted_at;
+        job.provider_expires_at = finalizationClaim.provider_expires_at;
+      }
+      const runtimeReport = resolveRuntimeReportValidation({
+        input,
+        report: semanticResult.report,
+        requireV2: true,
+        requireSourceProvenance: true
+      });
 
-    const sideEffectsBeforeRemaining = (sideEffectsBeforeSave.comment || sideEffectsBeforeSave.slackSummary)
-      ? await revalidateWorkerSideEffects(job, {
-        saveReport: false,
-        comment: sideEffectsBeforeSave.comment,
-        ...(sideEffectsBeforeSave.slackSummary ? { slackSummary: true } : {})
-      }, env)
-      : sideEffectsBeforeSave;
-    const sideEffectsBeforeSlack = sideEffectsBeforeRemaining.slackSummary
-      ? await revalidateWorkerSideEffects(job, {
-        saveReport: false,
-        comment: false,
-        slackSummary: true
-      }, env)
-      : sideEffectsBeforeRemaining;
-    const completedSideEffects = {
-      saveReport: sideEffectsBeforeSave.saveReport,
-      comment: sideEffectsBeforeRemaining.comment,
-      ...(sideEffectsBeforeSlack.slackSummary ? { slackSummary: true } : {})
-    };
-    let comment: Awaited<ReturnType<typeof postGitHubAppMarkerComment>> | undefined;
-    if (completedSideEffects.comment) {
-      await assertWorkerTenantDeletionNotActive(job, env);
-      report = requirePublishableGeneratedReport(input, report);
-      comment = await postGitHubAppMarkerComment({
-        repositoryFullName: job.repository_full_name,
+      if (!runtimeReport.valid) {
+        throw new AnalysisWorkerTerminalError(
+          "generated_report_validation_failed",
+          `Generated report failed runtime validation: ${runtimeReport.errors.join("; ")}`
+        );
+      }
+      assertPaidAnalysisAllowed();
+      let report = runtimeReport.report;
+
+      const finalAnchor = await fetchGitHubPullRequestAnchor(job.pull_request_url, token);
+      if (!finalAnchor) {
+        throw new AnalysisWorkerRetryableError(
+          "github_app_pr_snapshot_unavailable",
+          "GitHub App worker could not recheck the pull request anchors before publishing evidence."
+        );
+      }
+      if (finalAnchor.headSha !== job.head_sha || finalAnchor.headSha !== input.sourceProvenance?.headSha) {
+        throw new GitHubPullRequestHeadChangedError(job.head_sha, finalAnchor.headSha, "final");
+      }
+      if (finalAnchor.baseSha !== input.sourceProvenance?.baseSha) {
+        throw new GitHubPullRequestHeadChangedError(
+          input.sourceProvenance?.baseSha ?? "missing",
+          finalAnchor.baseSha,
+          "final",
+          "base"
+        );
+      }
+
+      const publishableSideEffects = "publicationSuppressed" in semanticResult && semanticResult.publicationSuppressed === true
+        ? { saveReport: false, comment: false, slackSummary: false }
+        : sideEffects;
+      const sideEffectsBeforeSave = await revalidateWorkerSideEffects(job, publishableSideEffects, env);
+      await sealCurrentAnalysisJobRevision(job, env, options.now);
+      let saved: Awaited<ReturnType<typeof createAutomationSavedReport>> | undefined;
+      if (sideEffectsBeforeSave.saveReport) {
+        await assertWorkerTenantDeletionNotActive(job, env);
+        report = requirePublishableGeneratedReport(input, report);
+        saved = await createAutomationSavedReport(report, {
+          requestUrl: options.requestUrl,
+          validationInput: input,
+          ...(job.tenant_id && job.installation_id && job.repository_id ? {
+            tenantId: job.tenant_id,
+            installationId: job.installation_id,
+            repositoryId: job.repository_id,
+            pullRequestNumber: job.pull_request_number,
+            headSha: job.head_sha
+          } : {})
+        });
+      }
+
+      const sideEffectsBeforeRemaining = (sideEffectsBeforeSave.comment || sideEffectsBeforeSave.slackSummary)
+        ? await revalidateWorkerSideEffects(job, {
+          saveReport: false,
+          comment: sideEffectsBeforeSave.comment,
+          ...(sideEffectsBeforeSave.slackSummary ? { slackSummary: true } : {})
+        }, env)
+        : sideEffectsBeforeSave;
+      const sideEffectsBeforeSlack = sideEffectsBeforeRemaining.slackSummary
+        ? await revalidateWorkerSideEffects(job, {
+          saveReport: false,
+          comment: false,
+          slackSummary: true
+        }, env)
+        : sideEffectsBeforeRemaining;
+      const completedSideEffects = {
+        saveReport: sideEffectsBeforeSave.saveReport,
+        comment: sideEffectsBeforeRemaining.comment,
+        ...(sideEffectsBeforeSlack.slackSummary ? { slackSummary: true } : {})
+      };
+      let comment: Awaited<ReturnType<typeof postGitHubAppMarkerComment>> | undefined;
+      if (completedSideEffects.comment) {
+        await assertWorkerTenantDeletionNotActive(job, env);
+        report = requirePublishableGeneratedReport(input, report);
+        comment = await postGitHubAppMarkerComment({
+          repositoryFullName: job.repository_full_name,
+          pullRequestNumber: job.pull_request_number,
+          pullRequestUrl: job.pull_request_url
+        }, token, report);
+      }
+      let slack: Awaited<ReturnType<typeof sendSlackReportSummary>> | undefined;
+      if (completedSideEffects.slackSummary) {
+        await assertWorkerTenantDeletionNotActive(job, env);
+        report = requirePublishableGeneratedReport(input, report);
+        slack = await sendSlackReportSummary(report, {}, env);
+      }
+
+      const resultSummary: AnalysisJobResultSummary = {
+        status: "completed",
+        repository: job.repository_full_name,
         pullRequestNumber: job.pull_request_number,
-        pullRequestUrl: job.pull_request_url
-      }, token, report);
-    }
-    let slack: Awaited<ReturnType<typeof sendSlackReportSummary>> | undefined;
-    if (completedSideEffects.slackSummary) {
-      await assertWorkerTenantDeletionNotActive(job, env);
-      report = requirePublishableGeneratedReport(input, report);
-      slack = await sendSlackReportSummary(report, {}, env);
-    }
+        headSha: job.head_sha,
+        priority: report.summary.priority,
+        evidenceCoverage: report.summary.evidenceCoverage,
+        savedReport: saved ? {
+          privacy: saved.privacy,
+          durability: saved.durability
+        } : undefined,
+        comment: comment ? {
+          action: comment.action
+        } : undefined,
+        slack: slack ? {
+          action: slack.action,
+          privacy: slack.privacy
+        } : undefined
+      };
 
-    const resultSummary: AnalysisJobResultSummary = {
-      status: "completed",
-      repository: job.repository_full_name,
-      pullRequestNumber: job.pull_request_number,
-      headSha: job.head_sha,
-      priority: report.summary.priority,
-      evidenceCoverage: report.summary.evidenceCoverage,
-      savedReport: saved ? {
-        privacy: saved.privacy,
-        durability: saved.durability
-      } : undefined,
-      comment: comment ? {
-        action: comment.action
-      } : undefined,
-      slack: slack ? {
-        action: slack.action,
-        privacy: slack.privacy
-      } : undefined
-    };
+      const completed = await completeAnalysisJob({
+        id: job.id,
+        resultSummary,
+        claimGeneration: job.claim_generation ?? undefined,
+        now: options.now
+      }, env);
+      if (!completed) throw new AnalysisWorkerLeaseLostError();
 
-    const completed = await completeAnalysisJob({
-      id: job.id,
-      resultSummary,
-      claimGeneration: job.claim_generation ?? undefined,
-      now: options.now
-    }, env);
-    if (!completed) throw new AnalysisWorkerLeaseLostError();
+      await recordWorkerAudit("github_app_analysis_completed", "completed", job, {
+        statusCode: 200,
+        priority: resultSummary.priority,
+        evidenceCoverage: resultSummary.evidenceCoverage,
+        savedReport: resultSummary.savedReport,
+        comment: resultSummary.comment,
+        slack: resultSummary.slack,
+        semanticDiagnostics: semanticResult.semanticDiagnostics
+      }, env);
 
-    await recordWorkerAudit("github_app_analysis_completed", "completed", job, {
-      statusCode: 200,
-      priority: resultSummary.priority,
-      evidenceCoverage: resultSummary.evidenceCoverage,
-      savedReport: resultSummary.savedReport,
-      comment: resultSummary.comment,
-      slack: resultSummary.slack,
-      semanticDiagnostics: semanticResult.semanticDiagnostics
-    }, env);
-
-    return {
-      status: "completed",
-      job,
-      resultSummary,
-      sideEffects: completedSideEffects
-    };
+      return {
+        status: "completed",
+        job,
+        resultSummary,
+        sideEffects: completedSideEffects
+      };
+    });
   } catch (error) {
     const failure = classifyWorkerFailure(error);
     if (error instanceof AnalysisWorkerLeaseLostError) {

@@ -42,6 +42,7 @@ export async function GET(request: Request) {
       if (!identity || !await verifyGitHubInstallationAccess({
         cookieHeader: installAuthorization,
         tenantId: identity.tenantId,
+        appId: normalizeInstallationId(process.env.GITHUB_APP_ID) ?? 0,
         installationId
       }, oauthConfig)) {
         return noStoreJson({

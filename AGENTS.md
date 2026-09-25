@@ -59,21 +59,21 @@ The task card activates one mode with `MODE: SILVER_ASTRA_A`,
   verification, and remaining work. Do not create separate planning or review
   documents unless the user asks.
 
-## Model routing: Sol main, Sol implementation, Luna utility, Astra diagnosis
+## Model routing: Sol main, Astra High implementation, Luna utility, Astra diagnosis
 
 - The user-facing main task uses `gpt-5.6-sol` with `high` reasoning. It owns
   intent interpretation, work classification, dispatch, and the final
   user-facing report.
-- The implementation task uses `gpt-6-sol` with `high` reasoning. It
+- The implementation task always uses `gpt-6-astra` with `high` reasoning. It
   owns the complete package: investigation, plan, implementation, focused
   verification, and its own final diff review.
 - The utility task uses `gpt-6-luna` with `high` reasoning for bounded
   research, planning, organization, documentation, data preparation, and
   straightforward implementation. It owns planning, edits, and focused checks
   for its assigned package when the outcome and acceptance are already clear.
-- The main task routes straightforward packages to Luna and reserves Sol for
+- The main task routes straightforward packages to Luna and reserves Astra High for
   implementation that needs more difficult cross-module reasoning or design.
-  Do not give Sol routine work merely because it includes code changes.
+  Do not give Astra routine work merely because it includes code changes.
 - The diagnostic task "아스트라 노폼" uses `gpt-6-astra` with `high`
   reasoning only for unclear root causes, difficult error analysis, or a
   minimal discriminating test. It is read-only and does not implement fixes.
@@ -83,10 +83,10 @@ The task card activates one mode with `MODE: SILVER_ASTRA_A`,
 - Model assignment does not expand task scope or permissions and does not
   change the product's runtime AI model.
 
-## Four-role coordination (updated 2026-09-23)
+## Four-role coordination (updated 2026-09-25)
 
 - Main: `019ffd47-bb30-7dc1-a3ae-2218a50da4dd`; implementation
-  "구현솔 6": `01a0a3be-9ed5-72b2-9a64-3d501484997e`; utility
+  "구현아스트라": `01a0a3be-9ed5-72b2-9a64-3d501484997e`; utility
   "잡무루나": `01a0a3be-becb-7092-aab0-508d972ca461`; diagnosis
   "아스트라 노폼": `01a0ae33-31d5-71b0-92e8-f76440b66238`; host `local`.
   Use these IDs directly instead of repeated task-list searches.

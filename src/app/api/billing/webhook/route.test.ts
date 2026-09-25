@@ -7,6 +7,7 @@ describe("POST /api/billing/webhook", () => {
   afterEach(() => {
     clearBillingWebhookEventsForTests();
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
   });
 
   it("rejects missing signatures without echoing provider payload data", async () => {
@@ -154,6 +155,49 @@ describe("POST /api/billing/webhook", () => {
     expect(serialized).not.toContain("sub_secret");
     expect(serialized).not.toContain("pm_secret");
     expect(serialized).not.toContain(webhookSecret());
+  });
+
+  it("asks the provider to retry while lifecycle storage is unavailable", async () => {
+    stubWebhookEnv();
+    vi.stubEnv("AGENTPROOF_BILLING_SUBSCRIPTION_SYNC_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_BILLING_SUBSCRIPTION_SYNC_ALLOW_MEMORY", "");
+    const body = billingWebhookBody({ id: "evt_store_unavailable", status: "active" });
+    const send = () => POST(new Request("http://localhost/api/billing/webhook", { method: "POST", body,
+      headers: { "stripe-signature": stripeSignature(body, webhookSecret(), Math.floor(Date.now() / 1000)) } }));
+    const unavailable = await send();
+    expect(unavailable.status).toBe(503);
+    expect(await unavailable.json()).toMatchObject({ ok: false, subscription: { status: "store_unavailable" } });
+    vi.stubEnv("AGENTPROOF_BILLING_SUBSCRIPTION_SYNC_ALLOW_MEMORY", "true");
+    expect(await (await send()).json()).toMatchObject({ subscription: { synced: true } });
+  });
+
+  it.each(["memory", "supabase"])("retries lifecycle sync and records only success: %s receipt", async (store) => {
+    stubWebhookEnv();
+    vi.stubEnv("AGENTPROOF_BILLING_SUBSCRIPTION_SYNC_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_BILLING_SUBSCRIPTIONS_SUPABASE_URL", "https://billing.invalid");
+    vi.stubEnv("AGENTPROOF_BILLING_SUBSCRIPTIONS_SUPABASE_SERVICE_ROLE_KEY", "test-key");
+    const writes = vi.fn().mockResolvedValueOnce(new Response(null, { status: 503 })).mockResolvedValue(new Response(null, { status: 201 }));
+    let completed = false;
+    if (store === "supabase") {
+      vi.stubEnv("AGENTPROOF_BILLING_WEBHOOK_SUPABASE_URL", "https://receipts.invalid");
+      vi.stubEnv("AGENTPROOF_BILLING_WEBHOOK_SUPABASE_SERVICE_ROLE_KEY", "test-key");
+    }
+    vi.stubGlobal("fetch", vi.fn((url: string | URL | Request, init?: RequestInit) => {
+      if (String(url).startsWith("https://receipts.invalid")) {
+        if (init?.method === "POST") { completed = true; return Promise.resolve(new Response(null, { status: 201 })); }
+        return Promise.resolve(Response.json(completed ? [{ id: "completed" }] : []));
+      }
+      return writes(url, init);
+    }));
+    const body = billingWebhookBody({ id: "evt_retry_sync", status: "active" });
+    const send = () => POST(new Request("http://localhost/api/billing/webhook", { method: "POST", body,
+      headers: { "stripe-signature": stripeSignature(body, webhookSecret(), Math.floor(Date.now() / 1000)) } }));
+    expect((await send()).status).toBe(503);
+    const retry = await send();
+    expect(retry.status).toBe(200);
+    expect(await retry.json()).toMatchObject({ subscription: { synced: true } });
+    expect(await (await send()).json()).toMatchObject({ subscription: { status: "duplicate_ignored" } });
+    expect(writes).toHaveBeenCalledTimes(2);
   });
 
   it("rejects malformed JSON after signature verification as bounded metadata", async () => {

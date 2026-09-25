@@ -18,7 +18,7 @@ export interface ReviewIntentGraphV1 {
 }
 const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 const exact = (s: string | null | undefined): s is string => Boolean(s && /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/.test(s));
-const safePath = (p: string) => p.length <= 240 && redactSecrets(p) === p && /^[A-Za-z0-9_.@+/#:-]+$/.test(p) && !p.startsWith("/") && !p.split("/").some(x => !x || x === "." || x === "..");
+const safePath = (p: string) => p.length <= 240 && redactSecrets(p) === p && /^[A-Za-z0-9_.@+/#:()\[\]-]+$/.test(p) && !p.startsWith("/") && !p.split("/").some(x => !x || x === "." || x === "..");
 const COMMON = new Set("must should when then with from this that have into return function class const service request response result test code file implementation preserve support".split(" "));
 const allTerms = (s: string) => [...new Set((s.toLowerCase().match(/[a-z][a-z0-9_]{3,}/g) ?? []).filter(x => !COMMON.has(x)))];
 const allIdentifiers = (s: string) => [...new Set((s.match(/[A-Za-z][A-Za-z0-9_]*/g) ?? []).filter(x => /[a-z][A-Z]|[a-z]_[a-z]/.test(x)).map(x => x.toLowerCase()))];

@@ -571,9 +571,7 @@ export async function deferAnalysisJob(
       currentClaimGeneration: claimGeneration,
       currentDesiredRevision: runningRevision,
       currentRunningRevision: runningRevision,
-      requireUnsealed: true,
-      requireNoProviderContinuation: true,
-      requireEmptyHybridPlannerBinding: true
+      requireUnsealed: true
     });
     return row !== null;
   }
@@ -584,8 +582,7 @@ export async function deferAnalysisJob(
     job.is_historical !== true && job.status === "processing" &&
     job.claim_generation === claimGeneration &&
     job.desired_revision === runningRevision && job.running_revision === runningRevision &&
-    job.sealed_revision == null && job.provider_status == null &&
-    job.planner_contract_version == null && job.planner_input_hash == null);
+    job.sealed_revision == null);
   if (!row) return false;
   Object.assign(row, update);
   assertAnalysisJobIsPrivate(row);
@@ -729,6 +726,40 @@ export async function claimNextAnalysisJob(
     store: "memory",
     durable: false
   };
+}
+
+/** Find existing work for a signed CI event, including claims that may soon defer. */
+export async function listAnalysisJobIdsForHead(
+  input: { installationId: number; repositoryId: number; headSha: string },
+  env = process.env
+): Promise<string[]> {
+  const installationId = safePositiveInteger(input.installationId);
+  const repositoryId = safePositiveInteger(input.repositoryId);
+  const headSha = safeHeadSha(input.headSha);
+  if (!installationId || !repositoryId || !headSha) throw new AnalysisJobQueueError("Analysis job head lookup is invalid.");
+  if (!analysisJobQueueEnabled(env)) return [];
+  const config = getAnalysisJobStoreConfig(env);
+  if (config) {
+    const params = new URLSearchParams({
+      installation_id: `eq.${installationId}`, repository_id: `eq.${repositoryId}`, head_sha: `eq.${headSha}`,
+      is_historical: "eq.false", status: "in.(queued,processing)", select: "id",
+      order: "created_at.asc", limit: String(MAX_ANALYSIS_JOB_QUEUE_SUMMARY_ROWS)
+    });
+    const response = await fetch(`${config.url}/rest/v1/${encodeURIComponent(config.table)}?${params}`, {
+      method: "GET", cache: "no-store", headers: supabaseAnalysisJobHeaders(config)
+    });
+    if (!response.ok) throw new AnalysisJobQueueError(`Analysis job head lookup failed with HTTP ${response.status}.`);
+    const rows: unknown = await response.json().catch(() => null);
+    if (!Array.isArray(rows) || rows.some(row => !row || !safeAnalysisJobId(row.id))) {
+      throw new AnalysisJobQueueError("Analysis job head lookup returned invalid rows.");
+    }
+    return rows.slice(0, MAX_ANALYSIS_JOB_QUEUE_SUMMARY_ROWS).map(row => row.id);
+  }
+  if (!truthy(env.AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY)) throw new AnalysisJobQueueError("Analysis job durable store is not configured.");
+  return analysisJobStore().filter(job => job.is_historical !== true &&
+    job.installation_id === installationId && job.repository_id === repositoryId && job.head_sha === headSha &&
+    (job.status === "queued" || job.status === "processing"))
+    .slice(0, MAX_ANALYSIS_JOB_QUEUE_SUMMARY_ROWS).map(job => job.id);
 }
 
 export async function claimAnalysisJobById(
