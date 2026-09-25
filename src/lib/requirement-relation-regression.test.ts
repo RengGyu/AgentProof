@@ -646,6 +646,26 @@ describe("requirement relation regression matrix", () => {
         "+ test('empty reference', () => { assert.equal(invoiceReference(''), 'UNKNOWN'); });"
       ].join("\n"),
       check: "invoice reference tests"
+    },
+    {
+      name: "Korean connection states",
+      taskText: [
+        "수용 기준:",
+        "- 만료되지 않은 연결은 Connected를 반환한다.",
+        "- 만료된 연결은 Expired를 반환한다.",
+        "- 두 상태에 대한 회귀 테스트를 추가한다."
+      ].join("\n"),
+      sourcePath: "src/connections/connection-label.js",
+      testPath: "test/연결-라벨.test.js",
+      patch: "+ export const connectionLabel = expired => expired ? 'Expired' : 'Connected';",
+      testPatch: [
+        "+ import assert from 'node:assert/strict';",
+        "+ import { connectionLabel } from '../src/connections/connection-label.js';",
+        "+ test('연결 상태', () => { assert.equal(connectionLabel(false), 'Connected'); });",
+        "+ test('만료 상태', () => { assert.equal(connectionLabel(true), 'Expired'); });"
+      ].join("\n"),
+      check: "연결 라벨 회귀 테스트",
+      expectedTargetedTestState: "violated"
     }
   ])("links a referential test-only sibling to $name without promoting receipt-less local axes by default", (fixture) => {
     const report = finalizeAllAuthoritative(linkedInput({
@@ -674,7 +694,7 @@ describe("requirement relation regression matrix", () => {
       status: testFinding?.status
     }).toEqual({
       subjects: ["targeted_test", "execution"],
-      targetedTestState: "incomplete",
+      targetedTestState: "expectedTargetedTestState" in fixture ? fixture.expectedTargetedTestState : "incomplete",
       executionState: "incomplete",
       status: "missing"
     });
