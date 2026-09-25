@@ -2,7 +2,7 @@ import { buildDashboardPrEvidenceReview } from "./pr-evidence-review";
 import { redactSecrets } from "./redact";
 import { copyOrdinaryDocumentationSummary, presentOrdinaryDocumentationSummary } from "./general-pr-documentation-presentation";
 import { copyOrdinaryStaticSummary, presentOrdinaryStaticSummary } from "./general-pr-static-types-presentation";
-import type { DashboardReportDetail } from "./github-dashboard-view-model";
+import { observedCheckResults, type DashboardReportDetail } from "./github-dashboard-view-model";
 import { toDashboardRequirementViewModels } from "./dashboard-requirement-view-model";
 import { presentGeneralPrAssessmentSummary } from "./general-pr-assessment-presentation";
 import { deriveRequirementPresentationV2, isVerificationReportV2 } from "./requirement-presentation-v2";
@@ -24,6 +24,7 @@ export function dashboardReportToMarkdown(detail: DashboardExportDetail): string
   assertCopyEligible(detail);
   const exported = toDashboardReportExport(detail);
   const review = buildDashboardPrEvidenceReview(detail);
+  const checks = observedCheckResults(detail.report?.testing).map((item) => `- ${item.label}: ${item.status}`);
   if (review) {
     const items = (values: typeof review.changes) => values.map((item) => {
       const url = item.url && redactSecrets(item.url) === item.url ? item.url.replace(/\(/g, "%28").replace(/\)/g, "%29") : undefined;
@@ -46,7 +47,7 @@ export function dashboardReportToMarkdown(detail: DashboardExportDetail): string
       ...(objective.sourceRefs ? [`Source offsets: ${objective.sourceRefs.map(r=>`${r.sourceId ? r.sourceId+" " : ""}${r.start}–${r.end}`).join(", ")} (redacted source)`] : []),
       ...(objective.facets ?? []).map(f=>`- ${f.kind} · source ${f.sourceRef.start}–${f.sourceRef.end}`),
       ...(objective.goalContext ?? []),
-      ...(objective.firstInspection ? ["**Inspect first**", `${objective.firstInspection.label}: ${objective.firstInspection.whyInspect}`, objective.firstInspection.reviewQuestion ?? "", objective.firstInspection.uncertainty ?? ""] : []),
+      ...(objective.firstInspection ? ["**Inspect first**", ...items([objective.firstInspection]), objective.firstInspection.whyInspect ?? "", objective.firstInspection.reviewQuestion ?? "", objective.firstInspection.uncertainty ?? ""] : []),
       ...(objective.moreContext ? ["**Inspect first**", ...items(objective.code.slice(0,1)), "**More context (possible links)**", ...items(objective.moreContext), "**Tests**", ...items(objective.tests), "**Execution**", ...items(objective.execution)] : items([...objective.code, ...objective.tests, ...objective.execution])),
         `Next to inspect: ${redactSecrets(objective.nextInspection)}`, ""
       ]),
@@ -55,7 +56,9 @@ export function dashboardReportToMarkdown(detail: DashboardExportDetail): string
         ...items(review.changes), ""
       ] : []),
       ...(review.mode === "change_summary" ? [`Next to inspect: ${redactSecrets(review.nextInspection)}`, ""] : []),
-      "## Checks", "", `- CI: ${exported.checks.ci}`, `- Lint: ${exported.checks.lint}`, `- Typecheck: ${exported.checks.typecheck}`
+      ...(detail.report?.ordinaryDocumentationSummary ? ["## Documentation predicate evidence", "", ...presentOrdinaryDocumentationSummary(detail.report.ordinaryDocumentationSummary).map(line => `- ${line}`), ""] : []),
+      ...(detail.report?.ordinaryStaticSummary ? ["## Static predicate evidence", "", ...presentOrdinaryStaticSummary(detail.report.ordinaryStaticSummary).map(line => `- ${line}`), ""] : []),
+      "## Checks", "", ...(checks.length ? checks : ["- No check results collected."])
     ].join("\n");
   }
 
@@ -110,9 +113,7 @@ export function dashboardReportToMarkdown(detail: DashboardExportDetail): string
     "",
     "## Checks",
     "",
-    `- CI: ${exported.checks.ci}`,
-    `- Lint: ${exported.checks.lint}`,
-    `- Typecheck: ${exported.checks.typecheck}`,
+    ...(checks.length ? checks : ["- No check results collected."]),
     ""
   ];
 

@@ -1,3 +1,4 @@
+import { budgetedOpenAIFetch } from './paid-budget';
 import { extractOpenAIResponseText } from "./openai-verifier";
 import { compactText, containsSecretPattern, redactSecrets } from "./redact";
 import type { CheckStatus, PriorityLevel, VerificationReport } from "./types";
@@ -329,7 +330,7 @@ async function requestOpenAIProofPlan(
     store: false
   };
 
-  const response = await fetchImpl(OPENAI_RESPONSES_URL, {
+  const response = await budgetedOpenAIFetch(OPENAI_RESPONSES_URL, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${options.apiKey}`,
@@ -337,7 +338,7 @@ async function requestOpenAIProofPlan(
     },
     body: JSON.stringify(requestBody),
     signal: AbortSignal.timeout(options.timeoutMs ?? OPENAI_TIMEOUT_MS)
-  });
+  }, fetchImpl);
 
   if (!response.ok) {
     const errorText = await response.text();

@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import { afterEach, expect, it, vi } from "vitest";
 import { POST } from "./route";
+vi.mock("@/lib/tenant-auth", async original => ({ ...await original<typeof import("@/lib/tenant-auth")>(), resolveTenantAuthAccess: async () => ({ authorized: true, tenantId: "gh_123", memberId: "github:123" }) }));
+vi.mock("@/lib/github-analysis-access", () => ({ resolveGitHubAnalysisCredential: vi.fn(async () => ({ ok: true, token: "server-selected-test-token", kind: "installation" })) }));
 const head = "a".repeat(40), tree = "b".repeat(40);
 const sha = (text: string) => createHash("sha1").update(`blob ${Buffer.byteLength(text)}\0`).update(text).digest("hex");
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
@@ -21,7 +23,7 @@ it("routes an exact-head source requirement to canonical assignability without e
     if (file) return Response.json({ type: "file", sha: sha(file[1]), encoding: "base64", content: Buffer.from(file[1]).toString("base64") });
     throw new Error("Unexpected request");
   }));
-  const response = await POST(new Request("http://localhost/api/analyze", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ prUrl: "https://github.com/owned/types/pull/12" }) }));
+  const response = await POST(new Request("http://localhost/api/analyze", { method: "POST", headers: { "content-type": "application/json", origin: "http://localhost" }, body: JSON.stringify({ prUrl: "https://github.com/owned/types/pull/12" }) }));
   const json = await response.json();
   expect(response.status, JSON.stringify(json)).toBe(200);
   expect(json.report.requirements[0].status).toBe("partial");

@@ -1,3 +1,8 @@
+// Downstream unit fixtures isolate budget; paid-budget*.test.ts checks the real boundary.
+vi.mock('@/lib/paid-budget', async importOriginal => ({
+  ...await importOriginal<typeof import('@/lib/paid-budget')>(),
+  ...(await import('@/lib/test-support/unmetered-budget')).unmeteredBudgetFixture
+}));
 import { generateKeyPairSync } from "crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -111,6 +116,38 @@ describe("analysis worker preflight", () => {
       locked_at: null
     });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("fails terminal before token fetch for a legacy private ON grant without the new consent", async () => {
+    stubQueueEnv();
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    await enqueueAnalysisJob(jobInput());
+    stubReadyWorkerEnv({ grant: { repositoryPrivate: true, analysisEnabled: true, llmAnalysisMode: "enhanced", hybridPlannerConsentVersion: "2026-08-12.v1" } });
+
+    const result = await preflightNextAnalysisJob({ now: new Date("2026-06-30T00:01:00Z") });
+    expect(result).toEqual({ status: "failed_terminal", reason: "private-consent-required" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("stops private model analysis when the grant switches OFF after preflight", async () => {
+    stubReadyWorkerEnv({ grant: { repositoryPrivate: true, privateAnalysisConsentVersion: "2026-09-24.v1", llmAnalysisMode: "enhanced" } });
+    const githubFetch = mockWorkerFetch({ repositoryPrivate: true });
+    let revoked = false;
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = String(url);
+      if (!revoked && /\/repos\/RengGyu\/AgentProof\/pulls\/7$/.test(href)) {
+        revoked = true;
+        vi.stubEnv("AGENTPROOF_TENANT_REPOSITORY_GRANTS", JSON.stringify([grantRecord({ repositoryPrivate: true, privateAnalysisConsentVersion: "2026-09-24.v1", analysisEnabled: false, llmAnalysisMode: "enhanced" })]));
+      }
+      return githubFetch(url, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await enqueueAnalysisJob(jobInput({ saveReport: false, comment: false }));
+    const result = await runNextAnalysisJob({ requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run", now: new Date("2026-06-30T00:01:00Z") });
+    expect(revoked).toBe(true);
+    expect(result).toMatchObject({ status: "failed_terminal", reason: "private-consent-required" });
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("api.openai.com"))).toBe(false);
   });
 
   it("fails terminal before token fetch when the queued repository has no active tenant grant", async () => {
@@ -1343,6 +1380,7 @@ describe("analysis worker preflight", () => {
         llmAnalysisMode: "enhanced",
         hybridPlannerConsentVersion: "2026-08-12.v1",
         repositoryPrivate: true,
+        privateAnalysisConsentVersion: "2026-09-24.v1",
         saveReportsEnabled: false,
         commentEnabled: false
       }
@@ -1397,6 +1435,7 @@ describe("analysis worker preflight", () => {
         llmAnalysisMode: "enhanced",
         hybridPlannerConsentVersion: "2026-08-12.v1",
         repositoryPrivate: true,
+        privateAnalysisConsentVersion: "2026-09-24.v1",
         saveReportsEnabled: true,
         commentEnabled: true,
         slackNotificationsEnabled: true
@@ -1857,6 +1896,80 @@ describe("analysis worker preflight", () => {
     expect(serialized).not.toContain("claims");
     expect(serialized).not.toContain("reprompt");
     expect(serialized).not.toContain("key=");
+  });
+
+  it("waits through initial CI discovery and pending checks, then analyzes the head once", async () => {
+    stubReadyWorkerEnv({ grant: { saveReportsEnabled: false, commentEnabled: false } });
+    const githubFetch = mockWorkerFetch();
+    let pending = true;
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url).endsWith("/commits/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/check-runs?per_page=100&page=1")) {
+        return Response.json({ total_count: 1, check_runs: [{
+          id: 999, name: "CI", status: pending ? "in_progress" : "completed",
+          conclusion: pending ? null : "success"
+        }] });
+      }
+      return githubFetch(url, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const first = await enqueueAnalysisJob({ ...jobInput({ saveReport: false, comment: false }), oncePerHead: true });
+    const run = (now: string) => runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run", now: new Date(now)
+    });
+    expect((await run("2026-06-30T00:00:15Z")).status).toBe("waiting_checks");
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({ status: "queued", attempts: 0 });
+    expect((await run("2026-06-30T00:00:45Z")).status).toBe("waiting_checks");
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({ status: "queued", attempts: 0 });
+    pending = false;
+    expect((await run("2026-06-30T00:01:15Z")).status).toBe("completed");
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({ id: first.id, status: "completed", attempts: 1 });
+    expect((await run("2026-06-30T00:01:16Z")).status).toBe("idle");
+  });
+
+  it("analyzes a head with no CI after the discovery window", async () => {
+    stubReadyWorkerEnv({ grant: { saveReportsEnabled: false, commentEnabled: false } });
+    const githubFetch = mockWorkerFetch();
+    vi.stubGlobal("fetch", vi.fn((url: string | URL | Request, init?: RequestInit) =>
+      String(url).endsWith("/commits/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/check-runs?per_page=100&page=1")
+        ? Promise.resolve(Response.json({ total_count: 0, check_runs: [] }))
+        : githubFetch(url, init)
+    ));
+    await enqueueAnalysisJob({ ...jobInput({ saveReport: false, comment: false }), oncePerHead: true });
+    const result = await runNextAnalysisJob({
+      requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
+      now: new Date("2026-06-30T00:01:00Z")
+    });
+    expect(result.status).toBe("completed");
+  });
+
+  it("keeps a known pending check waiting beyond ten minutes", async () => {
+    stubReadyWorkerEnv({ grant: { saveReportsEnabled: false, commentEnabled: false } });
+    const githubFetch = mockWorkerFetch();
+    let pending = true;
+    const fetchMock = vi.fn((url: string | URL | Request, init?: RequestInit) =>
+      String(url).endsWith("/commits/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/check-runs?per_page=100&page=1")
+        ? Promise.resolve(Response.json({ total_count: 1, check_runs: [{
+          id: 999, name: "CI", status: pending ? "in_progress" : "completed",
+          conclusion: pending ? null : "success"
+        }] }))
+        : githubFetch(url, init)
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const observationSpy = vi.spyOn(generalPrObservationService, "runGeneralPrObservationNowV2");
+    try {
+      await enqueueAnalysisJob({ ...jobInput({ saveReport: false, comment: false }), oncePerHead: true });
+      const run = (now: string) => runNextAnalysisJob({
+        requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run", now: new Date(now)
+      });
+      expect((await run("2026-06-30T00:11:00Z")).status).toBe("waiting_checks");
+      expect(getAnalysisJobsForTests()[0]).toMatchObject({ status: "queued", attempts: 0 });
+      expect(observationSpy).not.toHaveBeenCalled();
+      pending = false;
+      expect((await run("2026-06-30T00:11:30Z")).status).toBe("completed");
+      expect(observationSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      observationSpy.mockRestore();
+    }
   });
 
   it("runs advisory observations without retaining private bundles in a worker result", async () => {
@@ -2916,6 +3029,7 @@ type WorkerGrantRecord = {
   slackNotificationsEnabled: boolean;
   llmAnalysisMode: "essential" | "enhanced";
   hybridPlannerConsentVersion?: "2026-08-12.v1";
+  privateAnalysisConsentVersion?: "2026-09-24.v1";
   repositoryPrivate?: boolean;
 };
 
@@ -3057,6 +3171,10 @@ function mockWorkerFetch(options: { pullRequestBody?: string; repositoryPrivate?
 
     if (href === "https://api.github.com/app/installations/321/access_tokens") {
       return Response.json({ token: "installation-token" });
+    }
+
+    if (href === "https://api.github.com/repos/RengGyu/AgentProof") {
+      return Response.json({ private: options.repositoryPrivate === true });
     }
 
     const pullMatch = href.match(/^https:\/\/api\.github\.com\/repos\/RengGyu\/AgentProof\/pulls\/(\d+)$/);

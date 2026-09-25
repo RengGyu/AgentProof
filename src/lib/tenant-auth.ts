@@ -1,4 +1,4 @@
-import { createHash, randomBytes, timingSafeEqual } from "crypto";
+import { createCipheriv, createDecipheriv, createHash, randomBytes, timingSafeEqual } from "crypto";
 import { noStoreJson } from "./http";
 import { redactSecrets } from "./redact";
 import { getControlPlaneSupabaseEnv } from "./control-plane-supabase";
@@ -9,10 +9,16 @@ export const DEFAULT_TENANT_AUTH_SESSIONS_TABLE = "agentproof_tenant_auth_sessio
 export const TENANT_AUTH_BOOTSTRAPS_ENV = "AGENTPROOF_TENANT_AUTH_BOOTSTRAPS";
 
 const TENANT_AUTH_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+const GITHUB_SESSION_IDLE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const GITHUB_SESSION_COOKIE_TTL_MS = 400 * 24 * 60 * 60 * 1000;
+const GITHUB_SESSION_RENEW_BELOW_MS = 29 * 24 * 60 * 60 * 1000;
+const GITHUB_ACCESS_EXPIRY_SKEW_MS = 60 * 1000;
+const GITHUB_REFRESH_LEASE_MS = 30 * 1000;
 
 export type TenantAuthAccessMethod = "durable-session";
 
 export interface TenantAuthSession {
+  sessionId: string;
   tenantId: string;
   memberId: string;
   role: TenantMemberRole;
@@ -51,6 +57,14 @@ interface TenantAuthSessionRecord {
   createdAt: string;
   expiresAt: string;
   revokedAt?: string;
+  authSource?: "github" | "bootstrap";
+  githubUserId?: string;
+  githubAccessCiphertext?: string;
+  githubAccessExpiresAt?: string;
+  githubRefreshCiphertext?: string;
+  githubRefreshExpiresAt?: string;
+  githubRefreshLeaseOwner?: string;
+  githubRefreshLeaseUntil?: string;
 }
 
 interface TenantAuthSessionStoreConfig {
@@ -67,6 +81,14 @@ interface SupabaseTenantAuthSessionRow {
   created_at?: unknown;
   expires_at?: unknown;
   revoked_at?: unknown;
+  auth_source?: unknown;
+  github_user_id?: unknown;
+  github_access_ciphertext?: unknown;
+  github_access_expires_at?: unknown;
+  github_refresh_ciphertext?: unknown;
+  github_refresh_expires_at?: unknown;
+  github_refresh_lease_owner?: unknown;
+  github_refresh_lease_until?: unknown;
 }
 
 type GlobalWithTenantAuthSessions = typeof globalThis & {
@@ -122,6 +144,7 @@ export async function createTenantAuthSession(
   await storeTenantAuthSession(record, env);
 
   return {
+    sessionId: record.id,
     tenantId,
     memberId,
     role: member.role,
@@ -132,8 +155,8 @@ export async function createTenantAuthSession(
 
 /**
  * Creates the same revocable, opaque session used by invite onboarding after a
- * GitHub identity has been verified.  The identity callback is the credential
- * in this path; OAuth tokens are never copied into this session or its store.
+ * GitHub identity has been verified. OAuth credentials are attached separately
+ * after this session is created and remain encrypted and session-bound.
  */
 export async function createTenantAuthSessionForMember(
   input: { tenantId?: unknown; memberId?: unknown },
@@ -152,22 +175,27 @@ export async function createTenantAuthSessionForMember(
   }
 
   const sessionToken = randomToken();
-  const expiresAt = new Date(now + TENANT_AUTH_SESSION_TTL_MS).toISOString();
+  const expiresAt = new Date(now + GITHUB_SESSION_IDLE_TTL_MS).toISOString();
+  const sessionId = randomToken();
   await storeTenantAuthSession({
-    id: randomToken(),
+    id: sessionId,
     tokenHash: hashToken(sessionToken),
     tenantId,
     memberId,
     createdAt: new Date(now).toISOString(),
-    expiresAt
+    expiresAt,
+    authSource: "github"
   }, env);
 
   return {
+    sessionId,
     tenantId,
     memberId,
     role: member.role,
     expiresAt,
-    sessionCookie: buildCookie(TENANT_AUTH_SESSION_COOKIE, sessionToken, expiresAt, now)
+    // The opaque browser cookie outlives the server's rolling 30-day idle
+    // expiry; a stale cookie alone never authorizes a request.
+    sessionCookie: buildCookie(TENANT_AUTH_SESSION_COOKIE, sessionToken, new Date(now + GITHUB_SESSION_COOKIE_TTL_MS).toISOString(), now)
   };
 }
 
@@ -188,6 +216,8 @@ export async function verifyTenantAuthAccess(
 
   const member = await readActiveTenantMember({ tenantId, memberId: record.memberId }, env);
   if (!member) return { authorized: false };
+
+  if (!await renewGitHubSessionIfNeeded(record, env, now)) return { authorized: false };
 
   return {
     authorized: true,
@@ -213,6 +243,8 @@ export async function resolveTenantAuthAccess(
 
   const member = await readActiveTenantMember({ tenantId: record.tenantId, memberId: record.memberId }, env);
   if (!member) return { authorized: false };
+
+  if (!await renewGitHubSessionIfNeeded(record, env, now)) return { authorized: false };
 
   return {
     authorized: true,
@@ -266,11 +298,275 @@ export function clearTenantAuthSessionsForTests() {
   tenantAuthSessionStore().clear();
 }
 
+/** Removes session-bound credentials after login expiry; never returns token data. */
+export async function cleanupExpiredGitHubSessionCredentials(env = process.env, now = Date.now()): Promise<number> {
+  const config = getTenantAuthSessionStoreConfig(env);
+  if (config) {
+    const params = new URLSearchParams({
+      auth_source: "eq.github",
+      and: `(or(expires_at.lte.${new Date(now).toISOString()},revoked_at.not.is.null),or(github_access_ciphertext.not.is.null,github_refresh_ciphertext.not.is.null))`,
+      select: "id"
+    });
+    const response = await tenantAuthFetch(config, `?${params.toString()}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Prefer: "return=representation" },
+      body: JSON.stringify({
+        github_access_ciphertext: null,
+        github_refresh_ciphertext: null,
+        github_refresh_lease_owner: null,
+        github_refresh_lease_until: null
+      })
+    });
+    const rows = await response.json().catch(() => null);
+    if (!response.ok || !Array.isArray(rows)) throw new TenantAuthStoreError("GitHub session credential cleanup is unavailable.");
+    return rows.length;
+  }
+  if (!truthy(env.AGENTPROOF_TENANT_AUTH_ALLOW_MEMORY)) throw new TenantAuthStoreError("Tenant auth session store is not configured.");
+  let cleared = 0;
+  const store = tenantAuthSessionStore();
+  for (const [tokenHash, record] of store) {
+    if (record.authSource !== "github" || (!record.revokedAt && Date.parse(record.expiresAt) > now)) continue;
+    if (!record.githubAccessCiphertext && !record.githubRefreshCiphertext) continue;
+    store.set(tokenHash, { ...record, githubAccessCiphertext: undefined, githubRefreshCiphertext: undefined, githubRefreshLeaseOwner: undefined, githubRefreshLeaseUntil: undefined });
+    cleared += 1;
+  }
+  return cleared;
+}
+
+export type GitHubUserCredentialResult =
+  | { status: "ready"; accessToken: string; githubUserId: string }
+  | { status: "reauth" | "unavailable" };
+
+/** Attach credentials only to the GitHub session just created by the callback. */
+export async function saveGitHubUserCredentials(input: {
+  sessionCookie: string;
+  githubUserId: string;
+  accessToken: string;
+  accessExpiresAt?: number | null;
+  refreshToken?: string | null;
+  refreshExpiresAt?: number | null;
+}, env = process.env, now = Date.now()): Promise<void> {
+  const token = readCookie(input.sessionCookie, TENANT_AUTH_SESSION_COOKIE);
+  const record = token ? await findTenantAuthSession({ tokenHash: hashToken(token) }, env) : null;
+  if (!record || record.authSource !== "github" || record.memberId !== `github:${input.githubUserId}` || record.revokedAt || Date.parse(record.expiresAt) <= now || !normalizeGitHubUserId(input.githubUserId) || !input.accessToken) {
+    throw new TenantAuthError("GitHub credential session is invalid.");
+  }
+  if (input.accessExpiresAt && (!input.refreshToken || !input.refreshExpiresAt || input.refreshExpiresAt <= now)) {
+    throw new TenantAuthError("GitHub expiring credential is not renewable.");
+  }
+  const secret = credentialSecret(env);
+  const fields = {
+    github_user_id: input.githubUserId,
+    github_access_ciphertext: sealGitHubToken(input.accessToken, record.id, "access", secret),
+    github_access_expires_at: input.accessExpiresAt ? new Date(input.accessExpiresAt).toISOString() : null,
+    github_refresh_ciphertext: input.refreshToken ? sealGitHubToken(input.refreshToken, record.id, "refresh", secret) : null,
+    github_refresh_expires_at: input.refreshExpiresAt ? new Date(input.refreshExpiresAt).toISOString() : null,
+    github_refresh_lease_owner: null,
+    github_refresh_lease_until: null
+  };
+  const config = getTenantAuthSessionStoreConfig(env);
+  if (config) {
+    const params = new URLSearchParams({ token_hash: `eq.${record.tokenHash}`, auth_source: "eq.github", revoked_at: "is.null", select: "id" });
+    const response = await tenantAuthFetch(config, `?${params.toString()}`, { method: "PATCH", headers: { "Content-Type": "application/json", Prefer: "return=representation" }, body: JSON.stringify(fields) });
+    const rows = await response.json().catch(() => null);
+    if (!response.ok || !Array.isArray(rows) || rows.length !== 1) throw new TenantAuthStoreError("GitHub credential storage is unavailable.");
+    return;
+  }
+  tenantAuthSessionStore().set(record.tokenHash, {
+    ...record,
+    githubUserId: input.githubUserId,
+    githubAccessCiphertext: fields.github_access_ciphertext,
+    githubAccessExpiresAt: fields.github_access_expires_at ?? undefined,
+    githubRefreshCiphertext: fields.github_refresh_ciphertext ?? undefined,
+    githubRefreshExpiresAt: fields.github_refresh_expires_at ?? undefined
+  });
+}
+
+/** Never returns a credential for a different session, tenant, or GitHub user. */
+export async function getGitHubUserCredentialForSession(
+  input: { cookieHeader?: string | null; tenantId: string; memberId: string },
+  env = process.env,
+  now = Date.now(),
+  fetchImpl: typeof fetch = fetch
+): Promise<GitHubUserCredentialResult> {
+  const token = readCookie(input.cookieHeader, TENANT_AUTH_SESSION_COOKIE);
+  if (!token) return { status: "reauth" };
+  const tokenHash = hashToken(token);
+  let record = await findTenantAuthSession({ tokenHash }, env);
+  if (!record || record.authSource !== "github" || record.tenantId !== input.tenantId || record.memberId !== input.memberId || record.githubUserId !== input.memberId.slice(7) || record.revokedAt || Date.parse(record.expiresAt) <= now) return { status: "reauth" };
+  if (!await readActiveTenantMember({ tenantId: record.tenantId, memberId: record.memberId }, env)) return { status: "reauth" };
+  const secret = credentialSecret(env);
+  const current = readableGitHubAccess(record, secret, now);
+  if (current) return current;
+  if (!record.githubRefreshCiphertext || !record.githubRefreshExpiresAt || Date.parse(record.githubRefreshExpiresAt) <= now) return { status: "reauth" };
+
+  const leaseOwner = randomToken();
+  const claimed = await claimGitHubRefresh(record, leaseOwner, env, now);
+  if (!claimed) {
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      record = await findTenantAuthSession({ tokenHash }, env);
+      if (!record || record.revokedAt || Date.parse(record.expiresAt) <= now) return { status: "reauth" };
+      const updated = readableGitHubAccess(record, secret, now);
+      if (updated) return updated;
+      if (!record.githubRefreshLeaseOwner) return { status: "reauth" };
+    }
+    return { status: "unavailable" };
+  }
+
+  let refreshToken: string;
+  try {
+    refreshToken = openGitHubToken(record.githubRefreshCiphertext, record.id, "refresh", secret);
+  } catch {
+    await clearFailedGitHubRefresh(record, leaseOwner, env);
+    return { status: "reauth" };
+  }
+  const clientId = env.AGENTPROOF_GITHUB_APP_CLIENT_ID?.trim();
+  const clientSecret = env.AGENTPROOF_GITHUB_APP_CLIENT_SECRET?.trim();
+  if (!clientId || !clientSecret) return { status: "unavailable" };
+  let response: Response;
+  try {
+    response = await fetchImpl("https://github.com/login/oauth/access_token", {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, grant_type: "refresh_token", refresh_token: refreshToken }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(8_000)
+    });
+  } catch {
+    return { status: "unavailable" };
+  }
+  const body = await response.json().catch(() => null) as { access_token?: unknown; expires_in?: unknown; refresh_token?: unknown; refresh_token_expires_in?: unknown; error?: unknown } | null;
+  if (!response.ok || !body || typeof body.access_token !== "string" || typeof body.refresh_token !== "string" || !validExpiresIn(body.expires_in) || !validExpiresIn(body.refresh_token_expires_in)) {
+    if (body?.error === "bad_refresh_token") {
+      await clearFailedGitHubRefresh(record, leaseOwner, env);
+      return { status: "reauth" };
+    }
+    return { status: "unavailable" };
+  }
+  const fields = {
+    github_access_ciphertext: sealGitHubToken(body.access_token, record.id, "access", secret),
+    github_access_expires_at: new Date(now + body.expires_in * 1000).toISOString(),
+    github_refresh_ciphertext: sealGitHubToken(body.refresh_token, record.id, "refresh", secret),
+    github_refresh_expires_at: new Date(now + body.refresh_token_expires_in * 1000).toISOString(),
+    github_refresh_lease_owner: null,
+    github_refresh_lease_until: null
+  };
+  if (!await completeGitHubRefresh(record, leaseOwner, fields, env)) return { status: "unavailable" };
+  return { status: "ready", accessToken: body.access_token, githubUserId: record.githubUserId! };
+}
+
 export function tenantAuthUnavailableResponse() {
   return noStoreJson({
     error: "Tenant auth session storage is unavailable.",
     code: "tenant_auth_unavailable"
   }, { status: 503 });
+}
+
+async function renewGitHubSessionIfNeeded(record: TenantAuthSessionRecord, env: NodeJS.ProcessEnv, now: number): Promise<boolean> {
+  if (record.authSource !== "github" || Date.parse(record.expiresAt) - now > GITHUB_SESSION_RENEW_BELOW_MS) return true;
+  const expiresAt = new Date(now + GITHUB_SESSION_IDLE_TTL_MS).toISOString();
+  const config = getTenantAuthSessionStoreConfig(env);
+  if (config) {
+    const params = new URLSearchParams({ token_hash: `eq.${record.tokenHash}`, revoked_at: "is.null", auth_source: "eq.github", expires_at: `gt.${new Date(now).toISOString()}`, select: "id" });
+    const response = await tenantAuthFetch(config, `?${params.toString()}`, { method: "PATCH", headers: { "Content-Type": "application/json", Prefer: "return=representation" }, body: JSON.stringify({ expires_at: expiresAt }) });
+    if (!response.ok) throw new TenantAuthStoreError(`GitHub session renewal failed with HTTP ${response.status}.`);
+    const rows = await response.json().catch(() => null);
+    return Array.isArray(rows) && rows.length === 1;
+  }
+  const current = tenantAuthSessionStore().get(record.tokenHash);
+  if (!current || current.revokedAt || Date.parse(current.expiresAt) <= now) return false;
+  tenantAuthSessionStore().set(record.tokenHash, { ...current, expiresAt });
+  return true;
+}
+
+function readableGitHubAccess(record: TenantAuthSessionRecord, secret: string, now: number): GitHubUserCredentialResult & { status: "ready" } | null {
+  if (!record.githubAccessCiphertext || !record.githubUserId || (record.githubAccessExpiresAt && Date.parse(record.githubAccessExpiresAt) <= now + GITHUB_ACCESS_EXPIRY_SKEW_MS)) return null;
+  try {
+    return { status: "ready", accessToken: openGitHubToken(record.githubAccessCiphertext, record.id, "access", secret), githubUserId: record.githubUserId };
+  } catch {
+    return null;
+  }
+}
+
+async function claimGitHubRefresh(record: TenantAuthSessionRecord, leaseOwner: string, env: NodeJS.ProcessEnv, now: number): Promise<boolean> {
+  const until = new Date(now + GITHUB_REFRESH_LEASE_MS).toISOString();
+  const config = getTenantAuthSessionStoreConfig(env);
+  if (config) {
+    const params = new URLSearchParams({ token_hash: `eq.${record.tokenHash}`, auth_source: "eq.github", revoked_at: "is.null", or: `(github_refresh_lease_until.is.null,github_refresh_lease_until.lt.${new Date(now).toISOString()})`, select: "id" });
+    const response = await tenantAuthFetch(config, `?${params.toString()}`, { method: "PATCH", headers: { "Content-Type": "application/json", Prefer: "return=representation" }, body: JSON.stringify({ github_refresh_lease_owner: leaseOwner, github_refresh_lease_until: until }) });
+    if (!response.ok) throw new TenantAuthStoreError("GitHub refresh lease is unavailable.");
+    const rows = await response.json().catch(() => null);
+    return Array.isArray(rows) && rows.length === 1;
+  }
+  const current = tenantAuthSessionStore().get(record.tokenHash);
+  if (!current || current.revokedAt || (current.githubRefreshLeaseUntil && Date.parse(current.githubRefreshLeaseUntil) > now)) return false;
+  tenantAuthSessionStore().set(record.tokenHash, { ...current, githubRefreshLeaseOwner: leaseOwner, githubRefreshLeaseUntil: until });
+  return true;
+}
+
+async function completeGitHubRefresh(record: TenantAuthSessionRecord, leaseOwner: string, fields: {
+  github_access_ciphertext: string; github_access_expires_at: string;
+  github_refresh_ciphertext: string; github_refresh_expires_at: string;
+  github_refresh_lease_owner: null; github_refresh_lease_until: null;
+}, env: NodeJS.ProcessEnv): Promise<boolean> {
+  const config = getTenantAuthSessionStoreConfig(env);
+  if (config) {
+    const params = new URLSearchParams({ token_hash: `eq.${record.tokenHash}`, github_refresh_lease_owner: `eq.${leaseOwner}`, revoked_at: "is.null", select: "id" });
+    const response = await tenantAuthFetch(config, `?${params.toString()}`, { method: "PATCH", headers: { "Content-Type": "application/json", Prefer: "return=representation" }, body: JSON.stringify(fields) });
+    if (!response.ok) throw new TenantAuthStoreError("GitHub refresh storage is unavailable.");
+    const rows = await response.json().catch(() => null);
+    return Array.isArray(rows) && rows.length === 1;
+  }
+  const current = tenantAuthSessionStore().get(record.tokenHash);
+  if (!current || current.revokedAt || current.githubRefreshLeaseOwner !== leaseOwner) return false;
+  tenantAuthSessionStore().set(record.tokenHash, { ...current, githubAccessCiphertext: fields.github_access_ciphertext, githubAccessExpiresAt: fields.github_access_expires_at, githubRefreshCiphertext: fields.github_refresh_ciphertext, githubRefreshExpiresAt: fields.github_refresh_expires_at, githubRefreshLeaseOwner: undefined, githubRefreshLeaseUntil: undefined });
+  return true;
+}
+
+async function clearFailedGitHubRefresh(record: TenantAuthSessionRecord, leaseOwner: string, env: NodeJS.ProcessEnv): Promise<void> {
+  const config = getTenantAuthSessionStoreConfig(env);
+  if (config) {
+    const params = new URLSearchParams({ token_hash: `eq.${record.tokenHash}`, github_refresh_lease_owner: `eq.${leaseOwner}` });
+    const response = await tenantAuthFetch(config, `?${params.toString()}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ github_access_ciphertext: null, github_refresh_ciphertext: null, github_refresh_lease_owner: null, github_refresh_lease_until: null }) });
+    if (!response.ok) throw new TenantAuthStoreError("GitHub credential revocation is unavailable.");
+    return;
+  }
+  const current = tenantAuthSessionStore().get(record.tokenHash);
+  if (current?.githubRefreshLeaseOwner === leaseOwner) tenantAuthSessionStore().set(record.tokenHash, { ...current, githubAccessCiphertext: undefined, githubRefreshCiphertext: undefined, githubRefreshLeaseOwner: undefined, githubRefreshLeaseUntil: undefined });
+}
+
+function credentialSecret(env: NodeJS.ProcessEnv): string {
+  const secret = env.AGENTPROOF_PUBLIC_AUTH_SECRET?.trim();
+  if (!secret || secret.length < 32) throw new TenantAuthStoreError("GitHub credential encryption is unavailable.");
+  return secret;
+}
+
+function sealGitHubToken(value: string, sessionId: string, kind: "access" | "refresh", secret: string): string {
+  const key = createHash("sha256").update("agentproof-github-session-v1\0").update(secret).digest();
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  cipher.setAAD(Buffer.from(`${sessionId}:${kind}`));
+  const ciphertext = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
+  return `v1.${iv.toString("base64url")}.${cipher.getAuthTag().toString("base64url")}.${ciphertext.toString("base64url")}`;
+}
+
+function openGitHubToken(packed: string, sessionId: string, kind: "access" | "refresh", secret: string): string {
+  const [version, iv, tag, ciphertext] = packed.split(".");
+  if (version !== "v1" || !iv || !tag || !ciphertext) throw new TenantAuthError("GitHub credential is invalid.");
+  const key = createHash("sha256").update("agentproof-github-session-v1\0").update(secret).digest();
+  const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(iv, "base64url"));
+  decipher.setAAD(Buffer.from(`${sessionId}:${kind}`));
+  decipher.setAuthTag(Buffer.from(tag, "base64url"));
+  return Buffer.concat([decipher.update(Buffer.from(ciphertext, "base64url")), decipher.final()]).toString("utf8");
+}
+
+function validExpiresIn(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0 && value <= 366 * 24 * 60 * 60;
+}
+
+function normalizeGitHubUserId(value: unknown): string | null {
+  return typeof value === "string" && /^\d{1,20}$/.test(value) ? value : null;
 }
 
 async function readActiveTenantMember(
@@ -345,7 +641,7 @@ async function findTenantAuthSession(
   if (config) {
     const params = new URLSearchParams({
       token_hash: `eq.${input.tokenHash}`,
-      select: "id,token_hash,tenant_id,member_id,created_at,expires_at,revoked_at",
+      select: "id,token_hash,tenant_id,member_id,created_at,expires_at,revoked_at,auth_source,github_user_id,github_access_ciphertext,github_access_expires_at,github_refresh_ciphertext,github_refresh_expires_at,github_refresh_lease_owner,github_refresh_lease_until",
       limit: "1"
     });
     const response = await tenantAuthFetch(config, `?${params.toString()}`, { method: "GET" });
@@ -368,7 +664,7 @@ async function revokeTenantAuthSessionByHash(tokenHash: string, revokedAt: strin
     const response = await tenantAuthFetch(config, `?${params.toString()}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ revoked_at: revokedAt })
+      body: JSON.stringify({ revoked_at: revokedAt, github_access_ciphertext: null, github_refresh_ciphertext: null, github_refresh_lease_owner: null, github_refresh_lease_until: null })
     });
     if (!response.ok) {
       throw new TenantAuthStoreError(`Tenant auth session revoke failed with HTTP ${response.status}.`);
@@ -379,7 +675,7 @@ async function revokeTenantAuthSessionByHash(tokenHash: string, revokedAt: strin
   const store = tenantAuthSessionStore();
   const record = store.get(tokenHash);
   if (record) {
-    store.set(tokenHash, { ...record, revokedAt });
+    store.set(tokenHash, { ...record, revokedAt, githubAccessCiphertext: undefined, githubRefreshCiphertext: undefined, githubRefreshLeaseOwner: undefined, githubRefreshLeaseUntil: undefined });
   }
 }
 
@@ -425,7 +721,8 @@ function toSupabaseTenantAuthSessionRow(record: TenantAuthSessionRecord) {
     member_id: record.memberId,
     created_at: record.createdAt,
     expires_at: record.expiresAt,
-    revoked_at: record.revokedAt ?? null
+    revoked_at: record.revokedAt ?? null,
+    auth_source: record.authSource ?? "bootstrap"
   };
 }
 
@@ -451,7 +748,15 @@ function normalizeSupabaseTenantAuthSessionRow(row: unknown): TenantAuthSessionR
     memberId,
     createdAt,
     expiresAt,
-    ...(revokedAt ? { revokedAt } : {})
+    ...(revokedAt ? { revokedAt } : {}),
+    authSource: value.auth_source === "github" ? "github" : "bootstrap",
+    githubUserId: normalizeGitHubUserId(value.github_user_id) ?? undefined,
+    githubAccessCiphertext: typeof value.github_access_ciphertext === "string" ? value.github_access_ciphertext : undefined,
+    githubAccessExpiresAt: normalizeIsoDate(value.github_access_expires_at) ?? undefined,
+    githubRefreshCiphertext: typeof value.github_refresh_ciphertext === "string" ? value.github_refresh_ciphertext : undefined,
+    githubRefreshExpiresAt: normalizeIsoDate(value.github_refresh_expires_at) ?? undefined,
+    githubRefreshLeaseOwner: typeof value.github_refresh_lease_owner === "string" ? value.github_refresh_lease_owner : undefined,
+    githubRefreshLeaseUntil: normalizeIsoDate(value.github_refresh_lease_until) ?? undefined
   };
 }
 

@@ -1,5 +1,22 @@
+// Downstream unit fixtures isolate budget; paid-budget*.test.ts checks the real boundary.
+vi.mock('@/lib/paid-budget', async importOriginal => ({
+  ...await importOriginal<typeof import('@/lib/paid-budget')>(),
+  ...(await import('@/lib/test-support/unmetered-budget')).unmeteredBudgetFixture
+}));
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { POST } from "./route";
+import { POST as routePOST } from "./route";
+// These downstream evidence/provider fixtures represent an authenticated caller.
+// auth.test.ts exercises the real durable session and CSRF boundary separately.
+vi.mock("@/lib/tenant-auth", async importOriginal => ({
+  ...await importOriginal<typeof import("@/lib/tenant-auth")>(),
+  resolveTenantAuthAccess: vi.fn(async () => ({ authorized: true, tenantId: "gh_123", memberId: "github:123", method: "durable-session", sessionState: "active" }))
+}));
+vi.mock("@/lib/github-analysis-access", () => ({ resolveGitHubAnalysisCredential: vi.fn(async () => ({ ok: true, token: "server-selected-test-token", kind: "installation" })) }));
+function POST(request: Request) {
+  const headers = new Headers(request.headers);
+  headers.set("origin", new URL(request.url).origin);
+  return routePOST(new Request(request, { headers }));
+}
 import { deriveRequirementPresentationV2 } from "@/lib/requirement-presentation-v2";
 import { validateRuntimeReportBoundary } from "@/lib/report-runtime-validation";
 import { encodeReportForShare, decodeSharedReport } from "@/lib/report-share";

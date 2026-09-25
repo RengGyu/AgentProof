@@ -5,6 +5,7 @@ import {
   clearGitHubOAuthInstallCookie,
   clearGitHubOAuthStateCookie,
   finishGitHubOAuth,
+  getGitHubOAuthAccess,
   GitHubOAuthError,
   verifyGitHubInstallationAccess,
   type GitHubOAuthConfig
@@ -85,6 +86,22 @@ describe("public GitHub OAuth cookies", () => {
     }, config, fetchMock, startedAt)).rejects.toThrow("token exchange failed");
   });
 
+  it("captures a renewable GitHub App token pair with provider lifetimes", async () => {
+    const now = Date.UTC(2026, 7, 4);
+    const started = beginGitHubOAuth(config, now);
+    const fetchMock = vi.fn().mockResolvedValueOnce(Response.json({ access_token: "ghu-test", expires_in: 28_800, refresh_token: "ghr-test", refresh_token_expires_in: 15_897_600 })).mockResolvedValueOnce(Response.json({ id: 123 }));
+    const result = await finishGitHubOAuth({ code: "code", state: new URL(started.authorizationUrl).searchParams.get("state"), cookieHeader: started.stateCookie, tenantId: "gh_123" }, config, fetchMock, now);
+    expect(result.credentials).toEqual({ accessToken: "ghu-test", accessExpiresAt: now + 28_800_000, refreshToken: "ghr-test", refreshExpiresAt: now + 15_897_600_000 });
+  });
+
+  it("rejects an expiring access token without a renewable pair", async () => {
+    const now = Date.UTC(2026, 7, 4);
+    const started = beginGitHubOAuth(config, now);
+    const fetchMock = vi.fn().mockResolvedValueOnce(Response.json({ access_token: "ghu-test", expires_in: 28_800 }));
+    await expect(finishGitHubOAuth({ code: "code", state: new URL(started.authorizationUrl).searchParams.get("state"), cookieHeader: started.stateCookie, tenantId: "gh_123" }, config, fetchMock, now)).rejects.toThrow("renewable credential");
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
   it("does not authorize an installation owned by another GitHub account", async () => {
     const startedAt = Date.UTC(2026, 7, 4);
     const started = beginGitHubOAuth(config, startedAt);
@@ -118,4 +135,22 @@ describe("public GitHub OAuth cookies", () => {
       installationId: 321
     }, config, installationFetch, startedAt)).resolves.toBe(false);
   });
+
+  it("keeps the temporary user credential tenant-bound and expires it independently", async () => {
+    const now = Date.UTC(2026, 7, 4);
+    const started = beginGitHubOAuth(config, now);
+    const fetchMock = vi.fn().mockResolvedValueOnce(Response.json({ access_token: "temporary-user-token" })).mockResolvedValueOnce(Response.json({ id: 123 }));
+    const identity = await finishGitHubOAuth({ code: "code", state: new URL(started.authorizationUrl).searchParams.get("state"), cookieHeader: started.stateCookie, tenantId: "gh_123" }, config, fetchMock, now);
+    expect(getGitHubOAuthAccess({ cookieHeader: identity.installCookie, tenantId: "gh_123" }, config, now)).toEqual({ accessToken: "temporary-user-token", githubUserId: "123" });
+    expect(getGitHubOAuthAccess({ cookieHeader: identity.installCookie, tenantId: "gh_456" }, config, now)).toBeNull();
+    expect(getGitHubOAuthAccess({ cookieHeader: identity.installCookie, tenantId: "gh_123" }, config, now + 16 * 60_000)).toBeNull();
+  });
+});
+
+it.each(['/analyze', '/dashboard', 'https://attacker.example', '//attacker.example', '/analyze?secret=value'])("allowlists signed OAuth return path %s", async destination => {
+  const now = Date.now();
+  const started = beginGitHubOAuth(config, now, destination);
+  const fetchMock = vi.fn().mockResolvedValueOnce(Response.json({ access_token: 'test-token' })).mockResolvedValueOnce(Response.json({ id: 123 }));
+  const result = await finishGitHubOAuth({ code: 'code', state: new URL(started.authorizationUrl).searchParams.get('state'), cookieHeader: started.stateCookie, tenantId: 'pending' }, config, fetchMock, now);
+  expect(result.returnTo).toBe(destination === '/analyze' ? '/analyze' : '/dashboard');
 });

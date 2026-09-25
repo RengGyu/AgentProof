@@ -66,6 +66,7 @@ describe("GET /api/dashboard/repositories", () => {
         commentEnabled: false,
         llmAnalysisMode: "essential",
         hybridPlannerConsentVersion: null,
+        privateAnalysisConsentVersion: null,
         repositoryPrivate: false
       }],
       privacy: "grant-metadata-only"

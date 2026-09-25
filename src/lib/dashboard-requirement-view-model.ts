@@ -152,13 +152,13 @@ function strictContractOutcomePresentation(
   if (!contract) return {};
   if (contract.state === "absent") {
     return {
-      outcomeLabel: "Unclear",
+      outcomeLabel: "No approved verification contract",
       outcomeMeaning: "No approved verification contract defined how this objective should be evaluated."
     };
   }
   if (contract.state === "invalid") {
     return {
-      outcomeLabel: "Unclear",
+      outcomeLabel: "Verification contract invalid",
       outcomeMeaning: "The supplied verification contract was invalid, so this objective was not evaluated."
     };
   }
@@ -173,8 +173,8 @@ function strictContractOutcomePresentation(
 function strictContractOutcomeLabel(status: string, state: VerificationContractStateV2): string {
   const coverage = toRequirementCoverageLabel(status);
   if (state === "authoritative" && status === "met") return "Supported against approved contract";
-  if (state === "authoritative" && status === "partial") return "Partially supported against approved contract";
-  if (state === "author_claim" && status === "partial") return "Partially supported against PR-description contract";
+  if (state === "authoritative" && status === "partial") return "Mixed criterion results against approved contract";
+  if (state === "author_claim" && status === "partial") return "PR claim — reviewer confirmation needed";
   return coverage;
 }
 
@@ -194,7 +194,7 @@ function usableCompactText(value: string | undefined, maxLength = 220): string |
 
 function toCoverageMeaning(status: string): string {
   if (status === "met") return "Deterministic evidence references support this requirement.";
-  if (status === "partial") return "Deterministic evidence references only partially support this requirement.";
+  if (status === "partial") return "Some deterministic evidence is linked; review the remaining conditions.";
   if (status === "missing") return "No deterministic evidence references support this requirement.";
   return "The captured deterministic evidence is insufficient to determine coverage for this requirement.";
 }

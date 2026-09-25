@@ -59,6 +59,27 @@ function ordinarySummary(sourceState: GeneralPrAssessmentSummaryV1["sourceState"
 }
 
 describe("PR-to-Evidence producer and surfaces", () => {
+  it("shows only collected checks in the review and copied summary", () => {
+    const report = generateVerificationReportV2FromInput(input());
+    report.testing = { ...report.testing, ciStatus: "passed", lintStatus: "unknown", typecheckStatus: "unknown" };
+    const detail = { repositoryFullName: "acme/widget", pullRequestNumber: 42, headSha: HEAD, report, freshness: "current" as const, copyEligible: true };
+    const html = renderToStaticMarkup(<QuickSummaryPanel detail={detail} quickSummary={toQuickSummary(detail)} onShowDetail={() => {}} showDetailedEvidence={false} demoMode={false} />);
+    const markdown = dashboardReportToMarkdown(detail);
+    expect(html).toContain("Checks: CI passed");
+    expect(html).toContain("CI</span><strong>passed</strong>");
+    expect(html).not.toContain("Lint</span><strong>unknown</strong>");
+    expect(html).not.toContain("Typecheck</span><strong>unknown</strong>");
+    expect(markdown).toContain("- CI: passed");
+    expect(markdown).not.toContain("- Lint: unknown");
+    expect(markdown).not.toContain("- Typecheck: unknown");
+    expect(html).not.toMatch(/\bunknown\b|\bpartial(?:ly)?\b/i);
+  });
+  it("does not turn an ordinary saved summary into partial or unknown verdict badges", () => {
+    const report = generateVerificationReportV2FromInput(input());
+    report.testing = { ...report.testing, ciStatus: "passed", lintStatus: "unknown", typecheckStatus: "unknown" };
+    const html = renderToStaticMarkup(<ReportView report={report} mode="summary" />);
+    expect(html).not.toMatch(/\bunknown\b|\bpartial(?:ly)?\b/i);
+  });
   it("keeps candidate cards, source, and exact links invariant when only assessment changes", () => {
     const report = generateVerificationReportV2FromInput(input());
     const before = structuredClone(report);
@@ -92,6 +113,27 @@ describe("PR-to-Evidence producer and surfaces", () => {
     });
     for (const output of outputs) expect(output).toEqual(outputs[0]);
     expect(report).toEqual(before);
+  });
+
+  it("shows ordinary PR objectives and exact code links before opening supporting details", () => {
+    const report = generateVerificationReportV2FromInput(input());
+    const detail = { repositoryFullName: "acme/widget", pullRequestNumber: 42, headSha: HEAD, report, freshness: "current" as const, copyEligible: true };
+    const html = renderToStaticMarkup(<QuickSummaryPanel detail={detail} quickSummary={toQuickSummary(detail)} onShowDetail={() => {}} showDetailedEvidence={false} demoMode={false} />);
+    expect(html).toContain("The service must reject expired reset links");
+    expect(html).toContain(`blob/${HEAD}/src/reset.ts`);
+    expect(html).toContain("Copy report");
+    expect(html).toContain("Copy JSON");
+    expect(html).toContain("Checks &amp; CI");
+    expect(html.indexOf("PR-to-Evidence Review")).toBeLessThan(html.indexOf("Check state"));
+  });
+
+  it("keeps non-current ordinary reports readable with copy actions disabled", () => {
+    const report = generateVerificationReportV2FromInput(input());
+    const detail = { repositoryFullName: "acme/widget", headSha: HEAD, report, freshness: "refreshing" as const, copyEligible: false };
+    const html = renderToStaticMarkup(<QuickSummaryPanel detail={detail} quickSummary={toQuickSummary(detail)} onShowDetail={() => {}} showDetailedEvidence={false} demoMode={false} />);
+    expect(html).toContain(`blob/${HEAD}/src/reset.ts`);
+    expect(html).toContain("This saved report remains readable");
+    expect(html.match(/<button[^>]*disabled=""/g)).toHaveLength(2);
   });
 
   it("keeps zero requirements neutral without assessment on every surface", () => {
@@ -167,9 +209,9 @@ describe("PR-to-Evidence producer and surfaces", () => {
     expect(dashboardHtml).toContain("failed");
     expect(dashboardHtml).not.toContain("Requirements and PR objectives");
     const quickHtml = renderToStaticMarkup(<QuickSummaryPanel detail={detail} quickSummary={toQuickSummary(detail)} onShowDetail={() => {}} showDetailedEvidence={false} demoMode={false} />);
-    expect(quickHtml).toContain("NEXT REVIEW TARGET");
+    expect(quickHtml).toContain(`blob/${HEAD}/src/reset.ts`);
     expect(quickHtml).not.toContain("MOST IMPORTANT EVIDENCE GAP");
-    expect(quickHtml).toContain("Check failed");
+    expect(quickHtml).toContain("CI failed");
   });
 
   it("renders full ordinary reports without the legacy satisfaction/coverage front panel", () => {

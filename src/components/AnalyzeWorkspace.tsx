@@ -16,6 +16,7 @@ import {
   Trash2
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { readAnalyzeResponse } from "@/lib/analyze-response";
 import { ReportView } from "@/components/ReportView";
 import { clearReportHistory, readReportHistory, saveReportToHistory, type StoredReport } from "@/lib/report-history";
 import type { AnalyzeRequest, DemoScenarioId, VerificationReport } from "@/lib/types";
@@ -49,7 +50,7 @@ const scenarioOptions: { id: DemoScenarioId; label: string; summary: string; exp
     id: "vague-task",
     label: "Vague task",
     summary: "Dashboard polish request without concrete acceptance criteria.",
-    expected: "Unclear requirement coverage."
+    expected: "No verified requirement result."
   }
 ];
 
@@ -58,7 +59,6 @@ export function AnalyzeWorkspace({ initialReport = null }: { initialReport?: Ver
   const [demoScenario, setDemoScenario] = useState<DemoScenarioId>("scope-creep");
   const [form, setForm] = useState<AnalyzeRequest>({
     prUrl: "",
-    githubToken: "",
     taskText: "",
     prDescription: "",
     changedFiles: "",
@@ -66,9 +66,11 @@ export function AnalyzeWorkspace({ initialReport = null }: { initialReport?: Ver
     logs: ""
   });
   const [report, setReport] = useState<VerificationReport | null>(initialReport);
+  const [historyWarning, setHistoryWarning] = useState<string | null>(null);
+  const [isHistoryReport, setIsHistoryReport] = useState(false);
   const [history, setHistory] = useState<StoredReport[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<{ message: string; hint?: string; guidance?: string[] } | null>(null);
+  const [error, setError] = useState<{ message: string; hint?: string; guidance?: string[]; loginRequired?: boolean; installRequired?: boolean; connectionRequired?: boolean } | null>(null);
   const [focusReportAfterLoad, setFocusReportAfterLoad] = useState(false);
   const reportRegionRef = useRef<HTMLDivElement | null>(null);
 
@@ -82,7 +84,11 @@ export function AnalyzeWorkspace({ initialReport = null }: { initialReport?: Ver
   );
 
   useEffect(() => {
-    setHistory(readReportHistory(window.localStorage));
+    try {
+      setHistory(readReportHistory(window.localStorage));
+    } catch {
+      setHistoryWarning("Browser history is unavailable. You can still generate and download a report.");
+    }
   }, []);
 
   useEffect(() => {
@@ -93,6 +99,42 @@ export function AnalyzeWorkspace({ initialReport = null }: { initialReport?: Ver
     setFocusReportAfterLoad(false);
   }, [focusReportAfterLoad, report]);
 
+  async function signInForAnalysis() {
+    setLoading(true);
+    try {
+      const response = await fetch("/api/auth/github/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-agentproof-csrf": "same-origin" },
+        body: JSON.stringify({ returnTo: "/analyze" })
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok || typeof body?.authorizationUrl !== "string") throw new Error("Sign-in unavailable");
+      window.location.assign(body.authorizationUrl);
+    } catch {
+      setError({ message: "GitHub sign-in is temporarily unavailable.", hint: "Try again from the configured AgentProof address. Demos and pasted evidence remain available.", loginRequired: true });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function installForAnalysis() {
+    setLoading(true);
+    try {
+      const response = await fetch("/api/github/onboarding/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-agentproof-csrf": "same-origin" },
+        body: "{}"
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok || typeof body?.installUrl !== "string") throw new Error("Installation unavailable");
+      window.location.assign(body.installUrl);
+    } catch {
+      setError({ message: "GitHub App installation is temporarily unavailable.", hint: "Open the dashboard to connect your repository." });
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function runAnalysis() {
     setLoading(true);
     setError(null);
@@ -101,31 +143,12 @@ export function AnalyzeWorkspace({ initialReport = null }: { initialReport?: Ver
       const payload: AnalyzeRequest = mode === "demo" ? { demoScenario } : form;
       const response = await fetch("/api/analyze", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-agentproof-csrf": "same-origin", "x-agentproof-analysis-key": crypto.randomUUID() },
         body: JSON.stringify(payload)
       });
-      const json = await response.json() as {
-        report?: VerificationReport;
-        error?: string;
-        hint?: string;
-        guidance?: string[];
-      };
-
-      if (!response.ok) {
-        const hint = typeof json.hint === "string" ? json.hint : undefined;
-        const guidance = Array.isArray(json.guidance)
-          ? json.guidance
-            .filter((item): item is string => typeof item === "string")
-            .filter((item) => item !== hint)
-            .slice(0, 3)
-          : undefined;
-
-        setError({
-          message: typeof json.error === "string" ? json.error : "Analysis failed",
-          hint,
-          guidance
-        });
-        setForm((current) => ({ ...current, githubToken: "" }));
+      const json = await readAnalyzeResponse(response);
+      if (json.error) {
+        setError({ message: json.error, hint: json.hint, guidance: json.guidance, loginRequired: json.loginRequired, installRequired: json.installRequired, connectionRequired: json.connectionRequired });
         return;
       }
 
@@ -135,13 +158,17 @@ export function AnalyzeWorkspace({ initialReport = null }: { initialReport?: Ver
 
       const nextReport = json.report;
       setReport(nextReport);
-      setHistory(saveReportToHistory(window.localStorage, nextReport));
-      setForm((current) => ({ ...current, githubToken: "" }));
+      setIsHistoryReport(false);
+      try {
+        setHistory(saveReportToHistory(window.localStorage, nextReport));
+        setHistoryWarning(null);
+      } catch {
+        setHistoryWarning("Report generated, but browser history could not be saved. Keep this page open or download the report.");
+      }
       setFocusReportAfterLoad(true);
-    } catch (analysisError) {
-      setError({ message: analysisError instanceof Error ? analysisError.message : "Analysis failed" });
+    } catch {
+      setError({ message: "Could not reach the analysis service.", hint: "Check your connection, then retry. Your PR URL and pasted context remain in the form." });
     } finally {
-      setForm((current) => ({ ...current, githubToken: "" }));
       setLoading(false);
     }
   }
@@ -151,7 +178,12 @@ export function AnalyzeWorkspace({ initialReport = null }: { initialReport?: Ver
   }
 
   function clearHistory() {
-    setHistory(clearReportHistory(window.localStorage));
+    try {
+      setHistory(clearReportHistory(window.localStorage));
+      setHistoryWarning(null);
+    } catch {
+      setHistoryWarning("Browser history could not be cleared. Check this browser’s storage permissions.");
+    }
   }
 
   return (
@@ -196,14 +228,15 @@ export function AnalyzeWorkspace({ initialReport = null }: { initialReport?: Ver
           <div className="automation-note beta-note">
             <KeyRound size={16} aria-hidden="true" />
             <span>
-              <strong>Start with a public PR URL</strong>
-              For reviewer feedback, paste a public GitHub PR URL and leave the token blank. Demo is optional;
-              private repos, tokens, raw code, and full logs are not needed.
+              <strong>Start with a GitHub PR URL</strong>
+              Sign in to analyze a GitHub PR URL. Connect repositories you own or administer with the GitHub App;
+              Private PRs require a connected repository with Analysis on and consent in Settings.
+              Public PRs from other accounts use your GitHub sign-in. Demo is optional.
             </span>
           </div>
 
           <ol className="first-run-steps" aria-label="Guided beta steps">
-            <li>Use a public PR URL first.</li>
+            <li>Paste a public or connected private PR URL.</li>
             <li>Read the 30-second card after generation.</li>
             <li>Send only short feedback, never raw code, logs, or tokens.</li>
           </ol>
@@ -263,23 +296,6 @@ export function AnalyzeWorkspace({ initialReport = null }: { initialReport?: Ver
                     onChange={(event) => updateForm("prUrl", event.target.value)}
                     placeholder="https://github.com/org/repo/pull/123"
                   />
-                </div>
-                <div className="field">
-                  <label htmlFor="githubToken">Optional GitHub token</label>
-                  <input
-                    id="githubToken"
-                    className="input"
-                    value={form.githubToken}
-                    onChange={(event) => updateForm("githubToken", event.target.value)}
-                    type="password"
-                    placeholder="Only for rate limits or private repos"
-                    autoComplete="off"
-                    aria-describedby="githubTokenHelp"
-                  />
-                  <p id="githubTokenHelp" className="muted small credential-note">
-                    Leave blank for public PRs. If needed, use a fine-grained read-only token for this request only;
-                    it is never saved and is cleared after the request completes.
-                  </p>
                 </div>
               </section>
 
@@ -359,11 +375,20 @@ export function AnalyzeWorkspace({ initialReport = null }: { initialReport?: Ver
           </div>
 
           {error ? (
-            <div className="intake-error">
+            <div className="intake-error" role="alert">
               <AlertTriangle size={14} />
               <div className="intake-error-body">
                 <strong>{error.message}</strong>
+                {report ? <span>The report below is from an earlier analysis.</span> : null}
                 {error.hint ? <span>{error.hint}</span> : null}
+                {error.loginRequired ? <button className="button primary" disabled={loading} onClick={signInForAnalysis}>Sign in with GitHub</button> : null}
+                {error.installRequired ? <button className="button primary" disabled={loading} onClick={installForAnalysis}>Install GitHub App</button> : null}
+                {error.connectionRequired ? <a className="button primary" href="/dashboard">Open repository settings</a> : null}
+                <button className="button" disabled={loading} onClick={() => {
+                  setMode("manual");
+                  setForm((current) => ({ ...current, prUrl: "" }));
+                  setError(null);
+                }}>Use pasted evidence instead</button>
                 {error.guidance && error.guidance.length > 0 ? (
                   <ul className="intake-error-actions">
                     {error.guidance.map((item) => (
@@ -386,11 +411,17 @@ export function AnalyzeWorkspace({ initialReport = null }: { initialReport?: Ver
               </button>
             </div>
             <p className="muted small">Local summary-only history. Raw evidence is not saved here.</p>
+            {historyWarning ? <p role="status" className="muted small">{historyWarning}</p> : null}
             {history.length > 0 ? (
               <ul className="history-list">
                 {history.map((item) => (
                   <li key={item.id}>
-                    <button onClick={() => setReport(item.report)}>
+                    <button onClick={() => {
+                      setReport(item.report);
+                      setIsHistoryReport(true);
+                      setError(null);
+                      setFocusReportAfterLoad(true);
+                    }}>
                       <span>{item.title}</span>
                       <small>{item.priority.toUpperCase()} - {item.evidenceCoverage}%</small>
                     </button>
@@ -405,15 +436,18 @@ export function AnalyzeWorkspace({ initialReport = null }: { initialReport?: Ver
 
         {report ? (
           <div ref={reportRegionRef} tabIndex={-1} className="report-focus-target">
-            <ReportView report={report} />
+            <>
+              {isHistoryReport ? <p className="notice" role="status">Reopened local summary. Original code evidence and recommendations are not retained here; generate a new report to inspect them.</p> : null}
+              <ReportView key={report.analysisId} report={report} mode={isHistoryReport ? "summary" : "full"} />
+            </>
           </div>
         ) : (
           <section className="panel empty-state">
             <div>
               <GitPullRequest size={36} />
-              <h1>Paste a public PR URL first</h1>
+              <h1>Paste a GitHub PR URL</h1>
               <p>
-                AgentProof will show the top risk, missing proof, first files, test/build status, and next agent ask in one 30-second card. Demo is optional if you do not have a public PR.
+                AgentProof will show the top risk, missing proof, first files, test/build status, and next agent ask in one 30-second card. Demo is optional if you do not have a PR ready.
               </p>
             </div>
           </section>

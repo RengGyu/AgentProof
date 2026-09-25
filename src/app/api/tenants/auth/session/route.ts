@@ -103,6 +103,7 @@ export async function DELETE(request: Request) {
     await revokeTenantAuthSession({ cookieHeader: request.headers.get("cookie") });
   } catch (error) {
     if (!(error instanceof TenantAuthStoreError)) throw error;
+    return noStoreJson({ error: "Your session could not be ended. Try again.", code: "tenant_auth_logout_unavailable" }, { status: 503 });
   }
 
   return noStoreJson({

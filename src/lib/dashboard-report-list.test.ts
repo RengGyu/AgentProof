@@ -22,6 +22,8 @@ describe("dashboard report list", () => {
     expect(reportWorkspaceStatusLabel("current")).toBe("CURRENT");
     expect(reportWorkspaceStatusLabel("refreshing")).toBe("UPDATING");
     expect(reportWorkspaceStatusLabel("refresh_failed")).toBe("NEEDS ATTENTION");
+    expect(reportWorkspaceStatusLabel("unknown")).toBe("SAVED");
+    expect(reportWorkspaceStatusLabel()).toBe("SAVED");
   });
 
   it("keeps unavailable historical rows out of the active repository workspace", () => {

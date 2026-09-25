@@ -26,10 +26,10 @@ describe("PublicGitHubDashboard saved reports", () => {
     expect(source).toContain("Priority:");
   });
 
-  it("shows saved-report availability separately from the verification outcome", () => {
+  it("shows saved-report availability without a misleading verification verdict", () => {
     expect(source).toContain("Report:");
-    expect(source).toContain("Verification:");
-    expect(source).toContain("verificationOutcomeLabel(report.verificationOutcome)");
+    expect(source).not.toContain("Verification:");
+    expect(source).not.toContain("verificationOutcomeLabel(report.verificationOutcome)");
   });
 
   it("keeps the report list compact until the reviewer expands it", () => {
@@ -174,15 +174,16 @@ describe("PublicGitHubDashboard saved reports", () => {
     expect(source).toContain("Comments are off");
   });
 
-  it("asks for a concise enhanced-analysis choice only when a private repository is selected", () => {
-    expect(source).toContain("Use essential analysis");
-    expect(source).toContain("Enable enhanced analysis");
-    expect(source).toContain("selected changed-code excerpts and evidence summaries");
+  it("asks for an explicit ON/OFF private analysis choice only when a private repository is selected", () => {
+    expect(source).toContain("Connect with analysis OFF");
+    expect(source).toContain("Connect with analysis ON");
+    expect(source).toContain("selected changed-code excerpts");
+    expect(source).toContain("privateAnalysisConsentOnConnect");
     expect(source).toContain("repository.private ?");
   });
 
   it("requires an explicit private enhanced-planning consent checkbox with the approved disclosure", () => {
-    expect(source).toContain("Allow AgentProof to send bounded redacted private Issue and pull-request source spans to the configured provider for enhanced planning.");
+    expect(source).toContain("Separately allow bounded redacted private Issue and PR source spans for enhanced planning.");
     expect(source).toContain("hybridPlannerConsent");
     expect(source).toContain("Private enhanced planning consent");
     expect(source).toContain('repository.repositoryPrivate === true && repository.llmAnalysisMode === "enhanced"');

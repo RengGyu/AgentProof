@@ -890,6 +890,10 @@ describe("extractRequirementSpanSeed", () => {
 });
 
 describe("extractClaims", () => {
+  it("does not anchor a changed file to an added blank line", () => {
+    const items=buildEvidenceIndexResult("", "", [{path:"src/example.ts",status:"added",patch:"@@ -0,0 +1,2 @@\n+\n+export const enabled = true;"}], [], [], "task").items;
+    expect(items[0]?.codeLocation?.line).toBe(2);
+  });
   it("derives bounded code navigation from canonical changed-file status and source revisions", () => {
     const evidence = buildEvidenceIndexResult("", "", [
       { path: "src/new.ts", previousPath: "src/old.ts", status: "renamed", patch: "@@ -8,2 +12,3 @@\n-old\n+new" },

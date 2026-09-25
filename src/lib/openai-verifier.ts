@@ -1,3 +1,4 @@
+import { budgetedOpenAIFetch } from './paid-budget';
 import { buildLlmVerifierPackage } from "./llm-package";
 import { validateRuntimeReportBoundary } from "./report-runtime-validation";
 import { redactSecrets } from "./redact";
@@ -19,8 +20,7 @@ export async function verifyReportWithOpenAI(
 ): Promise<VerificationReport> {
   const llmPackage = buildLlmVerifierPackage(input, deterministicReport);
   const baselineReport = llmPackage.input.deterministicReport;
-  const fetchImpl = options.fetchFn ?? fetch;
-  const response = await fetchImpl(OPENAI_RESPONSES_URL, {
+  const response = await budgetedOpenAIFetch(OPENAI_RESPONSES_URL, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${options.apiKey}`,
@@ -49,7 +49,7 @@ export async function verifyReportWithOpenAI(
       store: false
     }),
     signal: AbortSignal.timeout(OPENAI_TIMEOUT_MS)
-  });
+  }, options.fetchFn);
 
   if (!response.ok) {
     const errorText = await response.text();

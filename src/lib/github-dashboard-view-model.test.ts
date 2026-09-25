@@ -2,13 +2,29 @@ import { describe, expect, it } from "vitest";
 import {
   buildGitHubPullUrl,
   isPreviewDemoEnabled,
+  isActiveRepositoryGrant,
   verificationOutcomeLabel,
   toRequirementCoverageLabel,
   toQuickSummary,
+  observedCheckResults,
   toRepositoryWorkspaceRows
 } from "./github-dashboard-view-model";
 
 describe("github dashboard view model", () => {
+  it("shows the observed CI result without turning uncollected lint and typecheck into an unknown aggregate", () => {
+    const testing = { ciStatus: "passed", lintStatus: "unknown", typecheckStatus: "unknown" };
+    expect(toQuickSummary({ report: { testing } }).checkState).toBe("CI passed");
+    expect(observedCheckResults(testing)).toEqual([{ label: "CI", status: "passed" }]);
+    expect(toQuickSummary({ report: { testing: { ciStatus: "passed", lintStatus: "failed", typecheckStatus: "unknown" } } }).checkState).toBe("Lint failed");
+    expect(toQuickSummary({ report: { testing: { ciStatus: "unknown", lintStatus: "unknown", typecheckStatus: "unknown" } } }).checkState).toBe("No check results collected");
+  });
+  it("keeps private OFF and legacy unconsented grants out of the active repository list", () => {
+    const base = { installationId: 1, repositoryId: 10, repositoryFullName: "acme/private", enabled: true, analysisEnabled: true, saveReportsEnabled: true, commentEnabled: false, repositoryPrivate: true };
+    expect(isActiveRepositoryGrant(base)).toBe(false);
+    expect(isActiveRepositoryGrant({ ...base, privateAnalysisConsentVersion: "2026-09-24.v1" })).toBe(true);
+    expect(isActiveRepositoryGrant({ ...base, analysisEnabled: false, privateAnalysisConsentVersion: "2026-09-24.v1" })).toBe(false);
+    expect(isActiveRepositoryGrant({ ...base, repositoryPrivate: false })).toBe(true);
+  });
   it("enables sample data only for an explicitly requested Preview demo", () => {
     expect(isPreviewDemoEnabled(true, "1")).toBe(true);
     expect(isPreviewDemoEnabled(false, "1")).toBe(false);
@@ -17,9 +33,9 @@ describe("github dashboard view model", () => {
 
   it("translates stored requirement states into reviewer-facing language", () => {
     expect(toRequirementCoverageLabel("met")).toBe("Supported");
-    expect(toRequirementCoverageLabel("partial")).toBe("Partially supported");
+    expect(toRequirementCoverageLabel("partial")).toBe("Some evidence linked");
     expect(toRequirementCoverageLabel("missing")).toBe("Evidence missing");
-    expect(toRequirementCoverageLabel("unclear")).toBe("Unclear");
+    expect(toRequirementCoverageLabel("unclear")).toBe("No verified evidence conclusion");
   });
 
   it("labels the verification outcome separately from saved-report availability", () => {
@@ -53,7 +69,7 @@ describe("github dashboard view model", () => {
       }
     })).toMatchObject({
       freshness: "STALE",
-      checkState: "Check failed",
+      checkState: "CI failed",
       primaryEvidenceState: "Evidence missing",
       inspectFirst: "src/auth.ts",
       githubUrl: "https://github.com/RengGyu/dongo/pull/14"
@@ -77,9 +93,9 @@ describe("github dashboard view model", () => {
     }).freshness).toBe("SUPERSEDED");
   });
 
-  it("keeps explicit current freshness ahead of an out-of-order legacy stale marker and fails closed without a state", () => {
+  it("keeps explicit current freshness ahead of an out-of-order legacy stale marker without claiming an unclassified report is current", () => {
     expect(toQuickSummary({ freshness: "current", copyEligible: true, staleAt: "2026-08-06T00:00:00.000Z", report: { requirements: [] } }).freshness).toBe("CURRENT");
-    expect(toQuickSummary({ report: { requirements: [] } }).freshness).toBe("UNKNOWN");
+    expect(toQuickSummary({ report: { requirements: [] } }).freshness).toBe("SAVED");
   });
 
   it("uses the deterministic evidence gap as the quick-summary explanation when semantic prose differs", () => {

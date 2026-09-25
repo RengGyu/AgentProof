@@ -408,7 +408,7 @@
         "mustNotTestBuildStatuses": ["passed"],
         "maxMetRequirements": 0,
         "requiredLimitations": [
-          "Confidence is based only on issue, diff, and test-artifact evidence because no public test/build execution evidence was found."
+          "Confidence is based only on issue, diff, and test-artifact evidence because no test/build execution evidence was found."
         ]
       }
     },

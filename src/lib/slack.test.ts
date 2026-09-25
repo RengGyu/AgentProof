@@ -115,8 +115,8 @@ describe("slack helpers", () => {
     const payload = JSON.stringify(reportToSlackPayload(report));
 
     expect(report.requirements[0]).toMatchObject({ status: "unclear", evidenceStatus: "partial" });
-    expect(payload).toContain("Unclear against approved contract");
-    expect(payload).toContain("Observed evidence: Partially supported");
+    expect(payload).toContain("No verified outcome against approved contract");
+    expect(payload).toContain("Observed evidence: Some evidence linked");
     expect(payload).toContain("Evidence details are omitted from this portable summary.");
     expect(payload).not.toContain("Supported against approved contract");
   });
@@ -141,8 +141,8 @@ describe("slack helpers", () => {
     const payload = JSON.stringify(reportToSlackPayload(report));
 
     expect(payload).toContain("Ordinary PR evidence assessment");
-    expect(payload).toContain("Partial observations; objective fulfillment remains unconfirmed");
-    expect(payload).toContain("Partial evidence: 1");
+    expect(payload).toContain("Some evidence collected; review the remaining goal");
+    expect(payload).toContain("Evidence to inspect: 1");
     expect(payload).toContain("Semantic assessment was unavailable.");
     expect(payload).toContain("The target-to-evidence relation remains unresolved.");
     expect(payload).toContain("Observed changed artifacts: 2");

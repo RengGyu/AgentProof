@@ -1143,7 +1143,7 @@ describe("generateVerificationReport", () => {
     } satisfies PullRequestInput);
 
     expect(report.testing.ciStatus).toBe("unknown");
-    expect(report.limitations.join(" ")).toContain("Public check/status metadata was available, but no test/build execution evidence was found.");
+    expect(report.limitations.join(" ")).toContain("Check/status metadata was available, but no test/build execution evidence was found.");
     expect(report.requirements.some((requirement) => requirement.status === "met")).toBe(false);
   });
 
@@ -1407,12 +1407,12 @@ describe("generateVerificationReport", () => {
         }
       ],
       limitations: [
-        "Public GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored."
+        "GitHub Actions metadata showed passing build/test jobs; raw log archives were not fetched or stored."
       ]
     } satisfies PullRequestInput);
 
     expect(report.testing.ciStatus).toBe("passed");
-    expect(report.limitations.join(" ")).toContain("Public GitHub Actions metadata showed passing build/test jobs");
+    expect(report.limitations.join(" ")).toContain("GitHub Actions metadata showed passing build/test jobs");
     expect(report.limitations.join(" ")).not.toContain("No CI or test logs were available");
   });
 
@@ -1481,7 +1481,7 @@ describe("generateVerificationReport", () => {
         }
       ],
       limitations: [
-        "Public GitHub Actions metadata showed failing build/test jobs; raw log archives were not fetched or stored."
+        "GitHub Actions metadata showed failing build/test jobs; raw log archives were not fetched or stored."
       ]
     } satisfies PullRequestInput);
 
@@ -1681,13 +1681,13 @@ describe("generateVerificationReport", () => {
       ],
       logs: [],
       limitations: [
-        "Public commit status metadata was available, but only non-execution statuses were found.",
+        "Commit status metadata was available, but only non-execution statuses were found.",
         "Raw CI logs were not fetched or stored."
       ]
     } satisfies PullRequestInput);
 
     expect(report.testing.ciStatus).toBe("unknown");
-    expect(report.limitations.join(" ")).toContain("Public commit status metadata was available, but only non-execution statuses were found.");
+    expect(report.limitations.join(" ")).toContain("Commit status metadata was available, but only non-execution statuses were found.");
     expect(report.limitations.join(" ")).toContain("Confidence is based only on issue, diff, and test-artifact evidence");
     expect(report.requirements.some((requirement) => requirement.status === "met")).toBe(false);
   });
@@ -1715,7 +1715,7 @@ describe("generateVerificationReport", () => {
       ],
       logs: [],
       limitations: [
-        "Public commit status metadata was available, but only non-execution statuses were found.",
+        "Commit status metadata was available, but only non-execution statuses were found.",
         "Raw CI logs were not fetched or stored."
       ]
     } satisfies PullRequestInput);

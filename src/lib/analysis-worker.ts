@@ -1,9 +1,13 @@
+import { withPaidAnalysis, assertPaidAnalysisAllowed } from "./paid-budget";
 import { resolveNavigationProvider } from "./gemini-navigation";
+import { isPrivateAnalysisGrantCurrent } from "./github-analysis-access";
 import {
   completeAnalysisJob,
   bindAnalysisJobPlannerSeed,
   fenceAnalysisJobSemanticRetryFinalization,
   claimNextAnalysisJob,
+  deferAnalysisJob,
+  DEFAULT_ANALYSIS_JOB_CI_DISCOVERY_MS,
   DEFAULT_ANALYSIS_JOB_MAX_ATTEMPTS,
   DEFAULT_ANALYSIS_JOB_RETRY_AFTER_MS,
   failAnalysisJob,
@@ -99,6 +103,7 @@ const OPENAI_BACKGROUND_POLL_DELAY_MS = 15_000;
 const OPENAI_BACKGROUND_TTL_MS = 8 * 60_000;
 const OPENAI_BACKGROUND_RETRY_MIN_REMAINING_MS =
   OPENAI_BACKGROUND_REQUEST_TIMEOUT_MS + OPENAI_BACKGROUND_POLL_DELAY_MS;
+const CHECK_SETTLE_POLL_MS = 30_000;
 
 export type AnalysisWorkerPreflightStatus =
   | "idle"
@@ -117,6 +122,8 @@ export interface AnalysisWorkerPreflightResult {
   };
   llmAnalysisMode?: "essential" | "enhanced";
   hybridPilotControlled?: boolean;
+  privateAnalysisApproved?: boolean;
+  privateTenantId?: string;
 }
 
 export interface RunAnalysisJobOptions extends AnalysisJobClaimOptions {
@@ -129,7 +136,7 @@ export interface RunAnalysisJobBatchOptions extends RunAnalysisJobOptions {
 }
 
 export interface AnalysisWorkerRunResult {
-  status: AnalysisWorkerPreflightStatus | "waiting_provider" | "completed";
+  status: AnalysisWorkerPreflightStatus | "waiting_checks" | "waiting_provider" | "completed";
   job?: AnalysisJobRow;
   reason?: string;
   resultSummary?: AnalysisJobResultSummary;
@@ -320,7 +327,9 @@ export async function preflightClaimedAnalysisJob(
         job,
         sideEffects,
         llmAnalysisMode: grant.grant.llmAnalysisMode,
-        hybridPilotControlled: true
+        hybridPilotControlled: true,
+        privateAnalysisApproved: grant.grant.repositoryPrivate === true && grant.grant.privateAnalysisConsentVersion === "2026-09-24.v1",
+        privateTenantId: grant.grant.tenantId
       };
     }
   } catch (error) {
@@ -426,6 +435,14 @@ async function runPreflightedAnalysisJob(
   options: RunAnalysisJobOptions,
   env: NodeJS.ProcessEnv
 ): Promise<AnalysisWorkerRunResult> {
+  return withPaidAnalysis(`job:${preflight.job?.id ?? "none"}`, () => runBudgetedPreflightedJob(preflight, options, env));
+}
+
+async function runBudgetedPreflightedJob(
+  preflight: AnalysisWorkerPreflightResult,
+  options: RunAnalysisJobOptions,
+  env: NodeJS.ProcessEnv
+): Promise<AnalysisWorkerRunResult> {
   if (preflight.status !== "ready" || !preflight.job) {
     return preflight;
   }
@@ -451,6 +468,30 @@ async function runPreflightedAnalysisJob(
         "GitHub App worker could not build a pull request input."
       );
     }
+    if (input.repositoryPrivate === true && !preflight.privateAnalysisApproved) {
+      throw new AnalysisWorkerTerminalError("private-consent-required", "Private repository analysis is off until its code-analysis notice is accepted.");
+    }
+
+    const now = options.now ?? new Date();
+    const ageMs = Math.max(0, now.getTime() - new Date(job.created_at).getTime());
+    const checksPending = input.checks.some((check) => check.status === "pending") ||
+      input.executionSuites?.some((suite) => suite.status === "pending") === true;
+    if (job.attempts === 1 && (ageMs < DEFAULT_ANALYSIS_JOB_CI_DISCOVERY_MS || checksPending)) {
+      const runAfter = new Date(now.getTime() + Math.max(
+        CHECK_SETTLE_POLL_MS,
+        DEFAULT_ANALYSIS_JOB_CI_DISCOVERY_MS - ageMs
+      ));
+      const deferred = await deferAnalysisJob({
+        id: job.id,
+        claimGeneration: job.claim_generation ?? "",
+        runningRevision: job.running_revision ?? 0,
+        attempts: job.attempts,
+        runAfter,
+        now
+      }, env);
+      if (!deferred) throw new AnalysisWorkerLeaseLostError();
+      return { status: "waiting_checks", job, sideEffects };
+    }
 
     const generalPrPolicy = resolveGeneralPrAssessmentRuntimePolicyV1(
       env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE
@@ -462,7 +503,7 @@ async function runPreflightedAnalysisJob(
       Boolean(generalPrObserverApiKey && generalPrObserverModel);
     const navigationProvider = resolveNavigationProvider(env);
     const navigationEligible = generalPrPolicy.semanticObservation === "eligible_public_pr" &&
-      generalPrObservationService.isGeneralPrSemanticObserverEligibleV2(input);
+      (generalPrObservationService.isGeneralPrSemanticObserverEligibleV2(input) || Boolean(input.repositoryPrivate === true && preflight.privateAnalysisApproved && input.sourceProvenance?.origin === "github_snapshot" && (input.taskText.trim() === "" || input.taskSource === "issue")));
     const generalPrObservation = await generalPrObservationService.runGeneralPrObservationNowV2({
       policy: generalPrPolicy,
       input,
@@ -470,6 +511,8 @@ async function runPreflightedAnalysisJob(
         model: navigationProvider.model,
         ...(navigationEligible && navigationProvider.provider ? {
           provider: navigationProvider.provider,
+          ...(input.repositoryPrivate === true && preflight.privateTenantId && job.repository_id ? { authorizePrivate: () => isPrivateAnalysisGrantCurrent({ tenantId: preflight.privateTenantId!, repositoryFullName: job.repository_full_name, installationId: job.installation_id, repositoryId: job.repository_id! }) } : {}),
+          readRepositoryPrivate: () => readGitHubRepositoryPrivate(job.repository_full_name, token),
           readArtifacts: (paths,headSha) => collectReviewArtifacts(job.pull_request_url,token,paths,headSha),
           readCurrentInput: () => buildGitHubPullRequestInput(job.pull_request_url,token,"",undefined,{expectedHeadSha:input.sourceProvenance?.headSha,expectedBaseSha:input.sourceProvenance?.baseSha})
         } : {})
@@ -507,6 +550,21 @@ async function runPreflightedAnalysisJob(
       } : {})
     });
     const deterministicReport = generalPrObservation.report;
+    if (input.repositoryPrivate === true) {
+      let currentGrant;
+      try {
+        currentGrant = await authorizeTenantRepositoryGrantAsync({
+          installationId: job.installation_id,
+          repositoryId: job.repository_id ?? undefined,
+          repositoryFullName: job.repository_full_name
+        }, env);
+      } catch {
+        throw new AnalysisWorkerRetryableError("github_app_tenant_grant_store_unavailable", "Private repository grant could not be rechecked before model analysis.");
+      }
+      if (currentGrant.reason || currentGrant.grant?.tenantId !== preflight.privateTenantId || currentGrant.grant?.privateAnalysisConsentVersion !== "2026-09-24.v1") {
+        throw new AnalysisWorkerTerminalError("private-consent-required", "Private repository analysis was turned off before model analysis.");
+      }
+    }
     const protocol = resolveHybridWorkerProtocol(job, preflight.hybridPilotControlled === true);
     const semanticResult = generalPrPolicy.assessmentProjection === "advisory" && (deterministicReport as import("./types").VerificationReportV2).reviewCandidates?.navigation
       ? { status: "ready" as const, report: deterministicReport }
@@ -566,6 +624,7 @@ async function runPreflightedAnalysisJob(
         `Generated report failed runtime validation: ${runtimeReport.errors.join("; ")}`
       );
     }
+    assertPaidAnalysisAllowed();
     let report = runtimeReport.report;
 
     const finalAnchor = await fetchGitHubPullRequestAnchor(job.pull_request_url, token);
@@ -820,7 +879,7 @@ async function advanceQueuedHybridPlanning(
           repositoryId: job.repository_id ?? undefined,
           repositoryFullName: job.repository_full_name
         }, env);
-        return decision.grant;
+        return !decision.reason && decision.grant?.privateAnalysisConsentVersion === "2026-09-24.v1" ? decision.grant : undefined;
       } catch {
         return undefined;
       }

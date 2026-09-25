@@ -215,9 +215,9 @@ describe("reportToGitHubComment", () => {
     const output = `${reportToMarkdown(report)}\n${reportToGitHubComment(report)}`;
 
     expect(report.requirements[0]).toMatchObject({ status: "unclear", evidenceStatus: "partial" });
-    expect(output).toContain("Unclear against approved contract");
+    expect(output).toContain("No verified outcome against approved contract");
     expect(output).toContain("Required criterion evidence was incomplete or unavailable.");
-    expect(output).toContain("Observed evidence: Partially supported");
+    expect(output).toContain("Observed evidence: Some evidence linked");
     expect(output).not.toContain("OUTCOME: MET");
   });
 
@@ -260,7 +260,7 @@ describe("reportToGitHubComment", () => {
     expect(markdown).toContain("locator=src/features/auth/PasswordResetForm.tsx");
     expect(markdown).toContain("confidence=85%");
     expect(markdown).toContain("text=modified src/features/auth/PasswordResetForm.tsx");
-    expect(markdown).toContain("- Test/build:");
+    expect(markdown).toContain("- CI:");
     expect(markdown).toContain("src/server/auth/sessionExpiry.ts is risk-sensitive");
     expect(markdown).toContain("Provenance: ev_");
     expect(markdown).toContain("source=changed_file");

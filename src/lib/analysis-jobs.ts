@@ -7,6 +7,7 @@ export const DEFAULT_ANALYSIS_JOBS_TABLE = "agentproof_analysis_jobs";
 export const MAX_MEMORY_ANALYSIS_JOBS = 1000;
 export const DEFAULT_ANALYSIS_JOB_LEASE_MS = 10 * 60 * 1000;
 export const DEFAULT_ANALYSIS_JOB_DEBOUNCE_MS = 15 * 1000;
+export const DEFAULT_ANALYSIS_JOB_CI_DISCOVERY_MS = 45 * 1000;
 export const SEMANTIC_RETRY_SUBMISSION_RECLAIM_MS = 30 * 1000;
 export const DEFAULT_ANALYSIS_JOB_RETRY_AFTER_MS = 2 * 60 * 1000;
 export const DEFAULT_ANALYSIS_JOB_MAX_ATTEMPTS = 5;
@@ -77,12 +78,14 @@ export interface EnqueueAnalysisJobInput {
   slackSummary?: boolean;
   /** Explicit protocol intent; false preserves the legacy null/null path. */
   hybridPlannerRequested?: boolean;
+  /** Automatic webhooks settle one report per head; other callers retain refresh semantics. */
+  oncePerHead?: boolean;
   now?: Date;
 }
 
 export interface AnalysisJobEnqueueResult {
   id: string;
-  status: "queued";
+  status: AnalysisJobStatus;
   store: "memory" | "supabase";
   durable: boolean;
 }
@@ -117,6 +120,15 @@ export interface CompleteAnalysisJobInput {
   id: string;
   resultSummary?: AnalysisJobResultSummary;
   claimGeneration?: string;
+  now?: Date;
+}
+
+export interface DeferAnalysisJobInput {
+  id: string;
+  claimGeneration: string;
+  runningRevision: number;
+  attempts: number;
+  runAfter: Date;
   now?: Date;
 }
 
@@ -508,10 +520,10 @@ export async function enqueueAnalysisJob(
   const config = getAnalysisJobStoreConfig(env);
 
   if (config) {
-    const durableRow = await enqueueOrRefreshSupabaseAnalysisJob(config, row);
+    const durableRow = await enqueueOrRefreshSupabaseAnalysisJob(config, row, input.oncePerHead === true);
     return {
       id: durableRow.id,
-      status: "queued",
+      status: durableRow.status,
       store: "supabase",
       durable: true
     };
@@ -521,13 +533,63 @@ export async function enqueueAnalysisJob(
     throw new AnalysisJobQueueError("Analysis job durable store is not configured.");
   }
 
-  const memoryRow = enqueueOrRefreshMemoryAnalysisJob(row);
+  const memoryRow = enqueueOrRefreshMemoryAnalysisJob(row, input.oncePerHead === true);
   return {
     id: memoryRow.id,
-    status: "queued",
+    status: memoryRow.status,
     store: "memory",
     durable: false
   };
+}
+
+/** Release a claimed job while checks settle without consuming a retry attempt. */
+export async function deferAnalysisJob(
+  input: DeferAnalysisJobInput,
+  env = process.env
+): Promise<boolean> {
+  if (!analysisJobQueueEnabled(env)) throw new AnalysisJobQueueError("Analysis job queue is not enabled.");
+  const claimGeneration = safeClaimGeneration(input.claimGeneration);
+  const runningRevision = safeRevision(input.runningRevision);
+  if (!safeAnalysisJobId(input.id) || !claimGeneration || !runningRevision ||
+      !Number.isFinite(input.runAfter.getTime())) {
+    throw new AnalysisJobQueueError("Analysis job deferral is invalid.");
+  }
+  const now = input.now ?? new Date();
+  const config = getAnalysisJobStoreConfig(env);
+  const update: Partial<AnalysisJobRow> = {
+    status: "queued",
+    attempts: Math.max(0, input.attempts - 1),
+    updated_at: now.toISOString(),
+    run_after: input.runAfter.toISOString(),
+    locked_at: null,
+    claim_generation: null,
+    running_revision: null
+  };
+  if (config) {
+    const row = await patchSupabaseAnalysisJob(config, input.id, update, {
+      currentStatus: "processing",
+      currentClaimGeneration: claimGeneration,
+      currentDesiredRevision: runningRevision,
+      currentRunningRevision: runningRevision,
+      requireUnsealed: true,
+      requireNoProviderContinuation: true,
+      requireEmptyHybridPlannerBinding: true
+    });
+    return row !== null;
+  }
+  if (!truthy(env.AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY)) {
+    throw new AnalysisJobQueueError("Analysis job durable store is not configured.");
+  }
+  const row = analysisJobStore().find((job) => job.id === input.id &&
+    job.is_historical !== true && job.status === "processing" &&
+    job.claim_generation === claimGeneration &&
+    job.desired_revision === runningRevision && job.running_revision === runningRevision &&
+    job.sealed_revision == null && job.provider_status == null &&
+    job.planner_contract_version == null && job.planner_input_hash == null);
+  if (!row) return false;
+  Object.assign(row, update);
+  assertAnalysisJobIsPrivate(row);
+  return true;
 }
 
 export async function fenceAnalysisJobRevision(
@@ -1586,7 +1648,8 @@ async function assertTenantRepositoryGrantAllowsEnqueue(row: AnalysisJobRow, env
 
 async function enqueueOrRefreshSupabaseAnalysisJob(
   config: AnalysisJobStoreConfig,
-  row: AnalysisJobRow
+  row: AnalysisJobRow,
+  oncePerHead: boolean
 ): Promise<Pick<AnalysisJobRow, "id" | "status">> {
   const response = await fetch(`${config.url}/rest/v1/rpc/agentproof_enqueue_analysis_job`, {
     method: "POST",
@@ -1597,7 +1660,7 @@ async function enqueueOrRefreshSupabaseAnalysisJob(
       "Content-Type": "application/json",
       Prefer: "return=representation"
     },
-    body: JSON.stringify({ job_payload: row })
+    body: JSON.stringify({ job_payload: { ...row, once_per_head: oncePerHead } })
   });
 
   if (!response.ok) {
@@ -1613,11 +1676,12 @@ async function enqueueOrRefreshSupabaseAnalysisJob(
   return durableRow as Pick<AnalysisJobRow, "id" | "status">;
 }
 
-function enqueueOrRefreshMemoryAnalysisJob(row: AnalysisJobRow): AnalysisJobRow {
+function enqueueOrRefreshMemoryAnalysisJob(row: AnalysisJobRow, oncePerHead: boolean): AnalysisJobRow {
   const existing = analysisJobStore().find((job) =>
     job.canonical_key_hash === row.canonical_key_hash && job.is_historical !== true
   );
   if (existing) {
+    if (oncePerHead && existing.status !== "queued") return { ...existing };
     const processing = existing.status === "processing";
     Object.assign(existing, {
       tenant_id: row.tenant_id,

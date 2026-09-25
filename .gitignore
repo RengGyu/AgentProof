@@ -10,4 +10,5 @@ codex.env
 *.log
 tsconfig.tsbuildinfo
 .vercel
+supabase/.temp/
 eval/generated

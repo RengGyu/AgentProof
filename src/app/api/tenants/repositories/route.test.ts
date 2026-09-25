@@ -113,7 +113,9 @@ describe("/api/tenants/repositories", () => {
           commentEnabled: false,
           slackNotificationsEnabled: true,
           llmAnalysisMode: "essential",
-          hybridPlannerConsentVersion: null
+          hybridPlannerConsentVersion: null,
+          privateAnalysisConsentVersion: null,
+          repositoryPrivate: false
         }
       ],
       privacy: "grant-metadata-only",
@@ -237,7 +239,9 @@ describe("/api/tenants/repositories", () => {
         commentEnabled: false,
         slackNotificationsEnabled: false,
         llmAnalysisMode: "enhanced",
-        hybridPlannerConsentVersion: null
+        hybridPlannerConsentVersion: null,
+        privateAnalysisConsentVersion: null,
+        repositoryPrivate: false
       },
       privacy: "grant-metadata-only",
       next: "repository_settings_saved"
@@ -290,12 +294,30 @@ describe("/api/tenants/repositories", () => {
 
     expect(response.status).toBe(422);
     await expect(response.json()).resolves.toEqual({
-      error: "Repository settings cannot grant private enhanced planning consent for this repository.",
+      error: "Repository consent or analysis setting is invalid for this repository.",
       code: "tenant_repository_settings_invalid"
     });
     await expect(listTenantRepositoryGrants({ tenantId: "tenant_a" })).resolves.toEqual([
       expect.not.objectContaining({ hybridPlannerConsentVersion: expect.anything() })
     ]);
+  });
+
+  it("requires the new private notice in the same settings write that turns analysis ON", async () => {
+    stubSettingsEnv();
+    await createTenantRepositoryGrant({ tenantId: "tenant_a", installationId: 321, repositoryId: 100, repositoryFullName: "RengGyu/AgentProof", repositoryPrivate: true, analysisEnabled: false });
+    const patch = (settings: Record<string, boolean>) => PATCH(new Request("http://localhost/api/tenants/repositories", {
+      method: "PATCH",
+      headers: { "x-agentproof-beta-invite-token": "tenant-a-invite-token" },
+      body: JSON.stringify({ tenantId: "tenant_a", installationId: 321, repositoryId: 100, settings })
+    }));
+    const rejected = await patch({ analysisEnabled: true });
+    expect(rejected.status).toBe(422);
+    expect((await listTenantRepositoryGrants({ tenantId: "tenant_a" }))[0]?.analysisEnabled).toBe(false);
+    const accepted = await patch({ analysisEnabled: true, privateAnalysisConsent: true });
+    expect(accepted.status).toBe(200);
+    await expect(accepted.json()).resolves.toMatchObject({ repository: { analysisEnabled: true, privateAnalysisConsentVersion: "2026-09-24.v1", repositoryPrivate: true } });
+    const off = await patch({ analysisEnabled: false });
+    await expect(off.json()).resolves.toMatchObject({ repository: { analysisEnabled: false, privateAnalysisConsentVersion: "2026-09-24.v1" } });
   });
 
   it("rejects cross-origin repository setting mutations before changing a grant", async () => {
@@ -311,6 +333,21 @@ describe("/api/tenants/repositories", () => {
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toMatchObject({ code: "tenant_mutation_csrf_required" });
     await expect(listTenantRepositoryGrants({ tenantId: "tenant_a" })).resolves.toMatchObject([{ analysisEnabled: true }]);
+  });
+
+  it.each(["owner", "member"] as const)("resolves omitted tenant from the %s session while enforcing consent and role", async role => {
+    stubSettingsEnv();
+    stubDurableAuthEnv(role);
+    await createTenantRepositoryGrant({ tenantId: "tenant_a", installationId: 321, repositoryId: 100, repositoryFullName: "acme/private", repositoryPrivate: true, analysisEnabled: false });
+    const session = await createTenantAuthSession({ tenantId: "tenant_a", memberId: "member_owner", bootstrapToken: "member-bootstrap-token" });
+    const patch = (consent: boolean, tenantId?: string) => PATCH(new Request("http://localhost/api/tenants/repositories", {
+      method: "PATCH", headers: { cookie: session.sessionCookie },
+      body: JSON.stringify({ ...(tenantId ? { tenantId } : {}), installationId: 321, repositoryId: 100, settings: { analysisEnabled: true, ...(consent ? { privateAnalysisConsent: true } : {}) } })
+    }));
+    expect((await patch(false)).status).toBe(role === "owner" ? 422 : 403);
+    expect((await patch(true, "tenant_b")).status).toBe(401);
+    expect((await patch(true)).status).toBe(role === "owner" ? 200 : 403);
+    expect((await listTenantRepositoryGrants({ tenantId: "tenant_a" }))[0]?.analysisEnabled).toBe(role === "owner");
   });
 
   it("updates repository settings from a durable owner session without an invite header", async () => {

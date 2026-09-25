@@ -85,6 +85,53 @@ function report(overrides: Partial<VerificationReportV2> = {}): VerificationRepo
 }
 
 describe("PR-to-Evidence review projection", () => {
+  it("keeps only the ranked first inspection out of its duplicate code or test group", () => {
+    const navigation = {
+      version: 1 as const,
+      model: "fixture-model",
+      state: "ranked" as const,
+      repository: "acme/widget",
+      headSha: HEAD,
+      baseSha: BASE,
+      sources: [{ id: "issue_1", authority: "issue_source" as const, hash: "d".repeat(64), length: 80, processedLength: 80, url: null }],
+      goals: [
+        {
+          id: "goal_1", summary: "Inspect reset implementation.", emphasis: "primary" as const, authority: "issue_source" as const,
+          sourceRefs: [{ sourceId: "issue_1", start: 0, end: 20, hash: "e".repeat(64) }], facets: [], openQuestions: [], firstInspection: "code_head_first",
+          candidates: [
+            { artifactId: "code_head_first", relevance: "relevant" as const, whyInspect: "Changed reset branch.", reviewQuestion: "Does it reject expired links?", uncertainty: "Behavior is not verified." },
+            { artifactId: "code_base_same_path", relevance: "possible" as const, whyInspect: "Compare the base revision.", reviewQuestion: "What changed?", uncertainty: "Context only." },
+            { artifactId: "code_head_later_range", relevance: "possible" as const, whyInspect: "Inspect the later changed range.", reviewQuestion: "Does this alter expiry handling?", uncertainty: "Context only." },
+          ], uncertainty: [],
+        },
+        {
+          id: "goal_2", summary: "Inspect reset tests.", emphasis: "supporting" as const, authority: "issue_source" as const,
+          sourceRefs: [{ sourceId: "issue_1", start: 21, end: 40, hash: "f".repeat(64) }], facets: [], openQuestions: [], firstInspection: "test_head_first",
+          candidates: [
+            { artifactId: "test_head_first", relevance: "relevant" as const, whyInspect: "Changed expiry test.", reviewQuestion: "Does it exercise expiration?", uncertainty: "Execution is not established." },
+            { artifactId: "test_base_same_path", relevance: "possible" as const, whyInspect: "Compare the base test.", reviewQuestion: "What changed?", uncertainty: "Context only." },
+          ], uncertainty: [],
+        },
+      ],
+      artifacts: [
+        { id: "code_head_first", path: "src/reset.ts", revision: HEAD, side: "head" as const, startLine: 12, endLine: 12, hash: "1".repeat(64), kind: "code" as const, origin: "diff" as const },
+        { id: "code_base_same_path", path: "src/reset.ts", revision: BASE, side: "base" as const, startLine: 12, endLine: 12, hash: "2".repeat(64), kind: "code" as const, origin: "diff" as const },
+        { id: "code_head_later_range", path: "src/reset.ts", revision: HEAD, side: "head" as const, startLine: 20, endLine: 24, hash: "3".repeat(64), kind: "code" as const, origin: "diff" as const },
+        { id: "test_head_first", path: "src/reset.test.ts", revision: HEAD, side: "head" as const, startLine: 30, endLine: 32, hash: "4".repeat(64), kind: "test" as const, origin: "diff" as const },
+        { id: "test_base_same_path", path: "src/reset.test.ts", revision: BASE, side: "base" as const, startLine: 30, endLine: 32, hash: "5".repeat(64), kind: "test" as const, origin: "diff" as const },
+      ],
+      unprocessed: [], limitations: [], rankingStatus: "ready" as const, coverageStatus: "complete" as const, failures: [],
+    };
+    const input = report({ reviewCandidates: { version: 1, requirements: [], navigation } });
+
+    for (const review of [buildPrEvidenceReview(input), buildDashboardPrEvidenceReview({ report: input })!]) {
+      expect(review.objectives[0]).toMatchObject({ firstInspection: { evidenceId: "code_head_first" } });
+      expect(review.objectives[0]?.code.map(item => item.evidenceId)).toEqual(["code_base_same_path", "code_head_later_range"]);
+      expect(review.objectives[1]).toMatchObject({ firstInspection: { evidenceId: "test_head_first" } });
+      expect(review.objectives[1]?.tests.map(item => item.evidenceId)).toEqual(["test_base_same_path"]);
+    }
+  });
+
   it("uses only exact requirement-local firstFiles as candidate fallback when code refs are absent", () => {
     const base = report();
     const input = report({

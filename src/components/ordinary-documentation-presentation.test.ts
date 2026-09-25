@@ -23,22 +23,26 @@ function fixture() {
 }
 
 describe("scoped documentation presentation", () => {
-  it("renders predicate-only copy in the actual report, dashboard detail and current exports", () => {
+  it.each([
+    ["report UI", (report: VerificationReportV2) => renderToStaticMarkup(createElement(ReportView, { report }))],
+    ["dashboard UI", (report: VerificationReportV2) => renderToStaticMarkup(createElement(DetailedEvidence, { detail: { report, freshness: "current", copyEligible: true }, demoMode: true }))],
+    ["full Markdown", reportToMarkdown],
+    ["PR comment", reportToGitHubComment],
+    ["dashboard Markdown", (report: VerificationReportV2) => dashboardReportToMarkdown({ report, freshness: "current", copyEligible: true })]
+  ])("preserves scoped documentation findings and privacy in %s", (_name, render) => {
+    const report = fixture();
+    const output = render(report);
+    expect(output).toContain("source item 2 (req_1): literal present");
+    expect(output).toContain("source item 3 (req_2): literal absent after complete artifact read");
+    expect(output).toContain("source item 4: exact-head artifact unavailable");
+    expect(output).toContain("not whole-goal or PR verification");
+    expect(output).toContain("author claim needs reviewer confirmation");
+    expect(output).not.toMatch(/PRIVATE_DOCUMENT|PRIVATE_LITERAL|PRIVATE_SOURCE_TEXT|PRIVATE_TARGET_ID/);
+  });
+
+  it("preserves the allowlisted documentation predicates in dashboard JSON", () => {
     const report = fixture();
     const detail = { report, freshness: "current" as const, copyEligible: true };
-    const outputs = [
-      renderToStaticMarkup(createElement(ReportView, { report })),
-      renderToStaticMarkup(createElement(DetailedEvidence, { detail, demoMode: true })),
-      reportToMarkdown(report), reportToGitHubComment(report), dashboardReportToMarkdown(detail)
-    ];
-    for (const output of outputs) {
-      expect(output).toContain("source item 2 (req_1): literal present");
-      expect(output).toContain("source item 3 (req_2): literal absent after complete artifact read");
-      expect(output).toContain("source item 4: exact-head artifact unavailable");
-      expect(output).toContain("not whole-goal or PR verification");
-      expect(output).toContain("author claim needs reviewer confirmation");
-      expect(output).not.toMatch(/PRIVATE_DOCUMENT|PRIVATE_LITERAL|PRIVATE_SOURCE_TEXT|PRIVATE_TARGET_ID/);
-    }
     const json = JSON.parse(dashboardReportToJson(detail));
     expect(json.documentation_predicates).toEqual(report.ordinaryDocumentationSummary);
     expect(JSON.stringify(json)).not.toMatch(/PRIVATE_DOCUMENT|PRIVATE_LITERAL|PRIVATE_SOURCE_TEXT|PRIVATE_TARGET_ID/);

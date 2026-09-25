@@ -1204,7 +1204,7 @@ export function TenantSetupPanel() {
                 <li key={repo.id}>
                   <div>
                     <strong>{repo.fullName}</strong>
-                    <span>{repo.private ? "Private" : "Public"} · {repo.defaultBranch ?? "default branch unknown"}</span>
+                    <span>{repo.private ? "Private" : "Public"} · {repo.defaultBranch ?? "default branch not recorded"}</span>
                   </div>
                   <button
                     className="button compact"
@@ -1591,7 +1591,7 @@ function firstReportStatusLabel(status: string): string {
   if (status === "checks-rate-limited") return "Checks limited";
   if (status === "checks-unavailable") return "Checks unavailable";
 
-  return "Unclear";
+  return "Unsupported state";
 }
 
 function changedFilesReadinessLabel(changedFiles: FirstReportDiagnostics["changedFiles"]): string {
@@ -1630,7 +1630,7 @@ function entitlementStateLabel(state: TenantEntitlementFeature["state"]): string
   if (state === "enabled") return "Enabled";
   if (state === "disabled") return "Disabled";
   if (state === "unavailable") return "Unavailable";
-  if (state === "unclear") return "Unclear";
+  if (state === "unclear") return "Not verified";
 
   return "Not configured";
 }
@@ -1638,14 +1638,15 @@ function entitlementStateLabel(state: TenantEntitlementFeature["state"]): string
 function reportDetail(report: ReportSummary): string {
   const requirementText = [
     `${report.requirementCounts.met} met`,
-    `${report.requirementCounts.partial} partial`,
+    `${report.requirementCounts.partial} need review`,
     `${report.requirementCounts.missing} missing`,
-    `${report.requirementCounts.unclear} unclear`
+    `${report.requirementCounts.unclear} not evaluated`
   ].join(", ");
   const testingText = [
-    `ci ${report.testing.ciStatus}`,
-    `lint ${report.testing.lintStatus}`,
-    `typecheck ${report.testing.typecheckStatus}`,
+    ...(["ci", "lint", "typecheck"] as const).flatMap((check) => {
+      const status = report.testing[`${check}Status`];
+      return status === "unknown" ? [] : [`${check} ${status}`];
+    }),
     `${report.testing.missingTestCount} missing tests`
   ].join(", ");
   const reviewText = `${report.reviewPriorityCount} priority files`;
@@ -1701,7 +1702,7 @@ function analysisJobStatusLabel(status: string): string {
   if (status === "processing") return "Active";
   if (status === "queued") return "Queued";
 
-  return "Status unknown";
+  return "Unsupported job status";
 }
 
 function analysisJobFilterLabel(filter: AnalysisJobFilter): string {
@@ -1780,7 +1781,7 @@ function auditDetail(event: AuditSummary): string {
 
 function formatDateTime(value: string): string {
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "time unknown";
+  if (Number.isNaN(date.getTime())) return "Date not recorded";
 
   return date.toLocaleString(undefined, {
     month: "short",

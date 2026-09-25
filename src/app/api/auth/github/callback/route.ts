@@ -1,5 +1,5 @@
 import { ensureGitHubOwnerTenant, TenantAccountStoreError } from "@/lib/tenant-accounts";
-import { createTenantAuthSessionForMember, TenantAuthError, TenantAuthStoreError } from "@/lib/tenant-auth";
+import { createTenantAuthSessionForMember, revokeTenantAuthSession, saveGitHubUserCredentials, TenantAuthError, TenantAuthStoreError } from "@/lib/tenant-auth";
 import { bindGitHubInstallationAuthorization, clearGitHubOAuthInstallCookie, clearGitHubOAuthStateCookie, finishGitHubOAuth, getGitHubOAuthConfig, GitHubOAuthError } from "@/lib/public-github-auth";
 import { noStoreJson } from "@/lib/http";
 
@@ -20,11 +20,18 @@ export async function GET(request: Request) {
     if (!installCookie) throw new GitHubOAuthError("GitHub install authorization could not be bound.");
     stage = "session";
     const session = await createTenantAuthSessionForMember(owner);
+    stage = "credential";
+    try {
+      await saveGitHubUserCredentials({ sessionCookie: session.sessionCookie, githubUserId: provisional.githubUserId, ...provisional.credentials });
+    } catch (error) {
+      await revokeTenantAuthSession({ cookieHeader: session.sessionCookie }).catch(() => undefined);
+      throw error;
+    }
     const headers = privateHeadersWithCookies(clearGitHubOAuthStateCookie(), installCookie, session.sessionCookie);
     if (isDocumentNavigation(request)) {
-      return dashboardNavigationResponse(headers);
+      return dashboardNavigationResponse(headers, provisional.returnTo);
     }
-    return noStoreJson({ ok: true, next: "install_github_app", privacy: "github-id-mapping-and-session-only" }, { headers });
+    return noStoreJson({ ok: true, next: "install_github_app", privacy: "encrypted-github-credential-in-revocable-session" }, { headers });
   } catch (error) {
     if (error instanceof GitHubOAuthError || error instanceof TenantAccountStoreError || error instanceof TenantAuthError || error instanceof TenantAuthStoreError) {
       console.warn("github_oauth_callback_failed", { stage, error: error.name });
@@ -39,9 +46,9 @@ function isDocumentNavigation(request: Request) {
     || request.headers.get("sec-fetch-dest") === "document";
 }
 
-function dashboardNavigationResponse(headers: Headers) {
+function dashboardNavigationResponse(headers: Headers, returnTo: "/analyze" | "/dashboard") {
   headers.set("Content-Type", "text/html; charset=utf-8");
-  return new Response('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=/dashboard"><title>Continuing to AgentProof</title></head><body><p>Continuing to <a href="/dashboard">AgentProof Dashboard</a>…</p></body></html>', { headers });
+  return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=${returnTo}"><title>Continuing to AgentProof</title></head><body><p>Continuing to <a href="${returnTo}">AgentProof</a>…</p></body></html>`, { headers });
 }
 
 function oauthFailure(code: string, status: number) {

@@ -29,8 +29,8 @@ export function partitionVisibleRepositoryReports<T extends ReportListItem>(repo
 export function reportWorkspaceStatusLabel(freshness?: DashboardReportFreshness): string {
   if (freshness === "refreshing") return "UPDATING";
   if (freshness === "refresh_failed") return "NEEDS ATTENTION";
-  if (freshness === "unknown") return "STATUS UNAVAILABLE";
-  return "CURRENT";
+  if (freshness === "current") return "CURRENT";
+  return "SAVED";
 }
 
 export function isCopyEligibleReport(report: Pick<DashboardSavedReport, "freshness" | "copyEligible">): boolean {

@@ -1,3 +1,4 @@
+import { budgetedOpenAIFetch } from './paid-budget';
 import { recordNavigationTransport, type NavigationTransportDiagnostics } from './review-navigation-diagnostics';
 import {
   buildLlmSemanticPackage,
@@ -139,7 +140,7 @@ async function fetchGeneralPrSemanticObservationResponse(
   fetchFn: typeof fetch | undefined
 ): Promise<Response> {
   try {
-    const response = await (fetchFn ?? fetch)(url, init);
+    const response = await budgetedOpenAIFetch(url, init, fetchFn);
     if (response.ok) return response;
 
     const status = response.status;
@@ -319,12 +320,12 @@ async function requestSynchronousSemanticCandidate(
   llmPackage: LlmSemanticPackage,
   options: OpenAISemanticOptions
 ): Promise<unknown> {
-  const response = await (options.fetchFn ?? fetch)(OPENAI_RESPONSES_URL, {
+  const response = await budgetedOpenAIFetch(OPENAI_RESPONSES_URL, {
     method: "POST",
     headers: openAIHeaders(options.apiKey),
     body: JSON.stringify(openAIRequestBody(llmPackage, options.model)),
     signal: AbortSignal.timeout(OPENAI_TIMEOUT_MS)
-  });
+  }, options.fetchFn);
 
   if (!response.ok) {
     throw new Error(`OpenAI semantic analysis failed with HTTP ${response.status}: ${summarizeError(await response.text())}`);
@@ -539,7 +540,7 @@ async function fetchOpenAIResponse(
 ): Promise<Response> {
   let response: Response;
   try {
-    response = await (fetchFn ?? fetch)(url, init);
+    response = await budgetedOpenAIFetch(url, init, fetchFn);
   } catch (error) {
     const name = error instanceof Error ? error.name : "";
     if (name === "AbortError" || name === "TimeoutError") {

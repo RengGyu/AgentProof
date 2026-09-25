@@ -76,7 +76,7 @@ describe("/api/github/onboarding/repositories", () => {
   });
 
 
-  it("creates a private repository grant with essential analysis by default and keeps comments off", async () => {
+  it("creates a private repository grant with analysis OFF until the new notice is accepted", async () => {
     stubOnboardingEnv();
     vi.stubEnv("GITHUB_APP_ID", "123");
     vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
@@ -106,27 +106,21 @@ describe("/api/github/onboarding/repositories", () => {
       repositoryId: 100,
       repositoryFullName: "RengGyu/AgentProof",
       settings: {
-        analysisEnabled: true,
+        analysisEnabled: false,
         saveReportsEnabled: true,
         commentEnabled: false,
         llmAnalysisMode: "essential",
-        hybridPlannerConsentVersion: null
+        hybridPlannerConsentVersion: null,
+        privateAnalysisConsentVersion: null
       },
       privacy: "grant-metadata-only",
-      next: "webhook_analysis_enabled_for_repository"
+      next: "private_analysis_off"
     });
     await expect(authorizeTenantRepositoryGrantAsync({
       installationId: 321,
       repositoryId: 100,
       repositoryFullName: "Renamed/AgentProof"
-    })).resolves.toMatchObject({
-      grant: {
-        tenantId: "tenant_a",
-        installationId: 321,
-        repositoryId: 100,
-        repositoryFullName: "RengGyu/AgentProof"
-      }
-    });
+    })).resolves.toMatchObject({ reason: "analysis-disabled" });
   });
 
   it("requires explicit private enhanced consent during onboarding and returns only the approved consent metadata", async () => {
@@ -141,11 +135,11 @@ describe("/api/github/onboarding/repositories", () => {
     const response = await POST(new Request("http://localhost/api/github/onboarding/repositories", {
       method: "POST",
       headers: { cookie: activationCookie, "x-agentproof-beta-invite-token": "tenant-a-invite-token" },
-      body: JSON.stringify({ installationId: 321, repositoryId: 100, llmAnalysisMode: "enhanced", hybridPlannerConsent: true })
+      body: JSON.stringify({ installationId: 321, repositoryId: 100, llmAnalysisMode: "enhanced", hybridPlannerConsent: true, privateAnalysisConsent: true })
     }));
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({ settings: { llmAnalysisMode: "enhanced", hybridPlannerConsentVersion: "2026-08-12.v1" } });
+    await expect(response.json()).resolves.toMatchObject({ settings: { analysisEnabled: true, llmAnalysisMode: "enhanced", hybridPlannerConsentVersion: "2026-08-12.v1", privateAnalysisConsentVersion: "2026-09-24.v1" } });
   });
 
   it("automatically enables enhanced analysis for a selected public repository", async () => {

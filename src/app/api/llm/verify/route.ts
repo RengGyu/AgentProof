@@ -1,3 +1,4 @@
+import { PaidBudgetError, withPaidAnalysis } from "@/lib/paid-budget";
 import { noStoreJson, parseJsonSafely, utf8ByteLength } from "@/lib/http";
 import { validateRuntimeReportBoundary } from "@/lib/report-runtime-validation";
 import { verifyReportWithOpenAI } from "@/lib/openai-verifier";
@@ -58,13 +59,14 @@ export async function POST(request: Request) {
   }
 
   try {
-    const report = await verifyReportWithOpenAI(body.input, body.report, {
+    const report = await withPaidAnalysis(`operator:${request.headers.get("x-agentproof-analysis-key") ?? bodyText}`, () => verifyReportWithOpenAI(body.input!, body.report!, {
       apiKey,
       model: process.env.OPENAI_MODEL
-    });
+    }));
 
     return noStoreJson({ report, source: "openai" });
   } catch (error) {
+    if (error instanceof PaidBudgetError) return noStoreJson({error:error.message,code:error.code},{status:503});
     return noStoreJson(
       {
         report: redactReportStrings(body.report),

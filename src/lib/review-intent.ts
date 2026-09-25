@@ -13,7 +13,7 @@ export interface ReviewIntentGraphV1 {
   repository: string | null;
   goals: Array<{ id: string; requirementIds: string[]; sourceRefs: ReviewSourceRefV1[]; facets: Array<{ kind: ReviewFacetKind; sourceRef: ReviewSourceRefV1 }> }>;
   chunks: Array<{ id: string; pool: "changed" | "snapshot"; path: string; revision: string | null; side: "head" | "base"; startLine: number; endLine: number; hash: string; evidenceId: string | null }>;
-  edges: Array<{ goalId: string; chunkId: string; relation: "candidate"; basis: Array<"lexical" | "identifier" | "source_path" | "changed_declaration">; score: number }>;
+  edges: Array<{ goalId: string; chunkId: string; relation: "candidate"; basis: Array<"lexical" | "identifier" | "source_path" | "changed_declaration">; score: number; line?: number; lineBasis?: "test_body_match" }>;
   capabilities: { wholeRepository: "unavailable"; embeddings: "unavailable"; symbolResolution: "unavailable"; semantic: "existing_relations_only"; snapshotChunks: number; rejectedSnapshots: number; truncated: boolean };
 }
 const sha = (s: string) => createHash("sha256").update(s).digest("hex");
@@ -30,6 +30,10 @@ function facet(s: string): ReviewFacetKind | undefined {
   if (/^(artifact|files?|implementation hints?)\b/i.test(s)) return "artifact_hint";
 }
 const clean = (s: string) => s.replace(/^\s*(?:#{1,6}\s+|[-*+]\s+(?:\[[ x]\]\s*)?|\d+[.)]\s+)?/, "").replace(/^\*\*|\*\*:?$/g, "").trim();
+
+export function isTestFocusedReviewGoal(text: string): boolean {
+  return /^(?:test\b|(?:add|write|extend|update|improve|implement)\s+(?:(?!with\b|and\b|for\b|to\b)[a-z-]+\s+){0,3}(?:tests?|test coverage)\b)/i.test(clean(text));
+}
 
 /** Bounded structural intent + local retrieval. Text stays transient; only offsets/hashes leave here. */
 export function buildReviewIntentGraph(input: PullRequestInput, requirements: RequirementFinding[], evidence: EvidenceItem[]): ReviewIntentGraphV1 {
@@ -74,15 +78,27 @@ export function buildReviewIntentGraph(input: PullRequestInput, requirements: Re
     if(goal) { if(start>=goal.sourceRefs[0]!.start && start<goal.sourceRefs[0]!.end)goal.requirementIds.unshift(r.requirementId); else goal.requirementIds.push(r.requirementId); }
   }
   const bodies=new Map<string,string>();
+  const locations=new Map<string,Array<{line:number;text:string;changed:boolean}>>();
   const add=(pool:"changed"|"snapshot",path:string,body:string,revision:string|null,side:"head"|"base",evidenceId:string|null) => {
     const bounded=body.slice(0,16000); if(bounded.length<body.length)graph.capabilities.truncated=true;
     const lines=bounded.split("\n");
+    let sourceLine:number|undefined;
+    const mapped=lines.map(text=>{
+      const hunk=text.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+      if(hunk){sourceLine=Number(hunk[side==="head"?2:1]);return undefined;}
+      const changed=text.startsWith(side==="head"?"+":"-");
+      if(sourceLine===undefined||!changed&&!text.startsWith(" "))return undefined;
+      const line=sourceLine++;
+      return line>0&&line<=100000?{line,text:text.slice(1),changed}:undefined;
+    });
     // ponytail: fixed line windows; syntax-aware chunks need a supported language parser and measured benefit.
     for(let i=0;i<lines.length;i+=80) {
       if(graph.chunks.length>=128){graph.capabilities.truncated=true;break;}
       const text=lines.slice(i,i+80).join("\n"), hash=sha(text), id=`chunk_${sha(JSON.stringify([pool,path,revision,i,hash])).slice(0,24)}`;
       if(graph.chunks.some(c=>c.id===id))continue;
-      graph.chunks.push({id,pool,path,revision,side,startLine:pool==="snapshot"?i+1:1,endLine:pool==="snapshot"?Math.min(i+80,lines.length):1,hash,evidenceId});bodies.set(id,text);
+      const positions=pool==="changed"?mapped.slice(i,i+80).filter((row):row is NonNullable<typeof row>=>!!row):[];
+      locations.set(id,positions);
+      graph.chunks.push({id,pool,path,revision,side,startLine:pool==="snapshot"?i+1:positions[0]?.line??1,endLine:pool==="snapshot"?Math.min(i+80,lines.length):positions.at(-1)?.line??1,hash,evidenceId});bodies.set(id,text);
     }
   };
   for(const file of [...input.changedFiles].sort((a,b)=>a.path.localeCompare(b.path))) {
@@ -90,7 +106,7 @@ export function buildReviewIntentGraph(input: PullRequestInput, requirements: Re
     const item=evidence.find(e=>e.locator===file.path && ["diff","changed_file","test"].includes(e.kind));
     if(!item)continue;
     const side=file.status==="removed"?"base":"head", revision=side==="base"?input.sourceProvenance?.baseSha:input.sourceProvenance?.headSha;
-    add("changed",file.path,redactSecrets(file.patch??""),exact(revision)?revision:null,side,item.id);
+    add("changed",file.path,redactSecretsPreservingLines(file.patch??""),exact(revision)?revision:null,side,item.id);
   }
   const snapshots=input.verificationCriterionEvidenceV2?.artifactBlobs??[];
   for(const blob of [...snapshots].sort((a,b)=>a.path.localeCompare(b.path)||sha(a.content).localeCompare(sha(b.content)))) {
@@ -121,7 +137,17 @@ export function buildReviewIntentGraph(input: PullRequestInput, requirements: Re
       const basis:ReviewIntentGraphV1["edges"][number]["basis"]=[];
       if(path)basis.push("source_path");if(identifiersHit)basis.push("identifier");if(lexical)basis.push("lexical");if(declaration)basis.push("changed_declaration");
       const score=Math.min(1000,(path?400:0)+(identifiersHit?80:0)+(declaration?30:0)+matches.reduce((n,t)=>n+Math.round(10*Math.log(1+graph.chunks.length/(frequencies.get(t)??1))),0)+(chunk.pool==="changed"?5:0));
-      return [{goalId:goal.id,chunkId:chunk.id,relation:"candidate" as const,basis,score}];
+      const lineMatches=(locations.get(chunk.id)??[]).map(row=>{
+        const terms=allTerms(row.text), identifiers=allIdentifiers(row.text);
+        const hits=queryTerms.filter(t=>terms.includes(t)).length+ids.filter(id=>identifiers.includes(id)).length*4;
+        // Imports/comments can mention the same symbol as its use. For equal
+        // matches, prefer a body location; stronger import-specific matches still win.
+        const contextOnly=/^\s*(?:import\b|from\s+.+\bimport\b|(?:const|let|var)\s+.*=\s*require\s*\(|export\s*(?:\*|\{).*\bfrom\b|\/\/|#|\/\*|\*)/.test(row.text);
+        const testBody=!contextOnly && /\b(?:test|it|describe|expect|assert)(?:\.\w+)*\s*\(|^\s*(?:async\s+)?def\s+test_\w+\s*\(|^\s*assert\s+/.test(row.text);
+        return {line:row.line,score:hits?hits*2+Number(row.changed):0,contextOnly,testBody};
+      }).filter(row=>row.score>0).sort((a,b)=>b.score-a.score||Number(a.contextOnly)-Number(b.contextOnly)||a.line-b.line);
+      const matchedLine=isTestFocusedReviewGoal(query)?lineMatches.find(row=>row.testBody):lineMatches[0];
+      return [{goalId:goal.id,chunkId:chunk.id,relation:"candidate" as const,basis,score,...(matchedLine?{line:matchedLine.line,...(matchedLine.testBody?{lineBasis:"test_body_match" as const}:{})}:{})}];
     }).sort((a,b)=>b.score-a.score||a.chunkId.localeCompare(b.chunkId));
     if(candidates.length>12)graph.capabilities.truncated=true;
     graph.edges.push(...candidates.slice(0,12));
@@ -150,7 +176,11 @@ export function validReviewIntentGraph(value: unknown, requirementIds: ReadonlyS
     chunks.add(chunk.id);
   }
   for(const edge of g.edges){const pair=`${edge?.goalId}:${edge?.chunkId}`;
-    if(!keys(edge,["goalId","chunkId","relation","basis","score"])||!goals.has(edge.goalId)||!chunks.has(edge.chunkId)||pairs.has(pair)||edge.relation!=="candidate"||!integer(edge.score,1000)||!Array.isArray(edge.basis)||!edge.basis.length||edge.basis.length>4||new Set(edge.basis).size!==edge.basis.length||!edge.basis.every(x=>["source_path","identifier","lexical","changed_declaration"].includes(x)))return false;pairs.add(pair);
+    if(!keys(edge,["goalId","chunkId","relation","basis","score",...["line","lineBasis"].filter(key=>Object.hasOwn(edge??{},key))])||!goals.has(edge.goalId)||!chunks.has(edge.chunkId)||pairs.has(pair)||edge.relation!=="candidate"||!integer(edge.score,1000)||!Array.isArray(edge.basis)||!edge.basis.length||edge.basis.length>4||new Set(edge.basis).size!==edge.basis.length||!edge.basis.every(x=>["source_path","identifier","lexical","changed_declaration"].includes(x)))return false;
+    const chunk=g.chunks.find(c=>c.id===edge.chunkId)!;
+    if(edge.line!==undefined&&(!integer(edge.line,100000)||edge.line<chunk.startLine||edge.line>chunk.endLine))return false;
+    if(edge.lineBasis!==undefined&&(edge.lineBasis!=="test_body_match"||edge.line===undefined||chunk.pool!=="changed"))return false;
+    pairs.add(pair);
   }
   const c=g.capabilities;
   return keys(c,["wholeRepository","embeddings","symbolResolution","semantic","snapshotChunks","rejectedSnapshots","truncated"])&&c.wholeRepository==="unavailable"&&c.embeddings==="unavailable"&&c.symbolResolution==="unavailable"&&c.semantic==="existing_relations_only"&&c.snapshotChunks===g.chunks.filter(c=>c.pool==="snapshot").length&&integer(c.rejectedSnapshots,100000)&&typeof c.truncated==="boolean";
@@ -231,6 +261,10 @@ export const getReviewNavigationDiagnostics=(navigation:ReviewNavigation)=>struc
 export interface ReviewNavigationOptions {
   onDiagnostics?:(event:ReviewNavigationDiagnostics)=>void;
   model:string; provider?:(request:ReviewNavigationRequest)=>Promise<unknown>;
+  /** Recheck the repository grant before each private provider/read phase. */
+  authorizePrivate?:()=>Promise<boolean>;
+  /** Metadata-only visibility check before any fresh source, model, or code read. */
+  readRepositoryPrivate?:()=>Promise<boolean|null>;
   readArtifacts?:(paths:string[],headSha:string)=>Promise<Array<{path:string;headSha:string;content:string}>>;
   readCurrentInput?:()=>Promise<PullRequestInput|null>;
 }
@@ -327,7 +361,13 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
     navContexts.set(navigation,{inputHash:inputNavigationHash(input),outputHash:sha(JSON.stringify(navigation))});
     return {...report,reviewCandidates:{...report.reviewCandidates!,navigation}};
   };
-  if(!options.provider||!sources.length||input.repositoryPrivate!==false){navigation.limitations.push(input.repositoryPrivate!==false?'private_or_unknown_access':'semantic_unavailable');lifecycle.push({kind:'stop',reason:'guard'});return finish();}
+  if(!options.provider||!sources.length||(input.repositoryPrivate!==false&&!(input.repositoryPrivate===true&&options.authorizePrivate))){navigation.limitations.push(input.repositoryPrivate!==false?'private_or_unknown_access':'semantic_unavailable');lifecycle.push({kind:'stop',reason:'guard'});return finish();}
+  const privateAllowed=async()=>input.repositoryPrivate!==true||Boolean(await options.authorizePrivate?.().catch(()=>false));
+  const phaseAllowed=async()=>{
+    if(!await privateAllowed())return false;
+    if(!options.readRepositoryPrivate)return true;
+    try{return await options.readRepositoryPrivate()===input.repositoryPrivate;}catch{return false;}
+  };
   const addSnapshots=async(blobs:Array<{path:string;headSha:string;content:string}>)=>{
     const safe=blobs.filter(b=>safePath(b.path)&&b.headSha===navigation.headSha);
     if(safe.length<blobs.length)navigation.limitations.push('invalid_reference');
@@ -397,6 +437,7 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
     return {stage,model:options.model,sources:stage==='intent'?sources:[],goals:navigation.goals.map(g=>({...g,firstInspection:null,candidates:[],uncertainty:[]})),artifacts:packet,inventory:stage==='ranking'?input.changedFiles.filter(f=>safePath(f.path)).slice(0,128).map(f=>({path:f.path,status:f.status??'modified'})):[],capabilities:{readPaths:!!options.readArtifacts,searchScope:'supplied_artifacts',wholeRepository:false}};
   };
   const invoke=async(packet:ReviewNavigationRequest,stage:ReviewNavigationDiagnostics['stage'])=>{
+    if(!await phaseAllowed())throw new Error('Repository access changed.');
     const trace:ReviewNavigationDiagnostics={version:1,stage,providerCalled:true,limits:{artifactBytes:REVIEW_PAYLOAD_BYTES,artifactCount:REVIEW_PAYLOAD_SNIPPETS},resultLimitations:[],requestHash:sha(JSON.stringify(packet)),artifactBytes:Buffer.byteLength(JSON.stringify(packet.artifacts)),artifacts:packet.artifacts.map(({content:_,...a})=>({...a,goalIds:[...(a.goalIds??[])]})),sources:packet.sources.map(s=>({id:s.id,hash:s.hash,spans:s.spans.map(p=>({start:p.start,end:p.end,hash:sha(p.text)}))})),goals:packet.goals.map(g=>({id:g.id,summaryHash:sha(g.summary),sourceRefs:structuredClone(g.sourceRefs),facets:g.facets.map(f=>({summaryHash:sha(f.summary),sourceRefs:structuredClone(f.sourceRefs)}))})),limitations:[...new Set(navigation.limitations)],decisions:[]};
     traces.push(trace);
     try{return await options.provider!(packet);}finally{trace.transport=getNavigationTransportDiagnostics(packet);}
@@ -415,14 +456,15 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
     const codeOverlap=codeLines.some(line=>safe.includes(line));
     safe=safe.slice(0,600);
     if(safe!==text||sourceOverlap||codeOverlap){recordFailure('invalid_json_or_shape','unsafe_summary');navigation.limitations.push('unsafe_summary_omitted');}
-    return !codeOverlap&&safe&&safe!=='[redacted]'?safe:undefined;
+    return !codeOverlap&&!(input.repositoryPrivate===true&&sourceOverlap)&&safe&&safe!=='[redacted]'?safe:undefined;
   };
   const fresh=async(phase:'initial'|'final')=>{
     let outcome:Extract<NavigationLifecycleEvent,{kind:'freshness'}>['outcome']='not_checked',code:string|undefined;
-    if(options.readCurrentInput)try{
+    if(!await phaseAllowed())outcome='access_changed';
+    else if(options.readCurrentInput)try{
       const current=await options.readCurrentInput();
       if(!current)outcome='collection_failed';
-      else if(current.repositoryPrivate!==false||current.url!==input.url)outcome='access_changed';
+      else if(current.repositoryPrivate!==input.repositoryPrivate||current.url!==input.url)outcome='access_changed';
       else if(current.sourceProvenance?.headSha!==input.sourceProvenance?.headSha||current.sourceProvenance?.baseSha!==input.sourceProvenance?.baseSha||current.sourceProvenance?.origin!==input.sourceProvenance?.origin)outcome='snapshot_changed';
       else if(JSON.stringify([current.taskSource,current.taskText,current.title,current.description,current.requirementSourceIdentityHash,current.verificationContractBindingV2?.sourceIdentity])!==JSON.stringify([input.taskSource,input.taskText,input.title,input.description,input.requirementSourceIdentityHash,input.verificationContractBindingV2?.sourceIdentity]))outcome='source_changed';
       else outcome=inputNavigationHash({...current,verificationCriterionEvidenceV2:input.verificationCriterionEvidenceV2})===inputNavigationHash(input)?'unchanged':'context_changed';
@@ -435,6 +477,13 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
     }
     lifecycle.push({kind:'freshness',phase,outcome,...(code?{code}:{})});
     if(outcome==='unchanged'||outcome==='not_checked')return true;
+    // The initial collector already checked source and base/head at its final
+    // read. A later public rate limit cannot invalidate that pinned snapshot;
+    // it only prevents confirming that the live PR is still current.
+    if(outcome==='collection_failed'&&['github_rate_limited','github_secondary_rate_limited'].includes(code??'')&&input.repositoryPrivate===false&&input.sourceProvenance?.origin==='github_snapshot'&&exact(input.sourceProvenance.headSha)&&exact(input.sourceProvenance.baseSha)){
+      navigation.limitations.push('freshness_unavailable');
+      return true;
+    }
     navigation.limitations.push(outcome==='snapshot_changed'||outcome==='source_changed'?'stale_snapshot':outcome==='access_changed'?'freshness_access_changed':outcome==='context_changed'?'freshness_context_changed':'freshness_unavailable');
     return false;
   };
@@ -454,6 +503,7 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
     lifecycle.push(event);
     if(!paths.length){event.outcome=available.length?'budget_exhausted':'no_new_context';return false;}
     if(!options.readArtifacts){event.outcome='unavailable';navigation.limitations.push('read_unavailable');return false;}
+    if(!await phaseAllowed()){event.outcome='unavailable';navigation.limitations.push('freshness_access_changed');return false;}
     for(const path of paths)readPaths.add(path);
     let blobs:Array<{path:string;headSha:string;content:string}>;
     try{blobs=await options.readArtifacts(paths,navigation.headSha!);}catch{event.outcome='unavailable';navigation.limitations.push('read_unavailable');recordFailure('read_unavailable','read_unavailable','read');return false;}

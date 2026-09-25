@@ -98,9 +98,9 @@ describe("dashboard report export", () => {
     });
     expect(json.requirements[0]).toMatchObject({
       outcome: "unclear",
-      outcome_label: "Unclear — approved verification contract missing",
+      outcome_label: "No approved verification contract",
       outcome_basis: "No approved verification contract defined the requirement outcome.",
-      observed_evidence_label: "Partially supported"
+      observed_evidence_label: "Some evidence linked"
     });
     expect(json.requirements[0].evidence_gaps).toEqual([
       "Execution evidence was collected, but no validated requirement-local test-relation receipt authorizes promotion.",
@@ -315,7 +315,7 @@ describe("dashboard report export", () => {
     expect(exported.ai_evidence_reading.remediation_requests).toHaveLength(1);
     expect(exported.ai_evidence_reading.uncertainties).toHaveLength(1);
     expect(markdown).toContain("Show a retry status.");
-    expect(markdown).toContain("Evidence coverage: Partially supported");
+    expect(markdown).toContain("Evidence coverage: Some evidence linked");
     expect(markdown).toContain("What the evidence shows: The supplied test evidence covers the status update.");
     expect(markdown).toContain("Key gap: Focused test evidence is missing.");
     expect(markdown).not.toContain("Next: Add the focused retry failure test.");

@@ -41,7 +41,7 @@ describe("toDashboardRequirementViewModels", () => {
     expect(card).toMatchObject({
       coverageHeading: "Observed evidence",
       coverageLabel: "Supported",
-      outcomeLabel: "Unclear",
+      outcomeLabel: "No approved verification contract",
       outcomeMeaning: "No approved verification contract defined how this objective should be evaluated.",
       primaryGap: "User-facing interaction evidence is missing for this requirement.",
       nextAction: "Add component or browser evidence for the user-facing interaction."
@@ -86,8 +86,8 @@ describe("toDashboardRequirementViewModels", () => {
     expect(card).toMatchObject({
       requirementId: "req_checkout",
       status: "partial",
-      coverageLabel: "Partially supported",
-      coverageMeaning: "Deterministic evidence references only partially support this requirement.",
+      coverageLabel: "Some evidence linked",
+      coverageMeaning: "Some deterministic evidence is linked; review the remaining conditions.",
       evidenceRefs: ["ev_1", "ev_2"],
       deterministicGaps: ["A focused edge-case test is not recorded."],
       explanation: { state: "assessment", text: "The normal validation path has evidence." },

@@ -35,7 +35,7 @@ describe("source-bound ordinary requirement outcomes", () => {
     expect(reused.map(blob => blob.path)).toEqual(["a.md", "c.md", "d.md", "e.md", "f.md", "g.md", "h.md"]);
     expect(await collector(["i.md"], headSha)).toEqual([]);
   });
-  it.each([["ready now", "met", "Fulfilled"], ["different", "missing", "Violated"], [null, "unclear", "Unavailable"]] as const)("uses exact-head artifact %s for the canonical result, retaining unsupported obligations", async (content, status, label) => {
+  it.each([["ready now", "met", "Fulfilled"], ["different", "missing", "Violated"], [null, "unclear", "Source requirement not verified"]] as const)("uses exact-head artifact %s for the canonical result, retaining unsupported obligations", async (content, status, label) => {
     const input = source();
     const report = await run(input, content);
     expect(report.requirements.map(row => row.status)).toEqual([status, "unclear"]);
@@ -90,8 +90,11 @@ describe("source-bound ordinary requirement outcomes", () => {
     const portable = sanitizeReportForShare(report) as VerificationReportV2;
     expect(portable.requirements[0].status).toBe("met");
     expect(portable.authenticity?.trust).toBe("portable_unverified");
-    expect(reportToMarkdown(portable)).toContain("Fulfilled — explicit source requirement");
-    expect(reportToMarkdown(portable)).not.toContain("No approved verification contract;");
+    const markdown = reportToMarkdown(portable);
+    expect(markdown).toContain("### PR-to-Evidence Review");
+    expect(markdown).toContain("#### `README.md` must contain `ready now`");
+    expect(markdown).not.toContain("Fulfilled — explicit source requirement");
+    expect(markdown).not.toContain("No approved verification contract;");
     expect(validateRuntimeReportBoundary({ boundary: "inbound_untrusted_full", report: portable }).valid).toBe(false);
     persisted.requirements[0].status = "missing";
     expect(validateTenantPersistedReport(persisted, "test signing secret").valid).toBe(false);

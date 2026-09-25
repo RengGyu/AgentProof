@@ -3337,7 +3337,7 @@ function buildReviewPriority(
     const refs = refsForFindings(partialRequirements, sourceRefs);
     items.push({
       path: reviewPriorityPathForEvidence(refs, evidenceIndex),
-      reason: `${partialRequirements.length} requirement(s) have only partial evidence.`,
+      reason: `${partialRequirements.length} review goal(s) need more evidence.`,
       priority: "medium",
       evidenceRefs: refs
     });
@@ -3753,7 +3753,7 @@ function buildTopRisks(
   }
   if (requirements.some((finding) => finding.status === "missing")) risks.push("One or more requirements have no matching implementation evidence.");
   if (requirements.some((finding) => finding.status === "unclear")) risks.push("Some requirements are too vague or weakly evidenced.");
-  if (requirements.some((finding) => finding.status === "partial")) risks.push("Some requirements have only partial evidence.");
+  if (requirements.some((finding) => finding.status === "partial")) risks.push("Some review goals need additional evidence.");
   if (missingTests.length > 0) {
     risks.push(
       missingTests.some((finding) => /^Passing test evidence exists/.test(finding.why))
@@ -3786,14 +3786,14 @@ function buildLimitations(
     if (!hasSourceConditionLimitation(limitations)) {
       limitations.push(
         hasAnyCheckOrLogMetadata(input)
-          ? "Public check/status metadata was available, but no test/build execution evidence was found."
-          : "No public test/build workflow run, check, or raw CI log was available."
+          ? "Check/status metadata was available, but no test/build execution evidence was found."
+          : "No test/build workflow run, check, or raw CI log was available."
       );
     }
-    limitations.push("Confidence is based only on issue, diff, and test-artifact evidence because no public test/build execution evidence was found.");
+    limitations.push("Confidence is based only on issue, diff, and test-artifact evidence because no test/build execution evidence was found.");
   }
   if (ciStatus === "unknown" && !hasSourceConditionLimitation(limitations)) {
-    limitations.push("No public test/build workflow run, check, or raw CI log was available.");
+    limitations.push("No test/build workflow run, check, or raw CI log was available.");
   }
   if (evidenceRefsCapped) {
     limitations.push(`Some evidence references were capped at ${MAX_EVIDENCE_REFS_PER_FIELD} per field to keep the report bounded.`);
@@ -3820,7 +3820,7 @@ function hasAnyCheckOrLogMetadata(input: PullRequestInput): boolean {
 
 function hasSourceConditionLimitation(limitations: string[]): boolean {
   return limitations.some((limitation) =>
-    /Public GitHub (?:Actions )?metadata (?:showed|reported)|Public commit status metadata (?:was available|showed)|No (?:verified )?public test\/build/i.test(limitation)
+    /(?:Public |Private )?GitHub (?:Actions )?metadata (?:showed|reported)|(?:Public |Private )?commit status metadata (?:was available|showed)|No (?:verified )?(?:public |private )?test\/build/i.test(limitation)
   );
 }
 

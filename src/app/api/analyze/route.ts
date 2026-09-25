@@ -1,5 +1,10 @@
+import { PaidBudgetError, withPaidAnalysis } from "@/lib/paid-budget";
+import { resolveTenantAuthAccess } from "@/lib/tenant-auth";
+import { isPrivateAnalysisGrantCurrent, resolveGitHubAnalysisCredential } from "@/lib/github-analysis-access";
+import { readGitHubRepositoryPrivate } from "@/lib/github-repository-visibility";
+import { csrfFailureResponse, verifySameOriginMutationRequest } from "@/lib/csrf";
 import { resolveNavigationProvider } from "@/lib/gemini-navigation";
-import type { ReviewNavigationDiagnostics } from "@/lib/review-intent";
+import { getReviewNavigationDiagnostics, type ReviewNavigationDiagnostics } from "@/lib/review-intent";
 import { NextResponse } from "next/server";
 import { demoScenarios } from "@/lib/sample-data";
 import { normalizeAnalyzeRequest } from "@/lib/analyze-request";
@@ -25,7 +30,7 @@ import { generateVerificationReportV2FromInput } from "@/lib/verifier";
 import { utf8ByteLength } from "@/lib/http";
 import { verifyOpsRequest } from "@/lib/ops-auth";
 import { redactSecrets } from "@/lib/redact";
-import type { AnalyzeRequest } from "@/lib/types";
+import type { AnalyzeRequest, VerificationReportV2 } from "@/lib/types";
 
 const MAX_BODY_BYTES = 80_000;
 const ANALYZE_TIMING_PHASES = ["input", "evidence", "report", "validation"] as const;
@@ -103,24 +108,55 @@ export async function POST(request: Request) {
       );
     }
 
-    timing.start("evidence");
-    const input = body.demoScenario
-      ? demoScenarios[body.demoScenario]
-      : await buildPullRequestInput(body, evidenceTiming);
-
-    timing.start("report");
     const policy = resolveGeneralPrAssessmentRuntimePolicyV1(
       process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE
     );
-    const publicPrUrl = body.prUrl?.trim();
+    const publicPrUrl = body.demoScenario ? undefined : body.prUrl?.trim();
     const observerApiKey = process.env.OPENAI_API_KEY?.trim();
     const observerModel = process.env.OPENAI_MODEL?.trim();
+    const navigationProvider = resolveNavigationProvider(process.env);
+    // Guard every live PR read. The durable login and transient GitHub token expire independently.
+    let githubCredential: string | undefined;
+    let privateGrant: { tenantId: string; repositoryFullName: string; installationId: number; repositoryId: number } | undefined;
+    if (publicPrUrl) {
+      let access;
+      try {
+        access = await resolveTenantAuthAccess({ cookieHeader: request.headers.get("cookie") });
+      } catch {
+        return jsonNoStore({ error: "Sign-in verification is temporarily unavailable. Please retry.", code: "github_session_unavailable" }, 503, timing);
+      }
+      if (!access.authorized) {
+        return jsonNoStore({ error: "Sign in with GitHub to analyze a PR URL.", code: "github_login_required", hint: "After signing in, return to analysis and enter your PR URL. Demos and pasted evidence are available without signing in." }, 401, timing);
+      }
+      if (!verifySameOriginMutationRequest(request).ok) return csrfFailureResponse();
+      const credential = await resolveGitHubAnalysisCredential({
+        prUrl: publicPrUrl,
+        tenantId: access.tenantId!,
+        memberId: access.memberId!,
+        cookieHeader: request.headers.get("cookie")
+      });
+      if (!credential.ok) return jsonNoStore({ error: credential.error, code: credential.code, hint: credential.hint }, credential.status, timing);
+      githubCredential = credential.token;
+      if (credential.kind === "installation" && credential.privateAnalysisApproved && credential.installationId && credential.repositoryId) {
+        const parsed = parseGitHubPullUrl(publicPrUrl);
+        if (parsed) privateGrant = { tenantId: access.tenantId!, repositoryFullName: `${parsed.owner}/${parsed.repo}`, installationId: credential.installationId, repositoryId: credential.repositoryId };
+      }
+    }
+
+    timing.start("evidence");
+    const input = body.demoScenario
+      ? demoScenarios[body.demoScenario]
+      : await buildPullRequestInput(publicPrUrl ? { ...body, githubToken: githubCredential } : { ...body, githubToken: undefined }, evidenceTiming);
+    if (publicPrUrl && input.repositoryPrivate === true && !privateGrant) {
+      return jsonNoStore({ error: "Private repository analysis is off until its code-analysis notice is accepted.", code: "github_private_consent_required", hint: "Open repository settings and turn on AgentProof analysis." }, 409, timing);
+    }
+
+    timing.start("report");
     const semanticEligible = policy.semanticObservation === "eligible_public_pr" &&
       generalPrObservationService.isGeneralPrSemanticObserverEligibleV2(input) &&
       Boolean(publicPrUrl && observerApiKey && observerModel);
-    const navigationProvider = resolveNavigationProvider(process.env);
     const navigationEligible = policy.semanticObservation === "eligible_public_pr" &&
-      generalPrObservationService.isGeneralPrSemanticObserverEligibleV2(input);
+      (generalPrObservationService.isGeneralPrSemanticObserverEligibleV2(input) || Boolean(privateGrant && input.repositoryPrivate === true && input.sourceProvenance?.origin === "github_snapshot" && (input.taskText.trim() === "" || input.taskSource === "issue")));
     const navigationDiagnostics: ReviewNavigationDiagnostics[] = [];
     const observationOptions: RunGeneralPrObservationNowOptionsV2 = {
       policy,
@@ -132,14 +168,19 @@ export async function POST(request: Request) {
         } : {}),
         ...(navigationEligible && publicPrUrl && navigationProvider.provider ? {
           provider: navigationProvider.provider,
-          readArtifacts: (paths, headSha) => collectReviewArtifacts(publicPrUrl, body.githubToken, paths, headSha),
-          readCurrentInput: () => buildGitHubPullRequestInput(publicPrUrl, body.githubToken, "", undefined, {expectedHeadSha:input.sourceProvenance?.headSha,expectedBaseSha:input.sourceProvenance?.baseSha})
+          ...(privateGrant && input.repositoryPrivate === true ? { authorizePrivate: () => isPrivateAnalysisGrantCurrent(privateGrant!) } : {}),
+          readRepositoryPrivate: () => {
+            const parsed = parseGitHubPullUrl(publicPrUrl);
+            return parsed ? readGitHubRepositoryPrivate(`${parsed.owner}/${parsed.repo}`, githubCredential ?? "") : Promise.resolve(null);
+          },
+          readArtifacts: (paths, headSha) => collectReviewArtifacts(publicPrUrl, githubCredential, paths, headSha),
+          readCurrentInput: () => buildGitHubPullRequestInput(publicPrUrl, githubCredential, "", undefined, {expectedHeadSha:input.sourceProvenance?.headSha,expectedBaseSha:input.sourceProvenance?.baseSha})
         } : {})
       },
-      ...(publicPrUrl && input.repositoryPrivate === false ? { collectDocumentationArtifacts: (paths: string[], headSha: string) => collectOrdinaryDocumentationArtifacts(publicPrUrl, body.githubToken, paths, headSha) } : {}),
-      ...(publicPrUrl && input.repositoryPrivate === false ? { collectStaticArtifacts: (paths: string[], headSha: string) => collectOrdinaryStaticArtifacts(publicPrUrl, body.githubToken, paths, headSha) } : {}),
-      ...(publicPrUrl && input.repositoryPrivate === false ? { collectScalarArtifacts: (paths: string[], headSha: string) => collectOrdinaryScalarArtifacts(publicPrUrl, body.githubToken, paths, headSha) } : {}),
-      ...(publicPrUrl && input.repositoryPrivate === false ? { collectTypeScriptProject: (headSha: string) => collectOrdinaryTypeScriptProject(publicPrUrl, body.githubToken, headSha) } : {}),
+      ...(publicPrUrl && input.repositoryPrivate === false ? { collectDocumentationArtifacts: (paths: string[], headSha: string) => collectOrdinaryDocumentationArtifacts(publicPrUrl, githubCredential, paths, headSha) } : {}),
+      ...(publicPrUrl && input.repositoryPrivate === false ? { collectStaticArtifacts: (paths: string[], headSha: string) => collectOrdinaryStaticArtifacts(publicPrUrl, githubCredential, paths, headSha) } : {}),
+      ...(publicPrUrl && input.repositoryPrivate === false ? { collectScalarArtifacts: (paths: string[], headSha: string) => collectOrdinaryScalarArtifacts(publicPrUrl, githubCredential, paths, headSha) } : {}),
+      ...(publicPrUrl && input.repositoryPrivate === false ? { collectTypeScriptProject: (headSha: string) => collectOrdinaryTypeScriptProject(publicPrUrl, githubCredential, headSha) } : {}),
       generateReport: generateVerificationReportV2FromInput,
       // The existing runtime gate remains the final authority below. This
       // preflight merely prevents shadow collection for an invalid report.
@@ -159,7 +200,7 @@ export async function POST(request: Request) {
           },
           providerAvailable: true,
           privateRepository: false,
-          readCurrentInput: () => buildGitHubPullRequestInput(publicPrUrl, body.githubToken, "", undefined, {
+          readCurrentInput: () => buildGitHubPullRequestInput(publicPrUrl, githubCredential, "", undefined, {
             expectedHeadSha: input.sourceProvenance?.headSha,
             expectedBaseSha: input.sourceProvenance?.baseSha
           }),
@@ -171,10 +212,14 @@ export async function POST(request: Request) {
         }
       } : {})
     };
-    const diagnosticRun = operatorDiagnosticsRequested
-      ? await runGeneralPrInformationDiagnosticV1(observationOptions)
-      : null;
-    const observed = diagnosticRun?.result ?? await generalPrObservationService.runGeneralPrObservationNowV2(observationOptions);
+    const { diagnosticRun, observed } = await withPaidAnalysis(
+      `public:${request.headers.get("cookie") ?? ""}:${request.headers.get("x-agentproof-analysis-key") ?? rawText}`,
+      async () => {
+        const diagnosticRun = operatorDiagnosticsRequested ? await runGeneralPrInformationDiagnosticV1(observationOptions) : null;
+        const observed = diagnosticRun?.result ?? await generalPrObservationService.runGeneralPrObservationNowV2(observationOptions);
+        return { diagnosticRun, observed };
+      }
+    );
     const report = observed.report;
 
     timing.start("validation");
@@ -196,6 +241,35 @@ export async function POST(request: Request) {
       );
     }
 
+    // Closed, text-free production breadcrumb for a failed reviewer path.
+    // Never log the request, report, repository, model output, or credentials.
+    const navigation = (validation.report as VerificationReportV2).reviewCandidates?.navigation;
+    if (publicPrUrl && input.repositoryPrivate === false && navigationEligible && !navigation?.goals.length) {
+      const failure = navigation?.failures?.[0];
+      const initialFreshness = navigation && getReviewNavigationDiagnostics(navigation)
+        .flatMap((trace) => trace.lifecycle ?? [])
+        .find((event) => event.kind === "freshness" && event.phase === "initial");
+      const selected = process.env.AGENTPROOF_NAVIGATION_PROVIDER?.trim().toLowerCase();
+      const provider = selected === "openai" || (!process.env.GEMINI_API_KEY && !process.env.AI_GATEWAY_API_KEY && navigationProvider.provider)
+        ? "openai" : navigationProvider.provider ? "gemini" : "none";
+      console.warn("agentproof_navigation_unavailable", {
+        provider,
+        state: navigation?.state ?? "absent",
+        stage: failure?.stage ?? "none",
+        reason: failure?.reason ?? "none",
+        category: failure?.category ?? "none",
+        collectorOutcome: initialFreshness?.kind === "freshness" ? initialFreshness.outcome : "none",
+        collectorCode: initialFreshness?.kind === "freshness" ? initialFreshness.code ?? "none" : "none",
+        limitations: navigation?.limitations.filter((code) => [
+          "private_or_unknown_access", "semantic_unavailable", "stale_snapshot",
+          "freshness_access_changed", "freshness_context_changed", "freshness_unavailable",
+          "no_interpreted_goal"
+        ].includes(code)).slice(0, 4) ?? [],
+        freshness: navigation?.limitations.includes("freshness_access_changed") ? "access_changed" :
+          navigation?.limitations.includes("freshness_source_changed") ? "source_changed" : "none"
+      });
+    }
+
     return jsonNoStore({
       report: validation.report,
       ...(operatorDiagnosticsRequested ? {
@@ -205,6 +279,7 @@ export async function POST(request: Request) {
       } : {})
     }, 200, timing, evidenceTiming);
   } catch (error) {
+    if (error instanceof PaidBudgetError) return jsonNoStore({error:error.message,code:error.code}, error.code === "soft_stop" || error.code === "duplicate" ? 429 : 503, timing);
     const message = redactSecrets(error instanceof Error ? error.message : "Analysis failed");
     const guidance = analyzeFailureGuidance(error);
 
@@ -239,7 +314,7 @@ function analyzeFailureGuidance(error: unknown): {
 
   return {
     category: "input",
-    hint: "Use demo mode, paste PR evidence, or provide a fine-grained GitHub token for private PRs.",
+    hint: "Use demo mode or paste PR evidence if the live GitHub request is unavailable.",
     actions: [
       "Check that the PR URL is reachable.",
       "Paste PR description, changed files, checks, or logs if GitHub cannot be reached."
@@ -259,42 +334,26 @@ function githubFailureCategory(code: GitHubFetchFailureCode): "github_access" | 
   return "github_access";
 }
 
-function githubFailureActions(code: GitHubFetchFailureCode, tokenProvided: boolean): string[] {
+function githubFailureActions(code: GitHubFetchFailureCode, _tokenProvided: boolean): string[] {
   switch (code) {
     case "github_auth_required":
       return [
-        "Provide a fine-grained GitHub token with read access to this repository.",
-        "Paste PR evidence manually if you do not want to send a token."
+        "Sign in with GitHub again, or reconnect the GitHub App installation.",
+        "Paste PR evidence manually if live access is unavailable."
       ];
     case "github_token_rejected":
       return [
-        "Create or refresh the fine-grained GitHub token, then try again.",
-        "Confirm the token was copied completely and has not expired."
+        "Sign in with GitHub again, or reconnect the GitHub App installation.",
+        "Retry after GitHub access is restored."
       ];
     case "github_permission_denied":
-      return tokenProvided
-        ? [
-          "Confirm the token has pull request, contents, checks, statuses, and Actions metadata read access for this repository.",
-          "If this is a private repo, make sure the token is scoped to the selected repository."
-        ]
-        : [
-          "Provide a fine-grained GitHub token with read access to this repository.",
-          "Paste PR evidence manually if you do not want to send a token."
-        ];
+      return ["Check the repository's GitHub App connection or your GitHub authorization.", "Paste PR evidence manually if live access is unavailable."];
     case "github_not_found":
-      return tokenProvided
-        ? [
-          "Check that the PR URL is correct and visible to the provided GitHub token.",
-          "For private repos, confirm the token is scoped to that repository."
-        ]
-        : [
-          "Check that the PR URL is correct and publicly visible.",
-          "For private repos, use a fine-grained token scoped to that repository."
-        ];
+      return ["Check that the PR URL is correct and visible to the selected GitHub access.", "Connect your own private repository through the GitHub App."];
     case "github_rate_limited":
       return [
         "Wait for the GitHub API rate limit to reset, then retry.",
-        "Use a fine-grained token to increase the available request budget."
+        "Paste PR evidence manually if you need a report immediately."
       ];
     case "github_secondary_rate_limited":
       return [

@@ -25,7 +25,7 @@ export function RequirementEvidenceList({ requirements }: { requirements: Dashbo
             ? createElement("p", null, requirement.sourceAuthorityMeaning)
             : null,
           createElement("p", null, `${requirement.evidenceRefs.length} evidence reference${requirement.evidenceRefs.length === 1 ? "" : "s"}`),
-          createElement("p", null, `Evidence IDs: ${requirement.evidenceRefs.join(", ") || "Unavailable"}`),
+          createElement("p", null, requirement.evidenceRefs.length > 0 ? `Evidence IDs: ${requirement.evidenceRefs.join(", ")}` : "No evidence references recorded."),
           requirement.proofEvidence && requirement.proofEvidence.length > 0
             ? createElement("div", null, createElement("strong", null, "Captured proof"), createElement("ul", null, requirement.proofEvidence.map((item, index) => createElement("li", { key: `${requirement.requirementId}:proof:${index}` }, item))))
             : null,

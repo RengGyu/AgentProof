@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { beginGitHubOAuth, getGitHubOAuthConfig } from "@/lib/public-github-auth";
 import { GET } from "./route";
+import { POST as startOAuth } from "../start/route";
 
 describe("GET /api/auth/github/callback", () => {
   afterEach(() => {
@@ -68,9 +69,10 @@ describe("GET /api/auth/github/callback", () => {
     const started = beginGitHubOAuth(config);
     const state = new URL(started.authorizationUrl).searchParams.get("state");
     let identityReads = 0;
+    let sessionRow: Record<string, unknown> | null = null;
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       if (url === "https://github.com/login/oauth/access_token") {
-        return Response.json({ access_token: "temporary-oauth-token" });
+        return Response.json({ access_token: "temporary-oauth-token", expires_in: 28_800, refresh_token: "temporary-refresh-token", refresh_token_expires_in: 15_897_600 });
       }
       if (url === "https://api.github.com/user") return Response.json({ id: 12345, login: "private-login" });
       if (url.includes("/agentproof_github_identities") && init?.method === "GET") {
@@ -82,6 +84,11 @@ describe("GET /api/auth/github/callback", () => {
       }
       if (url.includes("/agentproof_tenant_members") && init?.method === "GET") {
         return Response.json([{ tenant_id: "gh_12345", member_id: "github:12345", role: "owner", status: "active" }]);
+      }
+      if (url.includes("/agentproof_tenant_auth_sessions")) {
+        if (init?.method === "POST") { sessionRow = JSON.parse(String(init.body)); return new Response(null, { status: 204 }); }
+        if (init?.method === "GET") return Response.json(sessionRow ? [sessionRow] : []);
+        if (init?.method === "PATCH") return Response.json([{ id: sessionRow?.id }]);
       }
       if (init?.method === "POST") return new Response(null, { status: 204 });
       return new Response(null, { status: 500 });
@@ -104,21 +111,28 @@ describe("GET /api/auth/github/callback", () => {
     expect(cookies).toContain("Path=/api;");
     expect(cookies).toContain("agentproof_tenant_auth_session=");
     expect(cookies).toContain("Path=/;");
-    expect(serialized).toBe('{"ok":true,"next":"install_github_app","privacy":"github-id-mapping-and-session-only"}');
+    expect(serialized).toBe('{"ok":true,"next":"install_github_app","privacy":"encrypted-github-credential-in-revocable-session"}');
     expect(`${cookies}${serialized}`).not.toContain("temporary-oauth-token");
+    expect(`${cookies}${serialized}`).not.toContain("temporary-refresh-token");
+    expect(JSON.stringify(fetchMock.mock.calls.filter(([url]) => url.includes("/agentproof_tenant_auth_sessions")))).not.toContain("temporary-oauth-token");
+    expect(JSON.stringify(fetchMock.mock.calls.filter(([url]) => url.includes("/agentproof_tenant_auth_sessions")))).not.toContain("temporary-refresh-token");
     expect(`${cookies}${serialized}`).not.toContain("private-login");
     expect(`${cookies}${serialized}`).not.toContain("12345");
   });
 
-  it("returns a dashboard HTML navigation document for a mobile callback", async () => {
+  it.each(["/dashboard", "/analyze"])("returns the signed %s destination for a mobile callback", async destination => {
     stubOAuthEnv();
     vi.stubEnv("SUPABASE_URL", "https://agentproof-test.supabase.co");
     vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
     const config = getGitHubOAuthConfig();
     if (!config) throw new Error("Expected OAuth config.");
-    const started = beginGitHubOAuth(config);
+    const startResponse = await startOAuth(new Request("http://localhost/api/auth/github/start", {
+      method: "POST", headers: { Origin: "http://localhost" }, body: JSON.stringify({ returnTo: destination })
+    }));
+    const started = { ...(await startResponse.json()), stateCookie: startResponse.headers.get("set-cookie")! };
     const state = new URL(started.authorizationUrl).searchParams.get("state");
     let identityReads = 0;
+    let sessionRow: Record<string, unknown> | null = null;
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
       if (url === "https://github.com/login/oauth/access_token") return Response.json({ access_token: "temporary-oauth-token" });
       if (url === "https://api.github.com/user") return Response.json({ id: 12345, login: "private-login" });
@@ -128,6 +142,11 @@ describe("GET /api/auth/github/callback", () => {
       }
       if (url.includes("/agentproof_tenants") && init?.method === "GET") return Response.json([{ tenant_id: "gh_12345", name: "GitHub beta workspace", status: "active", plan: "beta" }]);
       if (url.includes("/agentproof_tenant_members") && init?.method === "GET") return Response.json([{ tenant_id: "gh_12345", member_id: "github:12345", role: "owner", status: "active" }]);
+      if (url.includes("/agentproof_tenant_auth_sessions")) {
+        if (init?.method === "POST") { sessionRow = JSON.parse(String(init.body)); return new Response(null, { status: 204 }); }
+        if (init?.method === "GET") return Response.json(sessionRow ? [sessionRow] : []);
+        if (init?.method === "PATCH") return Response.json([{ id: sessionRow?.id }]);
+      }
       if (init?.method === "POST") return new Response(null, { status: 204 });
       return new Response(null, { status: 500 });
     }));
@@ -139,7 +158,7 @@ describe("GET /api/auth/github/callback", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/html");
-    expect(await response.text()).toContain('url=/dashboard');
+    expect(await response.text()).toContain(`url=${destination}`);
   });
 });
 

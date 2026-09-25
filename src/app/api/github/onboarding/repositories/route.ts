@@ -114,6 +114,7 @@ export async function POST(request: Request) {
     commentEnabled?: unknown;
     llmAnalysisMode?: unknown;
     hybridPlannerConsent?: unknown;
+    privateAnalysisConsent?: unknown;
   }>(await request.text());
 
   if (!body || typeof body !== "object" || Array.isArray(body)) {
@@ -238,13 +239,14 @@ export async function POST(request: Request) {
       repositoryFullName: selected.fullName,
       repositoryPrivate: selected.private,
       enabled: true,
-      analysisEnabled: true,
+      analysisEnabled: selected.private ? body.privateAnalysisConsent === true : true,
       saveReportsEnabled: body.saveReportsEnabled === true,
       commentEnabled: body.commentEnabled === true,
       llmAnalysisMode,
       hybridPlannerConsentVersion: selected.private && body.hybridPlannerConsent === true && llmAnalysisMode === "enhanced"
         ? "2026-08-12.v1"
-        : undefined
+        : undefined,
+      privateAnalysisConsentVersion: selected.private && body.privateAnalysisConsent === true ? "2026-09-24.v1" : undefined
     });
 
     return noStoreJson({
@@ -258,10 +260,11 @@ export async function POST(request: Request) {
         saveReportsEnabled: grant.saveReportsEnabled,
         commentEnabled: grant.commentEnabled,
         llmAnalysisMode: resolveTenantRepositoryLlmAnalysisMode(grant),
-        hybridPlannerConsentVersion: grant.hybridPlannerConsentVersion ?? null
+        hybridPlannerConsentVersion: grant.hybridPlannerConsentVersion ?? null,
+        privateAnalysisConsentVersion: grant.privateAnalysisConsentVersion ?? null
       },
       privacy: "grant-metadata-only",
-      next: "webhook_analysis_enabled_for_repository"
+      next: grant.analysisEnabled ? "webhook_analysis_enabled_for_repository" : "private_analysis_off"
     });
   } catch (error) {
     if (error instanceof TenantDeletionStateError) {

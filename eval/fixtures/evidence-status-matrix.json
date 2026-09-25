@@ -68,7 +68,7 @@
         "nonExecutionStatusesExcluded": true,
         "limitationIncludes": [
           "Public check/status metadata was available, but no test/build execution evidence was found.",
-          "Confidence is based only on issue, diff, and test-artifact evidence because no public test/build execution evidence was found."
+          "Confidence is based only on issue, diff, and test-artifact evidence because no test/build execution evidence was found."
         ]
       }
     },
@@ -104,7 +104,7 @@
         "nonExecutionStatusesExcluded": true,
         "limitationIncludes": [
           "Public check/status metadata was available, but no test/build execution evidence was found.",
-          "Confidence is based only on issue, diff, and test-artifact evidence because no public test/build execution evidence was found."
+          "Confidence is based only on issue, diff, and test-artifact evidence because no test/build execution evidence was found."
         ]
       }
     },
@@ -237,7 +237,7 @@
         "nonExecutionStatusesExcluded": true,
         "limitationIncludes": [
           "Public commit status metadata was available, but only non-execution statuses were found.",
-          "Confidence is based only on issue, diff, and test-artifact evidence because no public test/build execution evidence was found."
+          "Confidence is based only on issue, diff, and test-artifact evidence because no test/build execution evidence was found."
         ]
       }
     },
@@ -268,7 +268,7 @@
         "nonExecutionStatusesExcluded": true,
         "limitationIncludes": [
           "Public commit status metadata was available, but only non-execution statuses were found.",
-          "Confidence is based only on issue, diff, and test-artifact evidence because no public test/build execution evidence was found."
+          "Confidence is based only on issue, diff, and test-artifact evidence because no test/build execution evidence was found."
         ]
       }
     },
@@ -299,7 +299,7 @@
         "nonExecutionStatusesExcluded": true,
         "limitationIncludes": [
           "Public commit status metadata was available, but only non-execution statuses were found.",
-          "Confidence is based only on issue, diff, and test-artifact evidence because no public test/build execution evidence was found."
+          "Confidence is based only on issue, diff, and test-artifact evidence because no test/build execution evidence was found."
         ]
       }
     },
@@ -330,7 +330,7 @@
         "nonExecutionStatusesExcluded": true,
         "limitationIncludes": [
           "Public commit status metadata was available, but only non-execution statuses were found.",
-          "Confidence is based only on issue, diff, and test-artifact evidence because no public test/build execution evidence was found."
+          "Confidence is based only on issue, diff, and test-artifact evidence because no test/build execution evidence was found."
         ]
       }
     },
@@ -353,8 +353,8 @@
         "selfReportedTestingFound": true,
         "nonExecutionStatusesExcluded": true,
         "limitationIncludes": [
-          "No public test/build workflow run, check, or raw CI log was available.",
-          "Confidence is based only on issue, diff, and test-artifact evidence because no public test/build execution evidence was found."
+          "No test/build workflow run, check, or raw CI log was available.",
+          "Confidence is based only on issue, diff, and test-artifact evidence because no test/build execution evidence was found."
         ]
       }
     },
@@ -377,8 +377,8 @@
         "changedTestFilesFound": true,
         "nonExecutionStatusesExcluded": true,
         "limitationIncludes": [
-          "No public test/build workflow run, check, or raw CI log was available.",
-          "Confidence is based only on issue, diff, and test-artifact evidence because no public test/build execution evidence was found."
+          "No test/build workflow run, check, or raw CI log was available.",
+          "Confidence is based only on issue, diff, and test-artifact evidence because no test/build execution evidence was found."
         ]
       }
     },
@@ -403,8 +403,8 @@
         "changedTestFilesFound": true,
         "nonExecutionStatusesExcluded": true,
         "limitationIncludes": [
-          "No public test/build workflow run, check, or raw CI log was available.",
-          "Confidence is based only on issue, diff, and test-artifact evidence because no public test/build execution evidence was found."
+          "No test/build workflow run, check, or raw CI log was available.",
+          "Confidence is based only on issue, diff, and test-artifact evidence because no test/build execution evidence was found."
         ]
       }
     },
@@ -507,7 +507,7 @@
         "nonExecutionStatusesExcluded": true,
         "limitationIncludes": [
           "Public commit status metadata was available, but only non-execution statuses were found.",
-          "Confidence is based only on issue, diff, and test-artifact evidence because no public test/build execution evidence was found."
+          "Confidence is based only on issue, diff, and test-artifact evidence because no test/build execution evidence was found."
         ]
       }
     },
@@ -574,7 +574,7 @@
         "nonExecutionStatusesExcluded": true,
         "limitationIncludes": [
           "Public commit status metadata was available, but only non-execution statuses were found.",
-          "Confidence is based only on issue, diff, and test-artifact evidence because no public test/build execution evidence was found."
+          "Confidence is based only on issue, diff, and test-artifact evidence because no test/build execution evidence was found."
         ]
       }
     },
@@ -755,7 +755,7 @@
         "nonExecutionStatusesExcluded": true,
         "limitationIncludes": [
           "Public commit status metadata was available, but only non-execution statuses were found.",
-          "Confidence is based only on issue, diff, and test-artifact evidence because no public test/build execution evidence was found."
+          "Confidence is based only on issue, diff, and test-artifact evidence because no test/build execution evidence was found."
         ]
       }
     },
@@ -878,7 +878,7 @@
         "nonExecutionStatusesExcluded": true,
         "limitationIncludes": [
           "GitHub Actions job-step metadata unavailable: request timed out after 2500 ms or network failed.",
-          "No public test/build workflow run, check, or raw CI log was available.",
+          "No test/build workflow run, check, or raw CI log was available.",
           "Raw CI logs were not fetched or stored."
         ]
       }

@@ -167,7 +167,7 @@ describe("buildPullRequestInput", () => {
     });
   });
 
-  it("preserves explicit repository visibility only for a live GitHub snapshot", async () => {
+  it.each([false, true])("preserves live repository visibility and accurate metadata wording (private=%s)", async repositoryPrivate => {
     const headSha = "a".repeat(40);
     const baseSha = "b".repeat(40);
     const fetchMock = vi.fn((url: string) => {
@@ -176,7 +176,7 @@ describe("buildPullRequestInput", () => {
           title: "Public PR",
           body: "Adds validation.",
           url: "https://api.github.com/repos/acme/repo/pulls/12",
-          base: { ref: "main", sha: baseSha, repo: { private: false } },
+          base: { ref: "main", sha: baseSha, repo: { private: repositoryPrivate } },
           head: { ref: "agent/validation", sha: headSha }
         }));
       }
@@ -192,7 +192,11 @@ describe("buildPullRequestInput", () => {
       taskText: "Acceptance criteria: add validation."
     });
 
-    expect(input.repositoryPrivate).toBe(false);
+    expect(input.repositoryPrivate).toBe(repositoryPrivate);
+    if (repositoryPrivate) {
+      expect(input.limitations?.join(" ")).not.toMatch(/public/i);
+      expect(generateVerificationReportV2FromInput(input).limitations.join(" ")).not.toMatch(/public/i);
+    }
   });
 
   it.each([
@@ -1962,7 +1966,7 @@ describe("buildPullRequestInput", () => {
 
     const input = await buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" });
     const annotationLimitationIndex = input.limitations?.findIndex((item) => item.includes("check annotation metadata was collected")) ?? -1;
-    const jobLimitationIndex = input.limitations?.findIndex((item) => item.includes("Public GitHub Actions metadata showed failing build/test jobs")) ?? -1;
+    const jobLimitationIndex = input.limitations?.findIndex((item) => item.includes("GitHub Actions metadata showed failing build/test jobs")) ?? -1;
 
     expect(maxActiveEnrichmentFetches).toBeGreaterThan(1);
     expect(input.checks[0]?.summary).toContain("failure at src/app/api/analyze/route.test.ts:42");
@@ -2399,7 +2403,7 @@ describe("buildPullRequestInput", () => {
         text: expect.stringContaining("uv run tox: failed")
       })
     ]);
-    expect(input.limitations?.join(" ")).toContain("Public GitHub Actions metadata showed failing build/test jobs");
+    expect(input.limitations?.join(" ")).toContain("GitHub Actions metadata showed failing build/test jobs");
   });
 
   it("collects bounded failed check annotations without raw details or secrets", async () => {
@@ -2925,7 +2929,7 @@ describe("buildPullRequestInput", () => {
     }));
     expect(input.logs).toEqual([]);
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/actions/runs/123456/jobs"))).toBe(false);
-    expect(input.limitations?.join(" ")).toContain("No public test/build workflow run, check, or raw CI log was available");
+    expect(input.limitations?.join(" ")).toContain("No test/build workflow run, check, or raw CI log was available");
   });
 
   it("does not fetch Actions job metadata from external or cross-repo details URLs", async () => {
@@ -3067,7 +3071,7 @@ describe("buildPullRequestInput", () => {
     });
     const limitations = input.limitations?.join(" ") ?? "";
 
-    expect(limitations).toContain("provided GitHub token may lack permission");
+    expect(limitations).toContain("selected GitHub access may lack permission");
     expect(limitations).toContain("secondary rate limit");
     expect(limitations).toContain("not found or is not visible");
     expect(JSON.stringify(input)).not.toContain("ghs_secret_should_not_leak_1234567890");

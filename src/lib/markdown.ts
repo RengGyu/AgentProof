@@ -4,6 +4,7 @@ import { presentOrdinaryDocumentationSummary } from "./general-pr-documentation-
 import { presentOrdinaryStaticSummary } from "./general-pr-static-types-presentation";
 import { buildPrEvidenceReview, usesPrEvidenceReview, type PrEvidenceReview, type PrEvidenceReviewItem } from "./pr-evidence-review";
 import { redactSecrets } from "./redact";
+import { observedCheckResults, toRequirementCoverageLabel } from "./github-dashboard-view-model";
 import type { VerificationReport } from "./types";
 import { deriveRequirementPresentationV2, isVerificationReportV2 } from "./requirement-presentation-v2";
 
@@ -21,6 +22,7 @@ export function reportToMarkdown(report: VerificationReport): string {
   const ordinaryPrAssessment = v2Report?.generalPrAssessmentSummary
     ? presentGeneralPrAssessmentSummary(v2Report.generalPrAssessmentSummary)
     : undefined;
+  const checkLines = observedCheckResults(report.testing).map((item) => `- ${item.label}: ${item.status}`);
   const lines = [
     `# AgentProof Evidence Report`,
     "",
@@ -55,7 +57,7 @@ export function reportToMarkdown(report: VerificationReport): string {
     ...report.requirements.flatMap((requirement) => {
       const presentation = v2Report ? deriveRequirementPresentationV2(v2Report, requirement.requirementId) : undefined;
       return [
-      `- **${presentation?.outcomeLabel ?? `${strictContract ? "OUTCOME: " : ""}${requirement.status.toUpperCase()}`}** ${safeInlineText(requirement.requirementText)}`,
+      `- **${presentation?.outcomeLabel ?? toRequirementCoverageLabel(requirement.status)}** ${safeInlineText(requirement.requirementText)}`,
       presentation ? `  - Outcome basis: ${presentation.outcomeBasis}` : undefined,
       presentation ? `  - Observed evidence: ${presentation.observationLabel}` : undefined,
       requirement.reviewerNote ? `  - Evidence note: ${safeInlineText(requirement.reviewerNote)}` : undefined,
@@ -72,7 +74,7 @@ export function reportToMarkdown(report: VerificationReport): string {
     `- Requirement proof gaps: ${report.proofGraph.summary.gapCount}`,
     "",
     ...report.proofGraph.nodes.flatMap((node) => [
-      `- **${node.status.toUpperCase()}** ${safeInlineText(node.requirementText)}`,
+      `- **${toRequirementCoverageLabel(node.status)}** ${safeInlineText(node.requirementText)}`,
       node.firstFiles.length > 0 ? `  - First files: ${node.firstFiles.map(safeInlineCode).join(", ")}` : undefined,
       `  - Evidence classes: implementation ${node.implementationEvidenceRefs.length}; targeted tests ${node.targetedTestEvidenceRefs.length}; execution ${node.executionEvidenceRefs.length}`,
       node.gapSignals.length > 0
@@ -102,9 +104,7 @@ export function reportToMarkdown(report: VerificationReport): string {
     "",
     `## Testing`,
     "",
-    `- Test/build: ${report.testing.ciStatus}`,
-    `- Lint: ${report.testing.lintStatus}`,
-    `- Typecheck: ${report.testing.typecheckStatus}`,
+    ...(checkLines.length ? checkLines : ["- No check results collected."]),
     ...report.testing.missingTests.flatMap((item) => [
       `- Missing test evidence for ${safeInlineCode(item.path)}: ${safeInlineText(item.why)}`,
       ...provenanceLines(item.provenance, "  "),
@@ -172,7 +172,7 @@ export function reportToGitHubComment(
 
     const observation = presentation ? ` Observed evidence: ${presentation.observationLabel}.` : "";
     const basis = presentation ? ` Outcome basis: ${presentation.outcomeBasis}.` : "";
-    return `- **${presentation?.outcomeLabel ?? requirement.status.toUpperCase()}** ${safeInlineText(requirement.requirementText)}${observation}${basis}${evidence}${gaps}`;
+    return `- **${presentation?.outcomeLabel ?? toRequirementCoverageLabel(requirement.status)}** ${safeInlineText(requirement.requirementText)}${observation}${basis}${evidence}${gaps}`;
   });
   const riskLines = report.summary.topRisks.slice(0, 1).map((risk) => `- ${safeInlineText(risk)}`);
   const proofGapLines = report.proofGraph.nodes
@@ -205,7 +205,7 @@ export function reportToGitHubComment(
     options.includeMarker === false ? undefined : AGENTPROOF_COMMENT_MARKER,
     "## AgentProof Evidence Check",
     "",
-    `**Priority:** ${report.summary.priority.toUpperCase()} | **Evidence:** ${report.summary.evidenceCoverage}% | **Test/Build:** ${report.testing.ciStatus}`,
+    `**Priority:** ${report.summary.priority.toUpperCase()} | **Evidence:** ${report.summary.evidenceCoverage}%${report.testing.ciStatus === "unknown" ? "" : ` | **Test/Build:** ${report.testing.ciStatus}`}`,
     report.planner ? "**Policy:** Enhanced planning policy" : undefined,
     strictContract ? `**Policy:** ${v2Report?.ordinaryRequirementOutcomes ? "Source-derived requirement criteria" : "Strict verification contract"}` : undefined,
     strictContract ? `**Outcome policy:** ${strictContract.outcomePolicy}` : undefined,
@@ -247,8 +247,7 @@ export function reportToGitHubComment(
     "",
     "### Testing",
     "",
-    `- Lint: ${report.testing.lintStatus}`,
-    `- Typecheck: ${report.testing.typecheckStatus}`,
+    ...observedCheckResults(report.testing).filter((item) => item.label !== "CI").map((item) => `- ${item.label}: ${item.status}`),
     ...(missingTestLines.length > 0 ? missingTestLines : ["- No missing test evidence detected."]),
     "",
     "### Execution Evidence",
@@ -308,7 +307,7 @@ function reportToReviewMarkdown(
     "",
     `**PR:** ${safeInlineText(report.source.title)}`,
     report.source.url ? `**URL:** ${safeInlineText(report.source.url)}` : undefined,
-    `**Test/Build:** ${report.testing.ciStatus}`,
+    ...(report.testing.ciStatus === "unknown" ? [] : [`**Test/Build:** ${report.testing.ciStatus}`]),
     "",
     "### PR-to-Evidence Review",
     "",
@@ -321,7 +320,7 @@ function reportToReviewMarkdown(
       ...(objective.sourceRefs ? [`Source offsets: ${objective.sourceRefs.map(r=>`${r.sourceId ? r.sourceId+" " : ""}${r.start}–${r.end}`).join(", ")} (redacted source)`] : []),
       ...(objective.facets ?? []).map(f=>`- ${f.kind} · source ${f.sourceRef.start}–${f.sourceRef.end}`),
       ...(objective.goalContext ?? []),
-      ...(objective.firstInspection ? ["**Inspect first**", `${objective.firstInspection.label}: ${objective.firstInspection.whyInspect}`, objective.firstInspection.reviewQuestion ?? "", objective.firstInspection.uncertainty ?? ""] : []),
+      ...(objective.firstInspection ? ["**Inspect first**", ...itemLines([objective.firstInspection]), objective.firstInspection.whyInspect ?? "", objective.firstInspection.reviewQuestion ?? "", objective.firstInspection.uncertainty ?? ""] : []),
       ...(objective.moreContext ? ["**Inspect first**", ...itemLines(objective.code.slice(0,1)), "**More context (possible links)**", ...itemLines(objective.moreContext), "**Tests**", ...itemLines(objective.tests), "**Execution**", ...itemLines(objective.execution)] : itemLines([...objective.code, ...objective.tests, ...objective.execution])),
       `Next to inspect: ${safeInlineText(objective.nextInspection)}`,
       ""
@@ -333,6 +332,8 @@ function reportToReviewMarkdown(
     ] : []),
     ...(review.mode === "change_summary" ? [`Next to inspect: ${safeInlineText(review.nextInspection)}`] : []),
     "",
+    ...(isVerificationReportV2(report) && report.ordinaryDocumentationSummary ? ["### Documentation predicate evidence", "", ...presentOrdinaryDocumentationSummary(report.ordinaryDocumentationSummary).map(line => `- ${line}`), ""] : []),
+    ...(isVerificationReportV2(report) && report.ordinaryStaticSummary ? ["### Static predicate evidence", "", ...presentOrdinaryStaticSummary(report.ordinaryStaticSummary).map(line => `- ${line}`), ""] : []),
     "### Verification Priority",
     "",
     ...(priorityLines.length > 0 ? priorityLines : ["- No priority files detected."]),
@@ -409,7 +410,7 @@ function provenanceLines(
   if (!provenance || provenance.length === 0) return [];
 
   return provenance.slice(0, options.limit ?? 5).map((item) => {
-    const locator = item.locator ?? "unknown locator";
+    const locator = item.locator ?? "location not recorded";
     const confidence = `${Math.round(item.confidence * 100)}%`;
 
     if (options.concise) {
@@ -426,7 +427,7 @@ function formatOptionalProvenance(
   if (!provenance || provenance.length === 0) return "";
 
   const shown = provenance.slice(0, 2).map((item) => {
-    const locator = item.locator ?? "unknown locator";
+    const locator = item.locator ?? "location not recorded";
     return `${item.sourceType} ${safeInlineText(locator)} ${Math.round(item.confidence * 100)}%`;
   });
 

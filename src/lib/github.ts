@@ -1049,8 +1049,8 @@ function githubEvidenceSourceLimitations(
 
   if (hasExecutionEvidence) {
     const source = hasExecutionCheckRun || hasExecutionJobMetadata
-      ? "Public GitHub Actions metadata"
-      : "Public commit status metadata";
+      ? "GitHub Actions metadata"
+      : "Commit status metadata";
     if (executionStatuses.some((status) => status === "failed")) {
       limitations.push(`${source} showed failing build/test jobs; raw log archives were not fetched or stored.`);
     } else if (executionStatuses.some((status) => status === "pending")) {
@@ -1059,22 +1059,22 @@ function githubEvidenceSourceLimitations(
   }
 
   if (executionSuites.length > 0) {
-    limitations.push("Public GitHub Actions metadata linked a passing generic test suite to changed test artifacts; raw log archives were not fetched or stored.");
+    limitations.push("GitHub Actions metadata linked a passing generic test suite to changed test artifacts; raw log archives were not fetched or stored.");
   } else if (hasReportedSuccessfulExecutionMetadata) {
     limitations.push(
-      "Public GitHub metadata reported successful test/build checks, but no execution output or raw logs were collected; success remains an unverified observation."
+      "GitHub metadata reported successful test/build checks, but no execution output or raw logs were collected; success remains an unverified observation."
     );
   }
 
   if (hasOnlyNonExecutionCommitStatuses) {
-    limitations.push("Public commit status metadata was available, but only non-execution statuses were found.");
+    limitations.push("Commit status metadata was available, but only non-execution statuses were found.");
   }
 
   if (!hasExecutionEvidence) {
     limitations.push(
       hasAnyPublicCheckMetadata
-        ? "No public test/build workflow run, check, or raw CI log was available from the collected metadata. No verified execution evidence was established."
-        : "No public test/build workflow run, check, or raw CI log was available."
+        ? "No test/build workflow run, check, or raw CI log was available from the collected metadata. No verified execution evidence was established."
+        : "No test/build workflow run, check, or raw CI log was available."
     );
   }
 
@@ -1159,7 +1159,7 @@ function classifyGitHubFailure(response: Response, hasToken: boolean): GitHubFai
     return {
       code: hasToken ? "github_token_rejected" : "github_auth_required",
       reason: hasToken
-        ? "the provided GitHub token was rejected."
+        ? "the selected GitHub access was rejected."
         : "GitHub authentication is required for this PR."
     };
   }
@@ -1168,8 +1168,8 @@ function classifyGitHubFailure(response: Response, hasToken: boolean): GitHubFai
     return {
       code: "github_permission_denied",
       reason: hasToken
-        ? "the provided GitHub token may lack permission to read this repository or PR."
-        : "GitHub denied access; the repository may be private or require a fine-grained token."
+        ? "the selected GitHub access may lack permission to read this repository or PR."
+        : "GitHub denied access to this repository or PR."
     };
   }
 
@@ -1177,7 +1177,7 @@ function classifyGitHubFailure(response: Response, hasToken: boolean): GitHubFai
     return {
       code: "github_not_found",
       reason: hasToken
-        ? "the repository or PR was not found or is not visible to the provided token."
+        ? "the repository or PR was not found or is not visible to the selected GitHub access."
         : "the repository or PR was not found or is not visible without authentication."
     };
   }
@@ -2152,22 +2152,22 @@ function githubActionsMetadataLimitation(logs: LogSnippet[], executionSuites: Ex
   const statuses = logs.map((log) => log.status ?? "unknown");
 
   if (statuses.some((status) => status === "failed")) {
-    return "Public GitHub Actions metadata showed failing build/test jobs; raw log archives were not fetched or stored.";
+    return "GitHub Actions metadata showed failing build/test jobs; raw log archives were not fetched or stored.";
   }
 
   if (statuses.some((status) => status === "pending")) {
-    return "Public GitHub Actions metadata showed pending build/test jobs; raw log archives were not fetched or stored.";
+    return "GitHub Actions metadata showed pending build/test jobs; raw log archives were not fetched or stored.";
   }
 
   if (executionSuites.length > 0) {
-    return "Public GitHub Actions metadata linked a passing generic test suite to changed test artifacts; raw log archives were not fetched or stored.";
+    return "GitHub Actions metadata linked a passing generic test suite to changed test artifacts; raw log archives were not fetched or stored.";
   }
 
   if (logs.some((log) => /\breported conclusion: success\b/i.test(log.text))) {
-    return "Public GitHub Actions metadata reported successful build/test jobs, but success remains unverified because execution output and raw log archives were not fetched or stored.";
+    return "GitHub Actions metadata reported successful build/test jobs, but success remains unverified because execution output and raw log archives were not fetched or stored.";
   }
 
-  return "Public GitHub Actions metadata was collected for build/test jobs; raw log archives were not fetched or stored.";
+  return "GitHub Actions metadata was collected for build/test jobs; raw log archives were not fetched or stored.";
 }
 
 function isExecutionActionJob(job: GitHubActionJobResponse): boolean {

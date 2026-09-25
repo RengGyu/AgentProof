@@ -5,7 +5,7 @@ import { prepareTenantDetailReportForStorage } from "./server-report-store";
 import { projectTenantPersistedReport, decodeTenantPersistedReport } from "./tenant-report-validation";
 import { validateRuntimeReportBoundary } from "./report-runtime-validation";
 import { validateVerificationReport } from "./report-validation";
-import { buildReviewIntentGraph } from "./review-intent";
+import { buildReviewIntentGraph, validReviewIntentGraph } from "./review-intent";
 import { reportToMarkdown } from "./markdown";
 import { dashboardReportToMarkdown } from "./dashboard-report-export";
 import type { PullRequestInput } from "./types";
@@ -13,6 +13,101 @@ const HEAD = "a".repeat(40);
 const input = (): PullRequestInput => ({ title:"Queue routing", description:"", taskSource:"issue", taskText:"## Queue routing\n\nThe dispatchQueue must preserve dispatchWindow.\n\n### Conditions\n- When retrying a job, retain its queue.\n- Except cancelled jobs.\n\n### Acceptance\n- Verify dispatchQueue retains dispatchWindow.\n\n### Reproduction\n1. Submit the same job twice.", changedFiles:[{path:"src/queue.ts",status:"modified",patch:"+ function dispatchQueue(dispatchWindow) { return dispatchWindow; }"}],checks:[],logs:[],sourceProvenance:{version:1,origin:"github_snapshot",headSha:HEAD,baseSha:"b".repeat(40),evidenceCapturedAt:"2026-09-16T00:00:00Z",inputFingerprint:{version:1,algorithm:"sha256",value:"c".repeat(64),coverage:"github_metadata"}} });
 
 describe("review intent retrieval Phase A", () => {
+  it("shows bound goals and their fallback conditions without inventing a goal from introductory prose", () => {
+    const i=input(); i.taskText=""; i.taskSource=undefined;
+    i.description="Context for maintainers reviewing this proposal.\n\n## Requirements\n- dispatchQueue must preserve dispatchWindow.\n- If no queue is supplied, use the default queue.";
+    const report=generateVerificationReportV2FromInput(i);
+    const view=buildPrEvidenceReview(report);
+    expect(view.objectives).toHaveLength(1);
+    expect(view.objectives[0]!.text).toContain("dispatchQueue must preserve dispatchWindow");
+    expect(view.objectives[0]!.text).toContain("If no queue is supplied, use the default queue");
+    expect(JSON.stringify(view)).not.toContain("Review goal at source offset");
+    expect(reportToMarkdown(report)).toContain("If no queue is supplied, use the default queue");
+    const saved=projectTenantPersistedReport(prepareTenantDetailReportForStorage(report,"verified_agentproof","test-secret"),"test-secret");
+    const decoded=decodeTenantPersistedReport(saved,{signingSecret:"test-secret",createdAt:report.createdAt});
+    expect(decoded.status).toBe("valid");
+    if(decoded.status!=="valid")throw Error("invalid");
+    expect(buildDashboardPrEvidenceReview({report:decoded.report})?.objectives.map(o=>o.text)).toEqual(view.objectives.map(o=>o.text));
+    expect(validateRuntimeReportBoundary({boundary:"generated_private_full",input:i,report}).valid).toBe(true);
+  });
+  it("links changed code and tests after leading hunk context at the analyzed revision", () => {
+    const i=input(); i.url="https://github.com/acme/widget/pull/12";
+    i.changedFiles=[
+      {path:"src/queue.ts",status:"modified",patch:"@@ -1,4 +1,4 @@\n // header\n \n const unrelated = 1;\n-old();\n+dispatchQueue(dispatchWindow);"},
+      {path:"src/queue.test.ts",status:"modified",patch:"@@ -10,2 +10,2 @@\n // test context\n-oldTest();\n+expect(dispatchQueue(dispatchWindow)).toBe(dispatchWindow);"}
+    ];
+    const view=buildPrEvidenceReview(generateVerificationReportV2FromInput(i));
+    expect(view.objectives[0]!.code.find(c=>c.label==="src/queue.ts")?.url).toBe(`https://github.com/acme/widget/blob/${HEAD}/src/queue.ts#L4`);
+    expect(view.objectives[0]!.tests.find(c=>c.label==="src/queue.test.ts")?.url).toBe(`https://github.com/acme/widget/blob/${HEAD}/src/queue.test.ts#L11`);
+  });
+  it("locates candidate goal identifiers inside newly added code and tests rather than their imports", () => {
+    const i=input(); i.url="https://github.com/acme/widget/pull/12";
+    i.changedFiles=[
+      {path:"src/queue.ts",status:"added",patch:"@@ -0,0 +1,4 @@\n+// Queue helpers\n+import { schedule } from './scheduler';\n+\n+export function dispatchQueue(dispatchWindow) { return schedule(dispatchWindow); }"},
+      {path:"src/queue.test.ts",status:"added",patch:"@@ -0,0 +1,4 @@\n+import { dispatchQueue } from './queue';\n+import { expect } from 'vitest';\n+\n+expect(dispatchQueue(dispatchWindow)).toBe(dispatchWindow);"}
+    ];
+    const report=generateVerificationReportV2FromInput(i),view=buildPrEvidenceReview(report);
+    for(const candidate of [...view.objectives[0]!.code,...view.objectives[0]!.tests]) expect(candidate.url).toMatch(/#L4$/);
+    expect(view.objectives[0]!.code[0]!.relation).toBe("observed");
+    expect(view.objectives[0]!.tests.length).toBeGreaterThan(0);
+    const saved=projectTenantPersistedReport(prepareTenantDetailReportForStorage(report,"verified_agentproof","test-secret"),"test-secret");
+    const decoded=decodeTenantPersistedReport(saved,{signingSecret:"test-secret",createdAt:report.createdAt});
+    expect(decoded.status).toBe("valid");
+    if(decoded.status!=="valid")throw Error("invalid");
+    expect(buildDashboardPrEvidenceReview({report:decoded.report,repositoryFullName:"acme/widget",headSha:HEAD})?.objectives[0]?.code[0]?.url).toMatch(/#L4$/);
+    expect(JSON.stringify(report.reviewCandidates?.intentGraph)).not.toContain("return schedule");
+    const forged=structuredClone(report);
+    forged.reviewCandidates!.intentGraph!.edges[0]!.line=3;
+    expect(validateRuntimeReportBoundary({boundary:"generated_private_full",input:i,report:forged}).valid).toBe(false);
+    expect(validateRuntimeReportBoundary({boundary:"generated_private_full",input:i,report}).valid).toBe(true);
+  });
+  it.each([true,false])("starts a test-focused goal at its test body (implementation goal=%s)", implementationGoal => {
+    const i=input(); i.url="https://github.com/acme/widget/pull/12";
+    i.taskText=(implementationGoal?"Add dispatchQueue to preserve dispatchWindow.\n\n":"")+"Add focused tests for dispatchQueue.";
+    i.changedFiles=[
+      {path:"src/queue.ts",status:"added",patch:"@@ -0,0 +1,3 @@\n+\n+// Queue operations\n+export function dispatchQueue(dispatchWindow) { return dispatchWindow; }"},
+      {path:"test/queue.test.ts",status:"added",patch:"@@ -0,0 +1,5 @@\n+import { dispatchQueue } from '../src/queue';\n+import { expect, test } from 'vitest';\n+\n+test('retains the window', () => {\n+  expect(dispatchQueue(dispatchWindow)).toBe(dispatchWindow);"}
+    ];
+    const report=generateVerificationReportV2FromInput(i),view=buildPrEvidenceReview(report);
+    if(implementationGoal) expect(view.objectives[0]!.code[0]!.url).toBe(`https://github.com/acme/widget/blob/${HEAD}/src/queue.ts#L3`);
+    const testsGoal=view.objectives.find(o=>o.text.startsWith("Add focused tests"))!;
+    expect(testsGoal.firstInspection).toMatchObject({kind:"test",url:`https://github.com/acme/widget/blob/${HEAD}/test/queue.test.ts#L5`});
+    expect(testsGoal.tests.some(t=>t.evidenceId===testsGoal.firstInspection?.evidenceId)).toBe(false);
+    const oldReport=structuredClone(report);
+    const oldGraph=oldReport.reviewCandidates!.intentGraph!;
+    oldGraph.edges.forEach(edge=>{delete edge.lineBasis;});
+    expect(validReviewIntentGraph(oldGraph,new Set(oldReport.requirements.map(r=>r.requirementId)),oldReport.evidenceIndex)).toBe(true);
+    expect(buildPrEvidenceReview(oldReport).objectives.find(o=>o.text.startsWith("Add focused tests"))?.firstInspection?.line).toBeUndefined();
+    expect(view.changes.some(t=>t.evidenceId===testsGoal.firstInspection?.evidenceId)).toBe(false);
+    const saved=projectTenantPersistedReport(prepareTenantDetailReportForStorage(report,"verified_agentproof","test-secret"),"test-secret");
+    const decoded=decodeTenantPersistedReport(saved,{signingSecret:"test-secret",createdAt:report.createdAt});
+    expect(decoded.status).toBe("valid");
+    if(decoded.status!=="valid")throw Error("invalid");
+    expect(buildDashboardPrEvidenceReview({report:decoded.report,repositoryFullName:"acme/widget",headSha:HEAD})?.objectives.find(o=>o.text.startsWith("Add focused tests"))?.firstInspection?.url).toBe(testsGoal.firstInspection?.url);
+    expect(validateRuntimeReportBoundary({boundary:"generated_private_full",input:i,report}).valid).toBe(true);
+  });
+  it("does not present an import-only word match as a goal-specific test line", () => {
+    const i=input(); i.url="https://github.com/acme/widget/pull/12";
+    i.taskText="Add focused tests for accepted and rejected requests.";
+    i.changedFiles=[{path:"test/transport.test.ts",status:"added",patch:"@@ -0,0 +1,4 @@\n+import { accepted, rejected } from '../transport';\n+\n+test('handles empty input', () => {\n+  expect(runTransport()).toBe(false);"}];
+    const report=generateVerificationReportV2FromInput(i);
+    const first=buildPrEvidenceReview(report).objectives[0]?.firstInspection;
+    expect(first).toMatchObject({kind:"test",url:`https://github.com/acme/widget/blob/${HEAD}/test/transport.test.ts`});
+    expect(first?.line).toBeUndefined();
+    expect(first?.uncertainty).toContain("No goal-specific test body line");
+    expect(reportToMarkdown(report)).toContain("No goal-specific test body line");
+    const saved=projectTenantPersistedReport(prepareTenantDetailReportForStorage(report,"verified_agentproof","test-secret"),"test-secret");
+    const decoded=decodeTenantPersistedReport(saved,{signingSecret:"test-secret",createdAt:report.createdAt});
+    expect(decoded.status).toBe("valid");
+    if(decoded.status!=="valid")throw Error("invalid");
+    expect(buildDashboardPrEvidenceReview({report:decoded.report,repositoryFullName:"acme/widget",headSha:HEAD})?.objectives[0]?.firstInspection).toMatchObject({url:first!.url,uncertainty:first!.uncertainty});
+    expect(JSON.stringify(report.reviewCandidates?.intentGraph)).not.toContain("runTransport");
+    const forged=structuredClone(report);
+    forged.reviewCandidates!.intentGraph!.edges[0]!.line=1;
+    forged.reviewCandidates!.intentGraph!.edges[0]!.lineBasis="test_body_match";
+    expect(validateRuntimeReportBoundary({boundary:"generated_private_full",input:i,report:forged}).valid).toBe(false);
+    expect(validateRuntimeReportBoundary({boundary:"generated_private_full",input:i,report}).valid).toBe(true);
+  });
   it("groups source facets under one goal without changing strict requirements", () => {
     const report=generateVerificationReportV2FromInput(input());
     const graph=(report.reviewCandidates as any)?.intentGraph;
@@ -52,6 +147,7 @@ describe("review intent retrieval Phase A", () => {
       (g:any)=>{g.chunks[0].symbol="inventedSymbol";},
       (g:any)=>{g.goals[0].sourceRefs[0].hash="d".repeat(64);},
       (g:any)=>{g.edges[0].relation="verified";},
+      (g:any)=>{g.edges[0].line=99999;},
     ]) {
       const bad=structuredClone(report);mutate(bad.reviewCandidates!.intentGraph!);
       expect(validateRuntimeReportBoundary({boundary:"generated_private_full",input:i,report:bad}).valid).toBe(false);

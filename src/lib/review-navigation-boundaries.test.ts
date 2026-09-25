@@ -100,6 +100,85 @@ it('still refuses private-repository model calls', async () => {
   assert.equal(packets.length, 0); assert.equal(navigation.goals.length, 0);
   assert.ok(navigation.limitations.includes('private_or_unknown_access'));
 });
+it('does not read code or call the model when a public repository becomes private before navigation', async () => {
+  let currentReads = 0, codeReads = 0;
+  const {packets,navigation} = await run(input(), packet => choose(packet), {
+    readRepositoryPrivate: async () => true,
+    readCurrentInput: async () => { currentReads++; return input({repositoryPrivate:true}); },
+    readArtifacts: async () => { codeReads++; return []; }
+  });
+  assert.equal(currentReads, 0);
+  assert.equal(codeReads, 0);
+  assert.equal(packets.length, 0);
+  assert.ok(navigation.limitations.includes('freshness_access_changed'));
+});
+it('blocks another model call and code read when a public repository becomes private after intent', async () => {
+  let privateNow = false, codeReads = 0;
+  const packets: ReviewNavigationRequest[] = [];
+  const result = await enrichReviewNavigation(input(), report(), {
+    model: 'offline-fixture',
+    readRepositoryPrivate: async () => privateNow,
+    readCurrentInput: async () => input(),
+    readArtifacts: async () => { codeReads++; return []; },
+    provider: async packet => {
+      packets.push(packet);
+      if (packet.stage === 'intent') {
+        privateNow = true;
+        return {goals: [{summary:'Review routing changes',emphasis:'primary',sourceRefs:packet.sources.flatMap(s=>s.spans.map(p=>p.id)),facets:[],openQuestions:[]}],unprocessed:[]};
+      }
+      return choose(packet);
+    }
+  });
+  assert.deepEqual(packets.map(packet=>packet.stage), ['intent']);
+  assert.equal(codeReads, 0);
+  assert.equal(result.reviewCandidates?.navigation?.goals[0]?.firstInspection, null);
+});
+it('does not fetch a requested code path after visibility changes during ranking', async () => {
+  let privateNow = false, codeReads = 0;
+  const value = input();
+  const {navigation,packets} = await run(value, packet => {
+    privateNow = true;
+    return {...choose(packet),readPaths:['src/router.ts']};
+  }, {
+    readRepositoryPrivate: async () => privateNow,
+    readCurrentInput: async () => value,
+    readArtifacts: async () => { codeReads++; return []; }
+  });
+  assert.deepEqual(packets.map(packet=>packet.stage), ['intent','ranking']);
+  assert.equal(codeReads, 0);
+  assert.ok(navigation.limitations.includes('freshness_access_changed'));
+});
+it('uses the same exact-head goal and first-location contract after private authorization', async () => {
+  const value = input({repositoryPrivate: true});
+  const {packets, navigation} = await run(value, packet => choose(packet), {authorizePrivate: async () => true, readRepositoryPrivate: async () => true, readCurrentInput: async () => value} as Partial<ReviewNavigationOptions>);
+  assert.deepEqual(packets.map(packet => packet.stage), ['intent', 'ranking']);
+  assert.equal(navigation.goals[0]?.firstInspection, navigation.goals[0]?.candidates[0]?.artifactId);
+  assert.equal(navigation.artifacts.find(artifact => artifact.id === navigation.goals[0]?.firstInspection)?.revision, head);
+});
+it('keeps public navigation available while metadata confirms the repository is public', async () => {
+  const value = input();
+  const {packets,navigation} = await run(value, packet => choose(packet), {readRepositoryPrivate: async () => false, readCurrentInput: async () => value});
+  assert.deepEqual(packets.map(packet=>packet.stage), ['intent','ranking']);
+  assert.ok(navigation.goals[0]?.firstInspection);
+});
+it('drops private locations when access is revoked before final freshness validation', async () => {
+  const value = input({repositoryPrivate: true}); let checks = 0;
+  const {navigation} = await run(value, packet => choose(packet), {authorizePrivate: async () => ++checks < 4, readCurrentInput: async () => value} as Partial<ReviewNavigationOptions>);
+  assert.equal(navigation.goals[0]?.firstInspection, null);
+  assert.deepEqual(navigation.goals[0]?.candidates, []);
+  assert.ok(navigation.limitations.includes('freshness_access_changed'));
+});
+it('drops private locations when the head changes and retains only snippet metadata', async () => {
+  let reads = 0; const value = input({repositoryPrivate: true});
+  const {navigation} = await run(value, packet => choose(packet), {
+    authorizePrivate: async () => true,
+    readCurrentInput: async () => ++reads === 1 ? value : {...value, sourceProvenance: {...value.sourceProvenance!, headSha: 'c'.repeat(40)}}
+  });
+  assert.equal(navigation.goals[0]?.firstInspection, null);
+  assert.deepEqual(navigation.goals[0]?.candidates, []);
+  assert.ok(navigation.limitations.includes('stale_snapshot'));
+  assert.equal(JSON.stringify(navigation).includes('legacyRoute()'), false);
+});
 it('still removes recommendations if the source revision changes before return', async () => {
   let reads = 0; const value = input();
   const {navigation} = await run(value, packet => choose(packet), {readCurrentInput: async () => ++reads === 1 ? value : {...value, sourceProvenance: {...value.sourceProvenance!, headSha: 'c'.repeat(40)}}});

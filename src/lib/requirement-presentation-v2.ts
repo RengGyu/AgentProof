@@ -38,7 +38,7 @@ export function deriveRequirementPresentationV2(
     const outcome = ordinaryRequirementStatus(ordinary);
     const evidenceVisibility = evidenceVisibilityFor(report, requirement.evidenceRefs.length);
     return { requirementId, outcome, observedEvidence: requirement.evidenceStatus ?? "unclear", evidenceVisibility, evidenceVisibilityLabel: evidenceVisibilityLabel(evidenceVisibility), authority: ordinary.authority,
-      outcomeLabel: outcome === "met" ? "Fulfilled — explicit source requirement" : outcome === "missing" ? "Violated — explicit source requirement" : outcome === "partial" ? "Partially supported — author claim needs confirmation" : "Unavailable — source requirement not verified",
+      outcomeLabel: outcome === "met" ? "Fulfilled — explicit source requirement" : outcome === "missing" ? "Violated — explicit source requirement" : outcome === "partial" ? "PR claim — reviewer confirmation needed" : "Source requirement not verified",
       outcomeBasis: ordinary.interpretation === "unavailable" ? "The whole original obligation could not be translated into a supported deterministic criterion." : outcome === "unclear" ? "The source criterion is explicit, but its exact-head evidence is unavailable." : "A deterministic evaluator checked the whole explicit source obligation; this does not establish whole-PR completion.",
       observationLabel: observationLabel(requirement.evidenceStatus ?? "unclear"), reasonCode: ordinary.reason, primaryGap: outcome === "met" ? null : ordinary.reason };
   }
@@ -85,15 +85,15 @@ function safeOutcome(authority: VerificationContractStateV2, outcome: Requiremen
 }
 
 function outcomeLabel(authority: VerificationContractStateV2, outcome: RequirementStatus): string {
-  if (authority === "absent") return "Unclear — approved verification contract missing";
-  if (authority === "invalid") return "Unclear — verification contract invalid";
-  if (authority === "author_claim" && outcome === "partial") return "Partially supported against PR-description contract";
+  if (authority === "absent") return "No approved verification contract";
+  if (authority === "invalid") return "Verification contract invalid";
+  if (authority === "author_claim" && outcome === "partial") return "PR claim — reviewer confirmation needed";
   if (authority === "authoritative" && outcome === "met") return "Supported against approved contract";
-  if (authority === "authoritative" && outcome === "partial") return "Partially supported against approved contract";
+  if (authority === "authoritative" && outcome === "partial") return "Mixed criterion results against approved contract";
   if (authority === "authoritative" && outcome === "missing") return "Not supported against approved contract";
   if (authority === "author_claim" && outcome === "missing") return "Not supported against PR-description contract";
-  if (authority === "author_claim" && outcome === "unclear") return "Unclear against PR-description contract";
-  return "Unclear against approved contract";
+  if (authority === "author_claim" && outcome === "unclear") return "No verified outcome against PR-description contract";
+  return "No verified outcome against approved contract";
 }
 
 function outcomeBasis(authority: VerificationContractStateV2, outcome: RequirementStatus): string {
@@ -110,9 +110,9 @@ function outcomeBasis(authority: VerificationContractStateV2, outcome: Requireme
 
 function observationLabel(status: RequirementStatus): string {
   if (status === "met") return "Supported";
-  if (status === "partial") return "Partially supported";
+  if (status === "partial") return "Some evidence linked";
   if (status === "missing") return "Not supported";
-  return "Unclear";
+  return "No verified evidence conclusion";
 }
 
 function primaryGap(report: VerificationReportV2, requirementId: string): string | null {

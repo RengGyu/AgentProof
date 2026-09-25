@@ -309,7 +309,7 @@ alter table agentproof_github_onboarding_states enable row level security;
 
 ## Tenant Auth Session Schema
 
-Durable tenant auth sessions store hashed opaque session tokens. They must not store raw session tokens, bootstrap tokens, invite tokens, OAuth access or refresh tokens, emails, contact details, provider ids, billing ids, reports, diffs, logs, claims, or raw re-prompt text.
+Durable tenant auth sessions store hashed opaque session tokens. GitHub login sessions may also store GitHub user access and refresh credentials encrypted with `AGENTPROOF_PUBLIC_AUTH_SECRET`, bound to the session and readable only through the server's service-role path. GitHub sessions expire after 30 days without use; logout revokes the session and clears its credentials. Apply `202609240001_github_session_credentials.sql` before deploying code that reads these columns. Do not store raw session tokens, bootstrap tokens, invite tokens, plaintext OAuth credentials, emails, contact details, provider ids, billing ids, reports, diffs, logs, claims, or raw re-prompt text.
 
 ```sql
 create table if not exists agentproof_tenant_auth_sessions (

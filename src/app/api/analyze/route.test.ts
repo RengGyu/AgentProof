@@ -1,6 +1,28 @@
+// Downstream unit fixtures isolate budget; paid-budget*.test.ts checks the real boundary.
+vi.mock('@/lib/paid-budget', async importOriginal => ({
+  ...await importOriginal<typeof import('@/lib/paid-budget')>(),
+  ...(await import('@/lib/test-support/unmetered-budget')).unmeteredBudgetFixture
+}));
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { POST } from "./route";
+import { POST as routePOST } from "./route";
+// These downstream evidence/provider fixtures represent an authenticated caller.
+// auth.test.ts exercises the real durable session and CSRF boundary separately.
+vi.mock("@/lib/tenant-auth", async importOriginal => ({
+  ...await importOriginal<typeof import("@/lib/tenant-auth")>(),
+  resolveTenantAuthAccess: vi.fn(async () => ({ authorized: true, tenantId: "gh_123", memberId: "github:123", method: "durable-session", sessionState: "active" }))
+}));
+vi.mock("@/lib/github-analysis-access", () => ({ resolveGitHubAnalysisCredential: vi.fn(async () => ({ ok: true, token: "server-selected-test-token", kind: "user" })) }));
+vi.mock("@/lib/github-repository-visibility", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/github-repository-visibility")>()),
+  readGitHubRepositoryPrivate: vi.fn(async () => false)
+}));
+function POST(request: Request) {
+  const headers = new Headers(request.headers);
+  headers.set("origin", new URL(request.url).origin);
+  return routePOST(new Request(request, { headers }));
+}
 import { validateVerificationReport } from "@/lib/report-validation";
+import * as github from "@/lib/github";
 import * as generalPrObservationService from "@/lib/general-pr-observation-service";
 import * as runtimeReportValidation from "@/lib/report-runtime-validation";
 import type { VerificationReport, VerificationReportV2 } from "@/lib/types";
@@ -239,6 +261,7 @@ describe("POST /api/analyze", () => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           prUrl: "https://github.com/acme/repo/pull/12",
+          githubToken: "caller-token-must-be-ignored",
           requestedSemanticMode: "disable"
         })
       }));
@@ -246,6 +269,11 @@ describe("POST /api/analyze", () => {
 
       expect(response.status, JSON.stringify(json)).toBe(200);
       const observerCalls = fetchMock.mock.calls.filter(([url]) => url === "https://api.openai.com/v1/responses");
+      const githubCalls = fetchMock.mock.calls.filter(([url]) => url.startsWith("https://api.github.com/"));
+      expect(githubCalls.length).toBeGreaterThan(4);
+      expect(githubCalls.every(([, init]) => (init?.headers as Record<string, string>)?.Authorization === "Bearer server-selected-test-token")).toBe(true);
+      expect(JSON.stringify(json)).not.toContain("caller-token-must-be-ignored");
+      expect(JSON.stringify(json)).not.toContain("server-selected-test-token");
       expect(observerCalls).toHaveLength(2);
       expect(observerCalls.map(([, init]) => {
         const body = JSON.parse(String(init?.body));
@@ -258,6 +286,24 @@ describe("POST /api/analyze", () => {
         }),
         semantic: expect.objectContaining({ providerAvailable: true, privateRepository: false })
       }));
+      const options = observationSpy.mock.calls[0][0];
+      const readCurrent = vi.spyOn(github, "buildGitHubPullRequestInput").mockResolvedValue(null);
+      const readReview = vi.spyOn(github, "collectReviewArtifacts").mockResolvedValue([]);
+      const readDocs = vi.spyOn(github, "collectOrdinaryDocumentationArtifacts").mockResolvedValue([]);
+      const readStatic = vi.spyOn(github, "collectOrdinaryStaticArtifacts").mockResolvedValue([]);
+      const readScalar = vi.spyOn(github, "collectOrdinaryScalarArtifacts").mockResolvedValue([]);
+      const readProject = vi.spyOn(github, "collectOrdinaryTypeScriptProject").mockResolvedValue(null);
+      await options.navigation?.readCurrentInput?.();
+      await options.navigation?.readArtifacts?.(["README.md"], headSha);
+      await options.semantic?.readCurrentInput();
+      await options.collectDocumentationArtifacts?.(["README.md"], headSha);
+      await options.collectStaticArtifacts?.(["README.md"], headSha);
+      await options.collectScalarArtifacts?.(["README.md"], headSha);
+      await options.collectTypeScriptProject?.(headSha);
+      for (const reader of [readCurrent, readReview, readDocs, readStatic, readScalar, readProject]) {
+        expect(reader).toHaveBeenCalled();
+        expect(reader.mock.calls.every((call) => call[1] === "server-selected-test-token")).toBe(true);
+      }
       expect(json.report).toHaveProperty("generalPrAssessmentSummary");
       expect(json.observation).toBeUndefined();
       expect(JSON.stringify(json)).not.toContain("ledgerDigest");
@@ -267,7 +313,7 @@ describe("POST /api/analyze", () => {
       expect((json.report as VerificationReportV2).reviewCandidates?.navigation?.goals[0].summary).toBe("Review internal cleanup");
       expect(summary?.counts.evidence_supported).toBe(0);
     } finally {
-      observationSpy.mockRestore();
+      vi.restoreAllMocks();
       for (const [key, value] of Object.entries(previous)) {
         if (value === undefined) delete process.env[key === "mode" ? "AGENTPROOF_GENERAL_PR_OBSERVATION_MODE" : key === "key" ? "OPENAI_API_KEY" : "OPENAI_MODEL"];
         else process.env[key === "mode" ? "AGENTPROOF_GENERAL_PR_OBSERVATION_MODE" : key === "key" ? "OPENAI_API_KEY" : "OPENAI_MODEL"] = value;
@@ -276,6 +322,7 @@ describe("POST /api/analyze", () => {
   });
 
   it("keeps a post-initial GitHub auth failure in authenticated diagnostics only", async () => {
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
     const previous = { mode: process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE, key: process.env.OPENAI_API_KEY, model: process.env.OPENAI_MODEL, ops: process.env.AGENTPROOF_OPS_TOKEN };
     process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE = "advisory";
     process.env.OPENAI_API_KEY = "test-key";
@@ -303,13 +350,17 @@ describe("POST /api/analyze", () => {
 
       expect(operator.status, JSON.stringify(operatorJson)).toBe(200);
       expect((operatorJson.report as VerificationReportV2).reviewCandidates?.navigation?.limitations).toContain("freshness_access_changed");
-      expect(operatorJson.operatorNavigationDiagnostics).toEqual([expect.objectContaining({stage:"preflight",providerCalled:false,lifecycle:expect.arrayContaining([expect.objectContaining({kind:"freshness",outcome:"access_changed",code:"github_auth_required"})])})]);
+      expect(operatorJson.operatorNavigationDiagnostics).toEqual([expect.objectContaining({stage:"preflight",providerCalled:false,lifecycle:expect.arrayContaining([expect.objectContaining({kind:"freshness",outcome:"access_changed",code:"github_token_rejected"})])})]);
       expect(fetchMock.mock.calls.filter(([url]) => url === "https://api.openai.com/v1/responses")).toHaveLength(0);
       expect(JSON.stringify(operatorJson.report)).not.toContain("auth_unavailable");
       expect(publicJson.operatorDiagnostics).toBeUndefined();
       expect(publicJson.operatorTargetDiagnostics).toBeUndefined();
       expect(JSON.stringify(publicJson)).not.toContain("auth_unavailable");
+      expect(warning).toHaveBeenCalledWith("agentproof_navigation_unavailable", expect.objectContaining({
+        collectorCode: "github_token_rejected"
+      }));
     } finally {
+      warning.mockRestore();
       for (const [key, value] of Object.entries(previous)) {
         const environmentKey = key === "mode" ? "AGENTPROOF_GENERAL_PR_OBSERVATION_MODE" : key === "key" ? "OPENAI_API_KEY" : key === "model" ? "OPENAI_MODEL" : "AGENTPROOF_OPS_TOKEN";
         if (value === undefined) delete process.env[environmentKey]; else process.env[environmentKey] = value;
@@ -318,6 +369,7 @@ describe("POST /api/analyze", () => {
   });
 
   it("exposes an invalid claim reason only to authenticated operator diagnostics", async () => {
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
     const previous = {
       mode: process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE,
       key: process.env.OPENAI_API_KEY,
@@ -373,7 +425,15 @@ describe("POST /api/analyze", () => {
       expect(publicJson.operatorDiagnostics).toBeUndefined();
       expect(publicJson.operatorTargetDiagnostics).toBeUndefined();
       expect(JSON.stringify(publicJson)).not.toMatch(/claimInvalidReason|semanticClaimInvalidReason|evidenceInvalidReason|semanticEvidenceInvalidReason/);
+      expect(warning).toHaveBeenCalledWith("agentproof_navigation_unavailable", expect.objectContaining({
+        provider: "openai",
+        stage: "intent",
+        reason: expect.any(String),
+        limitations: expect.arrayContaining(["semantic_unavailable"])
+      }));
+      expect(JSON.stringify(warning.mock.calls)).not.toMatch(/Internal cleanup only|test-key|acme\/repo/);
     } finally {
+      warning.mockRestore();
       for (const [key, value] of Object.entries(previous)) {
         const environmentKey = key === "mode" ? "AGENTPROOF_GENERAL_PR_OBSERVATION_MODE" : key === "key" ? "OPENAI_API_KEY" : key === "model" ? "OPENAI_MODEL" : "AGENTPROOF_OPS_TOKEN";
         if (value === undefined) delete process.env[environmentKey];
@@ -788,9 +848,9 @@ describe("POST /api/analyze", () => {
     expect(response.status).toBe(400);
     expectNoGitHubEvidenceTiming(response);
     expect(json.category).toBe("github_access");
-    expect(json.error).toContain("private or require a fine-grained token");
+    expect(json.error).toContain("selected GitHub access may lack permission");
     expect(json.guidance).toEqual(expect.arrayContaining([
-      expect.stringContaining("read access")
+      expect.stringContaining("GitHub App connection")
     ]));
     expect(JSON.stringify(json)).not.toContain("forbidden");
   });
@@ -815,7 +875,7 @@ describe("POST /api/analyze", () => {
     expectNoGitHubEvidenceTiming(response);
     expect(json.category).toBe("github_access");
     expect(json.guidance).toEqual(expect.arrayContaining([
-      expect.stringContaining("pull request, contents, checks, statuses, and Actions metadata read access")
+      expect.stringContaining("GitHub App connection")
     ]));
     expect(serialized).not.toContain("github_pat_secret_should_not_leak_1234567890");
     expect(serialized).not.toContain("forbidden");
@@ -837,7 +897,7 @@ describe("POST /api/analyze", () => {
     expectNoGitHubEvidenceTiming(response);
     expect(json.category).toBe("github_access");
     expect(json.guidance).toEqual(expect.arrayContaining([
-      expect.stringContaining("publicly visible")
+      expect.stringContaining("selected GitHub access")
     ]));
   });
 
@@ -861,7 +921,7 @@ describe("POST /api/analyze", () => {
     expectNoGitHubEvidenceTiming(response);
     expect(json.category).toBe("github_access");
     expect(json.guidance).toEqual(expect.arrayContaining([
-      expect.stringContaining("provided GitHub token")
+      expect.stringContaining("selected GitHub access")
     ]));
     expect(serialized).not.toContain("github_pat_secret_should_not_leak_1234567890");
   });
@@ -983,7 +1043,7 @@ describe("POST /api/analyze", () => {
     expect(json.report.evidenceIndex.some((item) => item.kind === "diff" && item.label === "src/features/auth/reset.ts")).toBe(true);
     expect(json.report.evidenceIndex.some((item) => item.kind === "test" && item.label === "src/features/auth/reset.test.ts")).toBe(true);
     expect(json.report.testing.ciStatus).toBe("unknown");
-    expect(json.report.limitations.join(" ")).toContain("No public test/build workflow run, check, or raw CI log was available");
+    expect(json.report.limitations.join(" ")).toContain("No test/build workflow run, check, or raw CI log was available");
     expect(json.report.requirements.some((requirement) => requirement.status === "met")).toBe(false);
     expect(serialized).not.toContain("github_pat_secret_should_not_leak_1234567890");
     expect(githubEvidenceTiming).not.toContain("github_pat_secret_should_not_leak_1234567890");
@@ -1078,7 +1138,7 @@ describe("POST /api/analyze", () => {
     expect(response.status).toBe(200);
     expect(validateVerificationReport(json.report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
     expect(json.report.testing.ciStatus).toBe("unknown");
-    expect(json.report.limitations.join(" ")).toContain("No public test/build workflow run, check, or raw CI log was available from the collected metadata.");
+    expect(json.report.limitations.join(" ")).toContain("No test/build workflow run, check, or raw CI log was available from the collected metadata.");
     expect(json.report.evidenceIndex.filter((item) => item.kind === "check")).toHaveLength(3);
   });
 
@@ -1451,4 +1511,39 @@ it('uses Google navigation with only AI_GATEWAY_API_KEY while preserving public 
     expect(trace[0].transport.modelVersion).toBe('gemini-test-version');
     expect(JSON.stringify(trace)).not.toContain('test-google-key');
   }finally{vi.unstubAllEnvs();}
+});
+
+it('uses the explicitly selected OpenAI navigation provider with both keys configured',async()=>{
+  const previous={provider:process.env.AGENTPROOF_NAVIGATION_PROVIDER,mode:process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE,google:process.env.AI_GATEWAY_API_KEY,openai:process.env.OPENAI_API_KEY,model:process.env.OPENAI_MODEL};
+  vi.stubEnv('AGENTPROOF_NAVIGATION_PROVIDER','openai');vi.stubEnv('AGENTPROOF_GENERAL_PR_OBSERVATION_MODE','advisory');vi.stubEnv('AI_GATEWAY_API_KEY','test-google-key');vi.stubEnv('OPENAI_API_KEY','test-openai-key');vi.stubEnv('OPENAI_MODEL','gpt-6-luna');
+  const navigationRequests:Array<{model:string;stage:string}> = [];
+  vi.stubGlobal('fetch',vi.fn(async(url:string|URL|Request,init?:RequestInit)=>{
+    const href=String(url);
+    if(href==='https://api.openai.com/v1/responses'){
+      const body=JSON.parse(String(init?.body));
+      const packet=JSON.parse(body.input[1].content[0].text);
+      navigationRequests.push({model:body.model,stage:packet.stage});
+      const output=packet.stage==='intent'?{goals:[{summary:'Review status behavior',emphasis:'primary',sourceRefs:[packet.sources.find((source:any)=>source.id==='description').spans[0].id],facets:[],openQuestions:[]}],unprocessed:[]}:{rankings:packet.goals.map((goal:any)=>({goalId:goal.id,firstInspection:packet.artifacts[0]?.id??null,candidates:packet.artifacts[0]?[{artifactId:packet.artifacts[0].id,relevance:'possible',whyInspect:'Check the changed status path.',reviewQuestion:'Does the status path match the stated purpose?',uncertainty:'Only the supplied diff is available.'}]:[],uncertainty:[]})),readPaths:[]};
+      return Response.json({model:'gpt-6-luna',status:'completed',usage:{input_tokens:100,output_tokens:30},output:[{type:'message',content:[{type:'output_text',text:JSON.stringify(output)}]}]});
+    }
+    if(href.endsWith('/pulls/12'))return Response.json({title:'Review status behavior',body:'Acceptance criteria: Review status behavior.',base:{ref:'main',sha:'b'.repeat(40),repo:{private:false}},head:{ref:'change',sha:'a'.repeat(40)}});
+    if(href.endsWith('/issues/12'))return Response.json({title:'Review status behavior',body:'Acceptance criteria: Review status behavior.'});
+    if(href.includes('/files?'))return Response.json([{filename:'src/status.ts',status:'modified',patch:'@@ -1 +1 @@\n status();\n-status();\n+status();'}]);
+    if(href.includes('/check-runs'))return Response.json({total_count:0,check_runs:[]});
+    if(href.endsWith('/status'))return Response.json({statuses:[]});
+    throw Error('Unexpected external request');
+  }));
+  try{
+    const response=await POST(new Request('http://localhost/api/analyze',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({prUrl:'https://github.com/acme/repo/pull/12'})}));
+    const json=await response.json();
+    expect(response.status).toBe(200);
+    expect(navigationRequests).toEqual([{model:'gpt-6-luna',stage:'intent'},{model:'gpt-6-luna',stage:'ranking'}]);
+    expect(JSON.stringify(json)).not.toContain('test-openai-key');
+  }finally{
+    for(const [key,value] of Object.entries(previous)){
+      const envKey=key==='provider'?'AGENTPROOF_NAVIGATION_PROVIDER':key==='mode'?'AGENTPROOF_GENERAL_PR_OBSERVATION_MODE':key==='google'?'AI_GATEWAY_API_KEY':key==='openai'?'OPENAI_API_KEY':'OPENAI_MODEL';
+      if(value===undefined)delete process.env[envKey];else process.env[envKey]=value;
+    }
+    vi.unstubAllGlobals();
+  }
 });

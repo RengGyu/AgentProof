@@ -1648,9 +1648,24 @@ export function buildEvidenceIndexResult(
 }
 
 function firstChangedLine(patch: string | undefined, side: "head" | "base"): number | undefined {
-  const match = patch?.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/m);
-  const value = Number(side === "base" ? match?.[1] : match?.[2]);
-  return Number.isSafeInteger(value) && value > 0 ? value : undefined;
+  let line: number | undefined;
+  let hunkStart: number | undefined;
+  for (const row of (patch ?? "").split(/\r?\n/)) {
+    const match = row.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+    if (match) {
+      const start = Number(side === "base" ? match[1] : match[2]);
+      line = Number.isSafeInteger(start) && start > 0 ? start : undefined;
+      hunkStart ??= line;
+      continue;
+    }
+    if (line === undefined) continue;
+    if (row.startsWith(side === "head" ? "+" : "-")) {
+      if (row.slice(1).trim()) return line;
+      line++;
+    }
+    if (row.startsWith(" ")) line++;
+  }
+  return hunkStart;
 }
 
 function exactRevisionSha(value: string | undefined): string | undefined {

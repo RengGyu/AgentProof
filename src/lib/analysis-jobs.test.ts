@@ -10,6 +10,7 @@ import {
   completeAnalysisJob,
   countTenantAnalysisJobs,
   countTenantActiveAnalysisJobsForDeletion,
+  deferAnalysisJob,
   enqueueAnalysisJob,
   failAnalysisJob,
   fenceAnalysisJobRevision,
@@ -407,6 +408,42 @@ describe("analysis job queue", () => {
       run_after: "2026-06-30T00:00:20.000Z",
       comment: true
     });
+  });
+
+  it("keeps a claimed or completed automatic head unchanged while a new head gets a job", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+    const first = await enqueueAnalysisJob({ ...jobInput(), oncePerHead: true });
+    const claim = await claimNextAnalysisJob({ now: new Date("2026-06-30T00:00:15Z") });
+    const duplicate = await enqueueAnalysisJob({
+      ...jobInput(), oncePerHead: true, deliveryId: "123e4567-e89b-12d3-a456-426614174301",
+      now: new Date("2026-06-30T00:00:16Z")
+    });
+    expect(duplicate).toMatchObject({ id: first.id, status: "processing" });
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({ desired_revision: 1, running_revision: 1 });
+    await completeAnalysisJob({ id: first.id, claimGeneration: claim.job!.claim_generation!, now: new Date("2026-06-30T00:00:17Z") });
+    const completedDuplicate = await enqueueAnalysisJob({
+      ...jobInput(), oncePerHead: true, deliveryId: "123e4567-e89b-12d3-a456-426614174302",
+      now: new Date("2026-06-30T00:00:18Z")
+    });
+    expect(completedDuplicate).toMatchObject({ id: first.id, status: "completed" });
+    expect(getAnalysisJobsForTests()[0].desired_revision).toBe(1);
+    const nextHead = await enqueueAnalysisJob({ ...jobInput(), oncePerHead: true, headSha: "b".repeat(40) });
+    expect(nextHead).toMatchObject({ status: "queued" });
+    expect(nextHead.id).not.toBe(first.id);
+  });
+
+  it("defers an unsealed claimed job without using a retry attempt", async () => {
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+    const first = await enqueueAnalysisJob({ ...jobInput(), oncePerHead: true });
+    const claim = (await claimNextAnalysisJob({ now: new Date("2026-06-30T00:00:15Z") })).job!;
+    await expect(deferAnalysisJob({
+      id: first.id, claimGeneration: claim.claim_generation!, runningRevision: claim.running_revision!, attempts: claim.attempts,
+      runAfter: new Date("2026-06-30T00:00:45Z"), now: new Date("2026-06-30T00:00:15Z")
+    })).resolves.toBe(true);
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({ status: "queued", attempts: 0, run_after: "2026-06-30T00:00:45.000Z" });
+    await expect(claimNextAnalysisJob({ now: new Date("2026-06-30T00:00:44Z") })).resolves.toMatchObject({ job: null });
   });
 
   it("keeps separate canonical rows for different heads", async () => {
@@ -2214,6 +2251,14 @@ describe("analysis job queue", () => {
     expect(plannerMigration).toContain("new.provider_response_id := null");
     expect(plannerMigration).toContain("new.semantic_retry_attempts := 0");
     expect(plannerMigration).not.toMatch(/(?:prompt|response|source|span|decision)_text/i);
+
+    const oncePerHeadMigration = readFileSync(
+      new URL("../../supabase/migrations/202609250001_automatic_analysis_once_per_head.sql", import.meta.url),
+      "utf8"
+    );
+    expect(oncePerHeadMigration).toContain("agentproof_analysis_jobs.status = 'queued'");
+    expect(oncePerHeadMigration).toContain("job_payload->>'once_per_head'");
+    expect(oncePerHeadMigration).toContain("if not found then");
   });
 
   it("defines canonical revision RPCs and a Vault-backed one-minute recovery trigger", () => {

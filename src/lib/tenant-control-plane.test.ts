@@ -99,6 +99,25 @@ describe("tenant control plane helpers", () => {
     });
   });
 
+  it("keeps previously active private grants off until a new code-analysis notice is accepted", () => {
+    const legacy = grantEnv({ repositoryPrivate: true, analysisEnabled: true, hybridPlannerConsentVersion: "2026-08-12.v1", llmAnalysisMode: "enhanced" });
+    expect(authorizeTenantRepositoryGrant({ installationId: 321, repositoryFullName: "RengGyu/AgentProof" }, legacy)).toMatchObject({ reason: "private-consent-required" });
+    const approved = grantEnv({ repositoryPrivate: true, analysisEnabled: true, privateAnalysisConsentVersion: "2026-09-24.v1" });
+    expect(authorizeTenantRepositoryGrant({ installationId: 321, repositoryFullName: "RengGyu/AgentProof" }, approved)).toEqual(expect.objectContaining({ enabled: true, grant: expect.objectContaining({ privateAnalysisConsentVersion: "2026-09-24.v1" }) }));
+    expect(authorizeTenantRepositoryGrant({ installationId: 321, repositoryFullName: "RengGyu/AgentProof" }, grantEnv({ repositoryPrivate: true, analysisEnabled: false, privateAnalysisConsentVersion: "2026-09-24.v1" }))).toMatchObject({ reason: "analysis-disabled" });
+  });
+
+  it("requires an atomic private notice acceptance when switching analysis on", async () => {
+    const env = { AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED: "true", AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY: "true" } as unknown as NodeJS.ProcessEnv;
+    await createTenantRepositoryGrant({ tenantId: "tenant_test", installationId: 321, repositoryId: 100, repositoryFullName: "owner/private", repositoryPrivate: true, analysisEnabled: false }, env);
+    await expect(updateTenantRepositoryGrantSettings({ tenantId: "tenant_test", installationId: 321, repositoryId: 100, analysisEnabled: true }, env)).rejects.toThrow("consent");
+    const enabled = await updateTenantRepositoryGrantSettings({ tenantId: "tenant_test", installationId: 321, repositoryId: 100, analysisEnabled: true, privateAnalysisConsentVersion: "2026-09-24.v1" }, env);
+    expect(enabled).toMatchObject({ analysisEnabled: true, privateAnalysisConsentVersion: "2026-09-24.v1" });
+    const disabled = await updateTenantRepositoryGrantSettings({ tenantId: "tenant_test", installationId: 321, repositoryId: 100, analysisEnabled: false }, env);
+    expect(disabled.analysisEnabled).toBe(false);
+    expect(disabled.privateAnalysisConsentVersion).toBe("2026-09-24.v1");
+  });
+
   it("fails closed for malformed grant configuration", () => {
     const invalidEnv = {
       AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED: "true",
@@ -799,7 +818,7 @@ describe("tenant control plane helpers", () => {
       }
     ]);
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://agentproof-test.supabase.co/rest/v1/tenant_repository_grants_test?tenant_id=eq.tenant_test&select=tenant_id,installation_id,repository_id,repository_full_name,repository_is_private,enabled,analysis_enabled,comment_enabled,save_reports_enabled,slack_notifications_enabled,llm_analysis_mode,hybrid_planner_consent_version&order=repository_full_name.asc&limit=500",
+      "https://agentproof-test.supabase.co/rest/v1/tenant_repository_grants_test?tenant_id=eq.tenant_test&select=tenant_id,installation_id,repository_id,repository_full_name,repository_is_private,enabled,analysis_enabled,comment_enabled,save_reports_enabled,slack_notifications_enabled,llm_analysis_mode,hybrid_planner_consent_version,private_analysis_consent_version&order=repository_full_name.asc&limit=500",
       expect.objectContaining({ method: "GET" })
     );
   });
@@ -919,7 +938,7 @@ describe("tenant control plane helpers", () => {
 
     expect(result.updatedCount).toBe(1);
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://agentproof-test.supabase.co/rest/v1/tenant_repository_grants_test?installation_id=eq.321&select=tenant_id,installation_id,repository_id,repository_full_name,repository_is_private,enabled,analysis_enabled,comment_enabled,save_reports_enabled,slack_notifications_enabled,llm_analysis_mode,hybrid_planner_consent_version",
+      "https://agentproof-test.supabase.co/rest/v1/tenant_repository_grants_test?installation_id=eq.321&select=tenant_id,installation_id,repository_id,repository_full_name,repository_is_private,enabled,analysis_enabled,comment_enabled,save_reports_enabled,slack_notifications_enabled,llm_analysis_mode,hybrid_planner_consent_version,private_analysis_consent_version",
       expect.objectContaining({ method: "PATCH" })
     );
     expect(body).toMatchObject({
@@ -950,7 +969,7 @@ describe("tenant control plane helpers", () => {
       grants: []
     });
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://agentproof-test.supabase.co/rest/v1/agentproof_tenant_repository_grants?installation_id=eq.321&repository_id=in.(100,101)&select=tenant_id,installation_id,repository_id,repository_full_name,repository_is_private,enabled,analysis_enabled,comment_enabled,save_reports_enabled,slack_notifications_enabled,llm_analysis_mode,hybrid_planner_consent_version",
+      "https://agentproof-test.supabase.co/rest/v1/agentproof_tenant_repository_grants?installation_id=eq.321&repository_id=in.(100,101)&select=tenant_id,installation_id,repository_id,repository_full_name,repository_is_private,enabled,analysis_enabled,comment_enabled,save_reports_enabled,slack_notifications_enabled,llm_analysis_mode,hybrid_planner_consent_version,private_analysis_consent_version",
       expect.objectContaining({ method: "PATCH" })
     );
   });

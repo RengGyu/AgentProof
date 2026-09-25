@@ -1,3 +1,8 @@
+// Downstream unit fixtures isolate budget; paid-budget*.test.ts checks the real boundary.
+vi.mock('@/lib/paid-budget', async importOriginal => ({
+  ...await importOriginal<typeof import('@/lib/paid-budget')>(),
+  ...(await import('@/lib/test-support/unmetered-budget')).unmeteredBudgetFixture
+}));
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { decodeSharedReport, encodeReportForShare } from "@/lib/report-share";
 import { demoScenarios } from "@/lib/sample-data";

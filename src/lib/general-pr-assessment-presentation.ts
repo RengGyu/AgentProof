@@ -28,11 +28,11 @@ function conclusionLabel(
   conclusion: GeneralPrAssessmentSummaryV1["overallConclusion"]
 ): string {
   if (conclusion === "evidence_supports_stated_change") return "Evidence supports the stated change";
-  if (conclusion === "evidence_partial") return "Partial observations; objective fulfillment remains unconfirmed";
+  if (conclusion === "evidence_partial") return "Some evidence collected; review the remaining goal";
   if (conclusion === "attention_required") return "Evidence needs attention";
   if (conclusion === "collection_blocked") return "Evidence collection was incomplete";
   if (conclusion === "no_assessable_claims") return "No assessable objective was found";
-  return "Evidence is partially connected";
+  return "Some evidence connections need review";
 }
 
 function observationLabels(assessment: GeneralPrAssessmentSummaryV1): string[] {
@@ -62,7 +62,7 @@ function sourceLabel(sourceState: GeneralPrAssessmentSummaryV1["sourceState"]): 
 function countLabel(assessment: GeneralPrAssessmentSummaryV1): string {
   const labels: Array<[keyof GeneralPrAssessmentSummaryV1["counts"], string]> = [
     ["evidence_supported", "Supported"],
-    ["evidence_partial", "Partial evidence"],
+    ["evidence_partial", "Evidence to inspect"],
     ["not_demonstrated", "Not demonstrated"],
     ["contradicted", "Contradicted"],
     ["blocked", "Collection blocked"],

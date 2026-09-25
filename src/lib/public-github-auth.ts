@@ -11,6 +11,7 @@ const OAUTH_CALLBACK_PATH = "/api/auth/github/callback";
 const INSTALL_CALLBACK_PATH = "/api";
 
 interface OAuthState {
+  returnTo?: "/analyze" | "/dashboard";
   state: string;
   verifier: string;
   expiresAt: number;
@@ -36,8 +37,15 @@ export interface GitHubOAuthStart {
 }
 
 export interface GitHubOAuthIdentity {
+  returnTo: "/analyze" | "/dashboard";
   githubUserId: string;
   installCookie: string;
+  credentials: {
+    accessToken: string;
+    accessExpiresAt: number | null;
+    refreshToken: string | null;
+    refreshExpiresAt: number | null;
+  };
 }
 
 export interface GitHubInstallationAccess {
@@ -72,8 +80,9 @@ export function getGitHubOAuthConfig(env = process.env): GitHubOAuthConfig | nul
   return { clientId, clientSecret, callbackUrl, secret };
 }
 
-export function beginGitHubOAuth(config: GitHubOAuthConfig, now = Date.now()): GitHubOAuthStart {
+export function beginGitHubOAuth(config: GitHubOAuthConfig, now = Date.now(), returnTo?: unknown): GitHubOAuthStart {
   const state: OAuthState = {
+    returnTo: returnTo === "/analyze" ? "/analyze" : "/dashboard",
     state: randomBytes(32).toString("base64url"),
     verifier: randomBytes(48).toString("base64url"),
     expiresAt: now + OAUTH_TTL_MS
@@ -109,9 +118,13 @@ export async function finishGitHubOAuth(
       code_verifier: saved.verifier
     })
   });
-  const tokenBody = await tokenResponse.json().catch(() => null) as { access_token?: unknown } | null;
+  const tokenBody = await tokenResponse.json().catch(() => null) as { access_token?: unknown; expires_in?: unknown; refresh_token?: unknown; refresh_token_expires_in?: unknown } | null;
   const accessToken = typeof tokenBody?.access_token === "string" ? tokenBody.access_token : "";
   if (!tokenResponse.ok || !accessToken) throw new GitHubOAuthError("GitHub OAuth token exchange failed.");
+  const expiring = tokenBody?.expires_in !== undefined;
+  if (expiring && (!validTokenLifetime(tokenBody?.expires_in) || typeof tokenBody?.refresh_token !== "string" || !validTokenLifetime(tokenBody?.refresh_token_expires_in))) {
+    throw new GitHubOAuthError("GitHub OAuth token exchange did not include a renewable credential.");
+  }
 
   const userResponse = await fetchImpl("https://api.github.com/user", {
     headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${accessToken}`, "X-GitHub-Api-Version": "2022-11-28" },
@@ -124,7 +137,14 @@ export async function finishGitHubOAuth(
   const expiresAt = now + OAUTH_TTL_MS;
   return {
     githubUserId,
-    installCookie: sealCookie(GITHUB_OAUTH_INSTALL_COOKIE, { accessToken, githubUserId, tenantId: input.tenantId, expiresAt }, config.secret, expiresAt, now, INSTALL_CALLBACK_PATH)
+    returnTo: saved.returnTo === "/analyze" ? "/analyze" : "/dashboard",
+    installCookie: sealCookie(GITHUB_OAUTH_INSTALL_COOKIE, { accessToken, githubUserId, tenantId: input.tenantId, expiresAt }, config.secret, expiresAt, now, INSTALL_CALLBACK_PATH),
+    credentials: {
+      accessToken,
+      accessExpiresAt: expiring ? now + (tokenBody!.expires_in as number) * 1000 : null,
+      refreshToken: expiring ? tokenBody!.refresh_token as string : null,
+      refreshExpiresAt: expiring ? now + (tokenBody!.refresh_token_expires_in as number) * 1000 : null
+    }
   };
 }
 
@@ -194,6 +214,18 @@ export function getGitHubInstallationAuthorizationIdentity(
   return normalizeGitHubUserId(authorization.githubUserId);
 }
 
+/** Server-only, transient GitHub App user credential for a tenant-bound request. */
+export function getGitHubOAuthAccess(
+  input: { cookieHeader?: string | null; tenantId: string },
+  config: GitHubOAuthConfig,
+  now = Date.now()
+): { accessToken: string; githubUserId: string } | null {
+  const authorization = openCookie<InstallAuthorization>(input.cookieHeader, GITHUB_OAUTH_INSTALL_COOKIE, config.secret, now);
+  if (!authorization || authorization.tenantId !== input.tenantId || !authorization.accessToken) return null;
+  const githubUserId = normalizeGitHubUserId(authorization.githubUserId);
+  return githubUserId ? { accessToken: authorization.accessToken, githubUserId } : null;
+}
+
 /** Rebinds the transient, encrypted install credential after tenant creation. */
 export function bindGitHubInstallationAuthorization(
   input: { cookieHeader?: string | null; tenantId: string },
@@ -251,3 +283,4 @@ function normalizeGitHubAccountLogin(value: unknown): string { return typeof val
 function normalizeGitHubAccountType(value: unknown): "User" | "Organization" | null { return value === "User" || value === "Organization" ? value : null; }
 function base64Url(value: Buffer): string { return value.toString("base64url"); }
 function safeEqual(a: string, b: string): boolean { const left = Buffer.from(a); const right = Buffer.from(b); return left.length === right.length && timingSafeEqual(left, right); }
+function validTokenLifetime(value: unknown): value is number { return typeof value === "number" && Number.isSafeInteger(value) && value > 0 && value <= 366 * 24 * 60 * 60; }

@@ -12,6 +12,8 @@ export const DEFAULT_TENANT_REPOSITORY_GRANTS_TABLE = "agentproof_tenant_reposit
 
 export type LlmAnalysisMode = "essential" | "enhanced";
 export type HybridPlannerConsentVersion = typeof HYBRID_PLANNER_CONSENT_VERSION;
+export const PRIVATE_ANALYSIS_CONSENT_VERSION = "2026-09-24.v1" as const;
+export type PrivateAnalysisConsentVersion = typeof PRIVATE_ANALYSIS_CONSENT_VERSION;
 
 export interface TenantControlPlaneSettings {
   enabled: boolean;
@@ -29,6 +31,7 @@ export interface TenantRepositoryGrant {
   slackNotificationsEnabled: boolean;
   llmAnalysisMode?: LlmAnalysisMode;
   hybridPlannerConsentVersion?: HybridPlannerConsentVersion;
+  privateAnalysisConsentVersion?: PrivateAnalysisConsentVersion;
   repositoryPrivate?: boolean;
 }
 
@@ -36,7 +39,7 @@ export interface TenantRepositoryGrantDecision {
   enabled: boolean;
   required: boolean;
   grant?: TenantRepositoryGrant;
-  reason?: "control-plane-disabled" | "grant-missing" | "grant-disabled" | "analysis-disabled" | "invalid-grants" | "tenant-deletion-active";
+  reason?: "control-plane-disabled" | "grant-missing" | "grant-disabled" | "analysis-disabled" | "private-consent-required" | "invalid-grants" | "tenant-deletion-active";
 }
 
 export interface TenantRepositoryGrantSettingsInput {
@@ -50,6 +53,7 @@ export interface TenantRepositoryGrantSettingsInput {
   slackNotificationsEnabled?: unknown;
   llmAnalysisMode?: unknown;
   hybridPlannerConsentVersion?: unknown;
+  privateAnalysisConsentVersion?: unknown;
   repositoryPrivate?: unknown;
 }
 
@@ -87,6 +91,7 @@ interface TenantRepositoryGrantInput {
   slackNotificationsEnabled?: unknown;
   llmAnalysisMode?: unknown;
   hybridPlannerConsentVersion?: unknown;
+  privateAnalysisConsentVersion?: unknown;
   repositoryPrivate?: unknown;
 }
 
@@ -102,6 +107,7 @@ interface TenantRepositoryGrantRow {
   slack_notifications_enabled: boolean;
   llm_analysis_mode?: LlmAnalysisMode | null;
   hybrid_planner_consent_version?: HybridPlannerConsentVersion | null;
+  private_analysis_consent_version?: PrivateAnalysisConsentVersion | null;
   repository_is_private?: boolean | null;
   created_at?: string;
   updated_at?: string;
@@ -118,7 +124,7 @@ type GlobalWithTenantGrants = typeof globalThis & {
 };
 
 const TENANT_REPOSITORY_GRANT_SELECT =
-  "select=tenant_id,installation_id,repository_id,repository_full_name,repository_is_private,enabled,analysis_enabled,comment_enabled,save_reports_enabled,slack_notifications_enabled,llm_analysis_mode,hybrid_planner_consent_version";
+  "select=tenant_id,installation_id,repository_id,repository_full_name,repository_is_private,enabled,analysis_enabled,comment_enabled,save_reports_enabled,slack_notifications_enabled,llm_analysis_mode,hybrid_planner_consent_version,private_analysis_consent_version";
 
 export class TenantControlPlaneStoreError extends Error {
   constructor(message: string) {
@@ -513,6 +519,10 @@ export function tenantGrantPublicReason(reason: TenantRepositoryGrantDecision["r
     return "Repository grant exists, but AgentProof analysis is disabled for this repository.";
   }
 
+  if (reason === "private-consent-required") {
+    return "Private repository analysis is off until its code-analysis notice is accepted.";
+  }
+
   if (reason === "tenant-deletion-active") {
     return "Repository grant is not active.";
   }
@@ -535,12 +545,14 @@ function normalizeGrant(input: TenantRepositoryGrantInput): TenantRepositoryGran
   const repositoryFullName = normalizeRepositoryFullName(input.repositoryFullName);
   const llmAnalysisMode = normalizeOptionalLlmAnalysisMode(input.llmAnalysisMode);
   const hybridPlannerConsentVersion = normalizeOptionalHybridPlannerConsentVersion(input.hybridPlannerConsentVersion);
+  const privateAnalysisConsentVersion = normalizeOptionalPrivateAnalysisConsentVersion(input.privateAnalysisConsentVersion);
   const repositoryPrivate = normalizeOptionalRepositoryPrivate(input.repositoryPrivate);
 
-  if (!tenantId || !installationId || !repositoryFullName || llmAnalysisMode === null || hybridPlannerConsentVersion === null || repositoryPrivate === null) {
+  if (!tenantId || !installationId || !repositoryFullName || llmAnalysisMode === null || hybridPlannerConsentVersion === null || privateAnalysisConsentVersion === null || repositoryPrivate === null) {
     return null;
   }
   if (hybridPlannerConsentVersion && (llmAnalysisMode !== "enhanced" || repositoryPrivate !== true)) return null;
+  if (privateAnalysisConsentVersion && repositoryPrivate !== true) return null;
 
   return {
     tenantId,
@@ -554,6 +566,7 @@ function normalizeGrant(input: TenantRepositoryGrantInput): TenantRepositoryGran
     slackNotificationsEnabled: input.slackNotificationsEnabled === true,
     ...(llmAnalysisMode ? { llmAnalysisMode } : {}),
     ...(hybridPlannerConsentVersion ? { hybridPlannerConsentVersion } : {}),
+    ...(privateAnalysisConsentVersion ? { privateAnalysisConsentVersion } : {}),
     ...(repositoryPrivate !== undefined ? { repositoryPrivate } : {})
   };
 }
@@ -742,6 +755,11 @@ async function updateSupabaseTenantRepositoryGrantSettings(
       ? true
       : input.settings.hybridPlannerConsentVersion === null
         ? false
+        : null,
+    p_private_analysis_consent_requested: input.settings.privateAnalysisConsentVersion === PRIVATE_ANALYSIS_CONSENT_VERSION
+      ? true
+      : input.settings.privateAnalysisConsentVersion === null
+        ? false
         : null
   });
 
@@ -891,6 +909,7 @@ function toTenantRepositoryGrantRow(grant: TenantRepositoryGrant, now: string): 
     slack_notifications_enabled: grant.slackNotificationsEnabled,
     ...(grant.llmAnalysisMode ? { llm_analysis_mode: grant.llmAnalysisMode } : {}),
     ...(grant.hybridPlannerConsentVersion ? { hybrid_planner_consent_version: grant.hybridPlannerConsentVersion } : {}),
+    ...(grant.privateAnalysisConsentVersion ? { private_analysis_consent_version: grant.privateAnalysisConsentVersion } : {}),
     created_at: now,
     updated_at: now
   };
@@ -898,6 +917,7 @@ function toTenantRepositoryGrantRow(grant: TenantRepositoryGrant, now: string): 
 
 type TenantRepositoryGrantSettings = Partial<Pick<TenantRepositoryGrant, "enabled" | "analysisEnabled" | "commentEnabled" | "saveReportsEnabled" | "slackNotificationsEnabled" | "llmAnalysisMode">> & {
   hybridPlannerConsentVersion?: HybridPlannerConsentVersion | null;
+  privateAnalysisConsentVersion?: PrivateAnalysisConsentVersion | null;
 };
 
 function toTenantRepositoryGrantSettingsRow(settings: TenantRepositoryGrantSettings) {
@@ -910,6 +930,7 @@ function toTenantRepositoryGrantSettingsRow(settings: TenantRepositoryGrantSetti
   if (settings.slackNotificationsEnabled !== undefined) row.slack_notifications_enabled = settings.slackNotificationsEnabled;
   if (settings.llmAnalysisMode !== undefined) row.llm_analysis_mode = settings.llmAnalysisMode;
   if (settings.hybridPlannerConsentVersion !== undefined) row.hybrid_planner_consent_version = settings.hybridPlannerConsentVersion;
+  if (settings.privateAnalysisConsentVersion !== undefined) row.private_analysis_consent_version = settings.privateAnalysisConsentVersion;
 
   return row;
 }
@@ -930,7 +951,8 @@ function rowToTenantRepositoryGrant(row: unknown): TenantRepositoryGrant | undef
     saveReportsEnabled: value.save_reports_enabled,
     slackNotificationsEnabled: value.slack_notifications_enabled,
     llmAnalysisMode: value.llm_analysis_mode
-    ,hybridPlannerConsentVersion: value.hybrid_planner_consent_version
+    ,hybridPlannerConsentVersion: value.hybrid_planner_consent_version,
+    privateAnalysisConsentVersion: value.private_analysis_consent_version
   }) ?? undefined;
 }
 
@@ -945,8 +967,10 @@ function normalizeGrantSettingsUpdate(input: TenantRepositoryGrantSettingsInput)
   const repositoryId = normalizeOptionalRepositoryId(input.repositoryId);
   const llmAnalysisMode = normalizeOptionalLlmAnalysisMode(input.llmAnalysisMode);
   const hybridPlannerConsentVersion = normalizeOptionalHybridPlannerConsentVersion(input.hybridPlannerConsentVersion);
+  const privateAnalysisConsentVersion = normalizeOptionalPrivateAnalysisConsentVersion(input.privateAnalysisConsentVersion);
   if (input.llmAnalysisMode !== undefined && llmAnalysisMode === null) return null;
   if (input.hybridPlannerConsentVersion !== undefined && input.hybridPlannerConsentVersion !== null && hybridPlannerConsentVersion === null) return null;
+  if (input.privateAnalysisConsentVersion !== undefined && input.privateAnalysisConsentVersion !== null && privateAnalysisConsentVersion === null) return null;
   const settings = {
     ...(typeof input.enabled === "boolean" ? { enabled: input.enabled } : {}),
     ...(typeof input.analysisEnabled === "boolean" ? { analysisEnabled: input.analysisEnabled } : {}),
@@ -958,7 +982,8 @@ function normalizeGrantSettingsUpdate(input: TenantRepositoryGrantSettingsInput)
       ? { hybridPlannerConsentVersion: null }
       : hybridPlannerConsentVersion !== undefined
         ? { hybridPlannerConsentVersion }
-        : {})
+        : {}),
+    ...(input.privateAnalysisConsentVersion === null ? { privateAnalysisConsentVersion: null } : privateAnalysisConsentVersion ? { privateAnalysisConsentVersion } : {})
   };
 
   if (!tenantId || !installationId || !repositoryId || Object.keys(settings).length === 0) {
@@ -984,6 +1009,11 @@ function normalizeOptionalHybridPlannerConsentVersion(value: unknown): HybridPla
   return value === HYBRID_PLANNER_CONSENT_VERSION ? value : null;
 }
 
+function normalizeOptionalPrivateAnalysisConsentVersion(value: unknown): PrivateAnalysisConsentVersion | undefined | null {
+  if (value === undefined || value === null) return undefined;
+  return value === PRIVATE_ANALYSIS_CONSENT_VERSION ? value : null;
+}
+
 function normalizeOptionalRepositoryPrivate(value: unknown): boolean | undefined | null {
   if (value === undefined || value === null) return undefined;
   return typeof value === "boolean" ? value : null;
@@ -995,21 +1025,25 @@ function applyTenantRepositoryGrantSettings(
 ): TenantRepositoryGrant | null {
   const effectiveMode = settings.llmAnalysisMode ?? grant.llmAnalysisMode ?? "essential";
   const requestedConsent = settings.hybridPlannerConsentVersion;
+  if (settings.privateAnalysisConsentVersion === PRIVATE_ANALYSIS_CONSENT_VERSION && grant.repositoryPrivate !== true) return null;
+  if (grant.repositoryPrivate === true && settings.analysisEnabled === true && settings.privateAnalysisConsentVersion !== PRIVATE_ANALYSIS_CONSENT_VERSION && grant.privateAnalysisConsentVersion !== PRIVATE_ANALYSIS_CONSENT_VERSION) return null;
   if (requestedConsent === HYBRID_PLANNER_CONSENT_VERSION && (effectiveMode !== "enhanced" || grant.repositoryPrivate !== true)) {
     return null;
   }
-  const { hybridPlannerConsentVersion: _ignored, ...withoutConsent } = { ...grant, ...settings };
-  if (effectiveMode !== "enhanced") return withoutConsent;
+  const { hybridPlannerConsentVersion: _ignored, privateAnalysisConsentVersion: _privateIgnored, ...withoutConsent } = { ...grant, ...settings };
+  if (grant.repositoryPrivate === true && settings.privateAnalysisConsentVersion === null) withoutConsent.analysisEnabled = false;
+  const privateConsent = settings.privateAnalysisConsentVersion === null ? {} : settings.privateAnalysisConsentVersion === PRIVATE_ANALYSIS_CONSENT_VERSION ? { privateAnalysisConsentVersion: PRIVATE_ANALYSIS_CONSENT_VERSION } : grant.privateAnalysisConsentVersion ? { privateAnalysisConsentVersion: grant.privateAnalysisConsentVersion } : {};
+  if (effectiveMode !== "enhanced") return { ...withoutConsent, ...privateConsent };
   if (settings.llmAnalysisMode === "enhanced") {
     return requestedConsent === HYBRID_PLANNER_CONSENT_VERSION
-      ? { ...withoutConsent, hybridPlannerConsentVersion: HYBRID_PLANNER_CONSENT_VERSION }
-      : withoutConsent;
+      ? { ...withoutConsent, ...privateConsent, hybridPlannerConsentVersion: HYBRID_PLANNER_CONSENT_VERSION }
+      : { ...withoutConsent, ...privateConsent };
   }
   if (requestedConsent === HYBRID_PLANNER_CONSENT_VERSION) {
-    return { ...withoutConsent, hybridPlannerConsentVersion: HYBRID_PLANNER_CONSENT_VERSION };
+    return { ...withoutConsent, ...privateConsent, hybridPlannerConsentVersion: HYBRID_PLANNER_CONSENT_VERSION };
   }
-  if (requestedConsent === null) return withoutConsent;
-  return grant.hybridPlannerConsentVersion ? { ...withoutConsent, hybridPlannerConsentVersion: grant.hybridPlannerConsentVersion } : withoutConsent;
+  if (requestedConsent === null) return { ...withoutConsent, ...privateConsent };
+  return grant.hybridPlannerConsentVersion ? { ...withoutConsent, ...privateConsent, hybridPlannerConsentVersion: grant.hybridPlannerConsentVersion } : { ...withoutConsent, ...privateConsent };
 }
 
 function decisionForGrant(grant: TenantRepositoryGrant, env: NodeJS.ProcessEnv): TenantRepositoryGrantDecision {
@@ -1038,6 +1072,10 @@ function decisionForGrant(grant: TenantRepositoryGrant, env: NodeJS.ProcessEnv):
       grant,
       reason: "analysis-disabled"
     };
+  }
+
+  if (grant.repositoryPrivate === true && grant.privateAnalysisConsentVersion !== PRIVATE_ANALYSIS_CONSENT_VERSION) {
+    return { enabled: true, required: true, grant, reason: "private-consent-required" };
   }
 
   return {

@@ -1,6 +1,12 @@
+// Downstream unit fixtures isolate budget; paid-budget*.test.ts checks the real boundary.
+vi.mock('@/lib/paid-budget', async importOriginal => ({
+  ...await importOriginal<typeof import('@/lib/paid-budget')>(),
+  ...(await import('@/lib/test-support/unmetered-budget')).unmeteredBudgetFixture
+}));
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReviewNavigationRequest } from './review-intent';
 import { resolveNavigationProvider, submitReviewNavigationWithGemini } from './gemini-navigation';
+import * as openai from './openai-semantic';
 
 const request=(stage:'intent'|'ranking'):ReviewNavigationRequest=>({stage,model:'google/gemini-test',sources:[],goals:[],artifacts:[],inventory:[],capabilities:{readPaths:false,searchScope:'supplied_artifacts',wholeRepository:false}});
 beforeEach(()=>vi.clearAllMocks());
@@ -19,10 +25,30 @@ describe('Gemini navigation through the Google Gemini API',()=>{
  it('uses the configured key directly with an unqualified Gemini model id',async()=>{
   const selected=resolveNavigationProvider({AI_GATEWAY_API_KEY:' gateway-key ',AGENTPROOF_LLM_MODEL:' gemini-3.8-flash ',OPENAI_API_KEY:'openai-key',OPENAI_MODEL:'openai-model'});
   expect(selected.model).toBe('gemini-3.8-flash');
+  expect(selected.provider).toBeDefined();
  });
  it('removes an accidental Google gateway prefix',()=>{expect(resolveNavigationProvider({AI_GATEWAY_API_KEY:'key',AGENTPROOF_LLM_MODEL:'google/gemini-3.8-flash'}).model).toBe('gemini-3.8-flash');});
  it('uses the requested Gemini default with only its key',()=>{expect(resolveNavigationProvider({AI_GATEWAY_API_KEY:'key'}).model).toBe('gemini-3.8-flash');});
  it('keeps OpenAI model and adapter when the gateway key is absent',()=>{expect(resolveNavigationProvider({AI_GATEWAY_API_KEY:' ',AGENTPROOF_LLM_MODEL:'gemini-other',OPENAI_API_KEY:'openai-key',OPENAI_MODEL:'openai-model'}).model).toBe('openai-model');});
+ it('selects OpenAI explicitly even when Google credentials are present',async()=>{
+ const selected=resolveNavigationProvider({AGENTPROOF_NAVIGATION_PROVIDER:'openai',GEMINI_API_KEY:'gemini-key',AI_GATEWAY_API_KEY:'gateway-key',AGENTPROOF_LLM_MODEL:'gemini-model',OPENAI_API_KEY:'openai-key',OPENAI_MODEL:'gpt-6-luna'});
+  expect(selected.model).toBe('gpt-6-luna');
+  expect(selected.provider).toBeDefined();
+  const spy=vi.spyOn(openai,'submitReviewNavigationWithOpenAI').mockResolvedValue({goals:[],unprocessed:[]});
+  const requestForSelection={...request('intent'),model:selected.model};
+  await selected.provider!(requestForSelection);
+  expect(spy).toHaveBeenCalledWith(requestForSelection,{apiKey:'openai-key'});
+  spy.mockRestore();
+ });
+ it('keeps Gemini as the default when provider selection is unset with both keys',()=>{
+  const selected=resolveNavigationProvider({GEMINI_API_KEY:'gemini-key',OPENAI_API_KEY:'openai-key',OPENAI_MODEL:'gpt-6-luna'});
+  expect(selected.model).toBe('gemini-3.8-flash');
+  expect(selected.provider).toBeDefined();
+ });
+ it('does not fall back to Gemini when OpenAI is explicitly selected but credentials are missing',()=>{
+  expect(resolveNavigationProvider({AGENTPROOF_NAVIGATION_PROVIDER:'openai',GEMINI_API_KEY:'gemini-key',OPENAI_MODEL:'gpt-6-luna'})).toEqual({model:'gpt-6-luna'});
+  expect(resolveNavigationProvider({AGENTPROOF_NAVIGATION_PROVIDER:'openai',GEMINI_API_KEY:'gemini-key',OPENAI_API_KEY:'openai-key'})).toEqual({model:'unconfigured'});
+ });
  it('leaves navigation unavailable without a configured provider',()=>{expect(resolveNavigationProvider({})).toEqual({model:'unconfigured'});expect(resolveNavigationProvider({OPENAI_API_KEY:'key'}).provider).toBeUndefined();});
 });
 it('records safe usage and finish reason while retaining parseable output at the token limit',async()=>{

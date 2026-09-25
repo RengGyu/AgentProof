@@ -12,9 +12,10 @@ describe("web beta guided reviewer UX copy", () => {
     expect(page).not.toContain("generateVerificationReport");
     expect(page).not.toContain("demoScenarios");
     expect(workspace).toContain('useState<"demo" | "manual">("manual")');
-    expect(workspace).toContain("Start with a public PR URL");
+    expect(workspace).toContain("Start with a GitHub PR URL");
     expect(workspace).toContain("Demo is optional");
-    expect(workspace).toContain("private repos, tokens, raw code, and full logs are not needed");
+    expect(workspace).toContain("Connect repositories you own or administer with the GitHub App");
+    expect(workspace).not.toContain('id="githubToken"');
   });
 
   it("moves mobile reviewers to the result card after generation", () => {

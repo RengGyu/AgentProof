@@ -12,6 +12,7 @@ export interface DashboardRepositoryGrant {
   commentEnabled: boolean;
   llmAnalysisMode?: "essential" | "enhanced";
   hybridPlannerConsentVersion?: "2026-08-12.v1" | null;
+  privateAnalysisConsentVersion?: "2026-09-24.v1" | null;
   repositoryPrivate?: boolean;
 }
 
@@ -75,9 +76,9 @@ export interface RepositoryWorkspaceRow extends DashboardRepositoryGrant {
 }
 
 export interface QuickSummary {
-  freshness: "CURRENT" | "REFRESHING" | "REFRESH FAILED" | "SUPERSEDED" | "STALE" | "UNKNOWN";
-  checkState: "Success" | "Check failed" | "Pending" | "Unknown" | "Unavailable";
-  primaryEvidenceState: "Evidence found" | "Evidence missing" | "Needs attention" | "Unknown" | "Unavailable";
+  freshness: "CURRENT" | "REFRESHING" | "REFRESH FAILED" | "SUPERSEDED" | "STALE" | "SAVED";
+  checkState: string;
+  primaryEvidenceState: "Evidence found" | "Evidence missing" | "Needs attention" | "No verified evidence conclusion" | "Unavailable";
   primaryEvidenceDetail?: string;
   aiEvidenceState: "Available" | "Unavailable" | "Not requested";
   inspectFirst: string;
@@ -93,9 +94,9 @@ export function isPreviewDemoEnabled(previewDemoAvailable: boolean, demo: string
 
 export function toRequirementCoverageLabel(status: string): string {
   if (status === "met") return "Supported";
-  if (status === "partial") return "Partially supported";
+  if (status === "partial") return "Some evidence linked";
   if (status === "missing") return "Evidence missing";
-  return "Unclear";
+  return "No verified evidence conclusion";
 }
 
 export function verificationOutcomeLabel(outcome: DashboardVerificationOutcome | undefined): string {
@@ -129,6 +130,11 @@ export function toRepositoryWorkspaceRows(
   });
 }
 
+export function isActiveRepositoryGrant(repository: DashboardRepositoryGrant): boolean {
+  return repository.enabled && repository.analysisEnabled &&
+    (repository.repositoryPrivate !== true || repository.privateAnalysisConsentVersion === "2026-09-24.v1");
+}
+
 export function toQuickSummary(detail: DashboardReportDetail & { repositoryFullName?: string }): QuickSummary {
   const requirements = detail.report?.requirements ?? [];
   const firstRequirement = requirements.find((item) => item.gaps.length > 0) ?? requirements[0];
@@ -158,9 +164,9 @@ function freshnessLabel(freshness: DashboardReportFreshness | undefined, staleAt
   if (freshness === "refresh_failed") return "REFRESH FAILED";
   if (freshness === "superseded") return "SUPERSEDED";
   if (freshness === "stale") return "STALE";
-  if (freshness === "unknown") return "UNKNOWN";
+  if (freshness === "unknown") return "SAVED";
   if (staleAt) return "STALE";
-  return "UNKNOWN";
+  return "SAVED";
 }
 
 function toAiEvidenceState(report: DashboardReportDetail["report"]): QuickSummary["aiEvidenceState"] {
@@ -169,20 +175,28 @@ function toAiEvidenceState(report: DashboardReportDetail["report"]): QuickSummar
   return "Not requested";
 }
 
+export function observedCheckResults(testing: NonNullable<DashboardReportDetail["report"]>["testing"]): Array<{ label: "CI" | "Lint" | "Typecheck"; status: "passed" | "failed" | "pending" }> {
+  if (!testing) return [];
+  const entries = [
+    { label: "CI" as const, status: testing.ciStatus },
+    { label: "Lint" as const, status: testing.lintStatus },
+    { label: "Typecheck" as const, status: testing.typecheckStatus }
+  ];
+  return entries.filter((entry): entry is { label: "CI" | "Lint" | "Typecheck"; status: "passed" | "failed" | "pending" } =>
+    entry.status === "passed" || entry.status === "failed" || entry.status === "pending");
+}
+
 function toCheckState(testing: NonNullable<DashboardReportDetail["report"]>["testing"]): QuickSummary["checkState"] {
-  if (!testing) return "Unavailable";
-  const statuses = [testing.ciStatus, testing.lintStatus, testing.typecheckStatus];
-  if (statuses.includes("failed")) return "Check failed";
-  if (statuses.includes("pending")) return "Pending";
-  if (statuses.every((status) => status === "passed")) return "Success";
-  return "Unknown";
+  const observed = observedCheckResults(testing);
+  const primary = observed.find((entry) => entry.status === "failed") ?? observed.find((entry) => entry.status === "pending") ?? observed[0];
+  return primary ? `${primary.label} ${primary.status}` : "No check results collected";
 }
 
 function toEvidenceState(status: string | undefined, gapCount: number): QuickSummary["primaryEvidenceState"] {
   if (!status) return "Unavailable";
   if (gapCount > 0 || status === "missing") return "Evidence missing";
   if (status === "partial") return "Needs attention";
-  if (status === "unclear") return "Unknown";
+  if (status === "unclear") return "No verified evidence conclusion";
   return "Evidence found";
 }
 

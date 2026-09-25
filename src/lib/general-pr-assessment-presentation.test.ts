@@ -39,9 +39,9 @@ describe("presentGeneralPrAssessmentSummary", () => {
 
     expect(presentation).toMatchObject({
       heading: "Ordinary PR evidence assessment",
-      conclusionLabel: "Partial observations; objective fulfillment remains unconfirmed",
+      conclusionLabel: "Some evidence collected; review the remaining goal",
       sourceLabel: "PR description claim — reviewer confirmation needed",
-      countsLabel: "Partial evidence: 1",
+      countsLabel: "Evidence to inspect: 1",
       reasonLabels: [
         "The PR description is an author claim and needs reviewer confirmation.",
         "A requirement-to-evidence relation was not independently verified.",

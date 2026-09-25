@@ -26,6 +26,7 @@ import { presentGeneralPrAssessmentSummary } from "@/lib/general-pr-assessment-p
 import { presentOrdinaryDocumentationSummary } from "@/lib/general-pr-documentation-presentation";
 import { presentOrdinaryStaticSummary } from "@/lib/general-pr-static-types-presentation";
 import { reportToGitHubComment, reportToMarkdown } from "@/lib/markdown";
+import { writeTextWithBrowserFallback as writeClipboardText } from "@/lib/browser-clipboard";
 import { buildShareUrl } from "@/lib/report-share";
 import { buildPrEvidenceReview, usesPrEvidenceReview } from "@/lib/pr-evidence-review";
 import type { CheckStatus, PriorityLevel, RequirementStatus, VerificationReport } from "@/lib/types";
@@ -126,8 +127,10 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
         setCopiedAction(null);
         setActionMessage(null);
       }, 1800);
+      return true;
     } catch {
       setActionMessage({ tone: "error", text: "Copy failed in this browser. Use Download or select the text manually." });
+      return false;
     }
   }
 
@@ -153,8 +156,9 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
   async function copyShareLink() {
     try {
       const url = buildShareUrl(report, window.location.origin);
-      await copyText(url, "share");
-      setActionMessage({ tone: "success", text: "Summary share link copied." });
+      if (await copyText(url, "share")) {
+        setActionMessage({ tone: "success", text: "Summary share link copied." });
+      }
     } catch (error) {
       setActionMessage({
         tone: "error",
@@ -248,8 +252,6 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
           </div>
         </div>
 
-        {isVerificationReportV2(report) && report.ordinaryDocumentationSummary ? <div className="notice" aria-label="Scoped documentation evidence"><span><strong>Documentation predicate evidence:</strong> {presentOrdinaryDocumentationSummary(report.ordinaryDocumentationSummary).join(" ")}</span></div> : null}
-        {isVerificationReportV2(report) && report.ordinaryStaticSummary ? <div className="notice" aria-label="Scoped static evidence"><span><strong>Static predicate evidence:</strong> {presentOrdinaryStaticSummary(report.ordinaryStaticSummary).join(" ")}</span></div> : null}
         {ordinaryPrAssessment ? (
           <div className="notice" aria-label="Ordinary PR evidence assessment">
             <ShieldAlert size={15} />
@@ -318,6 +320,9 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
           <Metric label="Missing Tests" value={String(report.testing.missingTests.length)} icon={<TestTube2 size={17} />} />
           <Metric label="Proof Gaps" value={String(report.proofGraph.summary.gapCount)} icon={<ShieldAlert size={17} />} />
         </div></> : null}
+
+      {isVerificationReportV2(report) && report.ordinaryDocumentationSummary ? <details className="pr-evidence-context" aria-label="Scoped documentation evidence"><summary>Documentation evidence</summary><ul>{presentOrdinaryDocumentationSummary(report.ordinaryDocumentationSummary).map((line, index) => <li key={index}>{line}</li>)}</ul></details> : null}
+      {isVerificationReportV2(report) && report.ordinaryStaticSummary ? <details className="pr-evidence-context" aria-label="Scoped static evidence"><summary>Static evidence</summary><ul>{presentOrdinaryStaticSummary(report.ordinaryStaticSummary).map((line, index) => <li key={index}>{line}</li>)}</ul></details> : null}
 
         <div className="action-dock">
           <div className="action-dock-copy">
@@ -666,10 +671,11 @@ function PriorityChip({ priority }: { priority: PriorityLevel }) {
 }
 
 function StatusChip({ status }: { status: RequirementStatus }) {
+  const label = status === "met" ? "Evidence linked" : status === "partial" ? "Evidence to review" : status === "missing" ? "Evidence gap" : "No verified outcome";
   return (
     <span className={`priority-chip status-${status}`}>
       <ClipboardList size={14} />
-      {status.toUpperCase()}
+      {label}
     </span>
   );
 }
@@ -707,7 +713,7 @@ function FindingProvenanceDetails({
           {provenance.map((item) => (
             <li key={`${item.evidenceRef}-${item.locator ?? item.sourceType}`}>
               <span className="evidence-label">
-                {item.evidenceRef} - {item.sourceType} - {item.locator ?? "unknown locator"} - {Math.round(item.confidence * 100)}%
+                {item.evidenceRef} - {item.sourceType} - {item.locator ?? "location not recorded"} - {Math.round(item.confidence * 100)}%
               </span>
               {item.evidenceText}
             </li>
@@ -840,6 +846,7 @@ function isPurposeOnlyLimitation(value: string): boolean {
 }
 
 function formatStatus(status: CheckStatus): string {
+  if (status === "unknown") return "Not collected";
   return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
@@ -931,7 +938,7 @@ function getVerificationAnswer(priority: PriorityLevel, evidenceCoverage: number
 
   if (priority === "medium") {
     return {
-      title: "Partially supported",
+      title: "Review the listed evidence",
       body: `Coverage is ${evidenceCoverage}% with ${formatStatus(ciStatus).toLowerCase()} test/build evidence. Check the listed gaps first.`
     };
   }
@@ -954,25 +961,4 @@ function getStrictVerificationAnswer(presentations: Array<ReturnType<typeof deri
     title: primary.outcomeLabel,
     body: `${primary.outcomeBasis} Observed evidence: ${primary.observationLabel}.`
   };
-}
-
-async function writeClipboardText(text: string) {
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text);
-    return;
-  }
-
-  const textarea = document.createElement("textarea");
-  textarea.value = text;
-  textarea.setAttribute("readonly", "true");
-  textarea.style.position = "fixed";
-  textarea.style.top = "-9999px";
-  document.body.appendChild(textarea);
-  textarea.select();
-  const copied = document.execCommand("copy");
-  textarea.remove();
-
-  if (!copied) {
-    throw new Error("Clipboard fallback failed");
-  }
 }

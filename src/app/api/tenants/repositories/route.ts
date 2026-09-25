@@ -5,6 +5,7 @@ import {
   type TenantRepositoryGrant,
   updateTenantRepositoryGrantSettings
 } from "@/lib/tenant-control-plane";
+import { resolveTenantAuthAccess, TenantAuthStoreError } from "@/lib/tenant-auth";
 import { canUsePrivilegedTenantAccess, verifyTenantAccess } from "@/lib/tenant-admin-access";
 import { noStoreJson, parseJsonSafely, utf8ByteLength } from "@/lib/http";
 import { assertTenantDeletionNotActiveAsync, TenantDeletionStateError } from "@/lib/tenant-deletion-state";
@@ -19,7 +20,8 @@ const SETTINGS_KEYS = new Set([
   "saveReportsEnabled",
   "slackNotificationsEnabled",
   "llmAnalysisMode",
-  "hybridPlannerConsent"
+  "hybridPlannerConsent",
+  "privateAnalysisConsent"
 ]);
 
 interface RepositorySettingsPatchRequest {
@@ -34,6 +36,7 @@ interface RepositorySettingsPatchRequest {
     slackNotificationsEnabled?: unknown;
     llmAnalysisMode?: unknown;
     hybridPlannerConsent?: unknown;
+    privateAnalysisConsent?: unknown;
   };
 }
 
@@ -119,11 +122,19 @@ export async function PATCH(request: Request) {
   }
 
   const inviteToken = request.headers.get("x-agentproof-beta-invite-token") ?? undefined;
-  const access = await verifyTenantAccess({
-    tenantId: body.tenantId,
-    inviteToken,
-    cookieHeader: request.headers.get("cookie")
-  });
+  let access;
+  try {
+    access = body.tenantId === undefined
+      ? await resolveTenantAuthAccess({ cookieHeader: request.headers.get("cookie") })
+      : await verifyTenantAccess({
+        tenantId: body.tenantId,
+        inviteToken,
+        cookieHeader: request.headers.get("cookie")
+      });
+  } catch (error) {
+    if (!(error instanceof TenantAuthStoreError)) throw error;
+    return noStoreJson({ error: "Tenant session store is unavailable.", code: "tenant_repository_settings_unavailable" }, { status: 503 });
+  }
   if (!access.authorized || !access.tenantId) {
     return noStoreJson({
       error: "Tenant repository settings require valid tenant authorization.",
@@ -195,7 +206,7 @@ export async function PATCH(request: Request) {
     if (error instanceof TenantControlPlaneStoreError) {
       if (error.message.includes("consent is invalid")) {
         return noStoreJson({
-          error: "Repository settings cannot grant private enhanced planning consent for this repository.",
+          error: "Repository consent or analysis setting is invalid for this repository.",
           code: "tenant_repository_settings_invalid"
         }, { status: 422 });
       }
@@ -238,7 +249,9 @@ function toPublicRepositorySettings(grant: TenantRepositoryGrant) {
     commentEnabled: grant.commentEnabled,
     slackNotificationsEnabled: grant.slackNotificationsEnabled,
     llmAnalysisMode: grant.llmAnalysisMode ?? "essential",
-    hybridPlannerConsentVersion: grant.hybridPlannerConsentVersion ?? null
+    hybridPlannerConsentVersion: grant.hybridPlannerConsentVersion ?? null,
+    privateAnalysisConsentVersion: grant.privateAnalysisConsentVersion ?? null,
+    repositoryPrivate: grant.repositoryPrivate === true
   };
 }
 
@@ -264,6 +277,7 @@ function validateSettingsPayload(value: Record<string, unknown>): {
     slackNotificationsEnabled?: boolean;
     llmAnalysisMode?: "essential" | "enhanced";
     hybridPlannerConsent?: boolean;
+    privateAnalysisConsent?: boolean;
   };
 } {
   const entries = Object.entries(value);
@@ -277,6 +291,7 @@ function validateSettingsPayload(value: Record<string, unknown>): {
     slackNotificationsEnabled?: boolean;
     llmAnalysisMode?: "essential" | "enhanced";
     hybridPlannerConsent?: boolean;
+    privateAnalysisConsent?: boolean;
   } = {};
 
   for (const [key, setting] of entries) {
@@ -297,6 +312,10 @@ function validateSettingsPayload(value: Record<string, unknown>): {
         ? null
         : undefined;
   delete settings.hybridPlannerConsent;
+  const privateAnalysisConsentVersion = settings.privateAnalysisConsent === true
+    ? "2026-09-24.v1" as const
+    : settings.privateAnalysisConsent === false ? null : undefined;
+  delete settings.privateAnalysisConsent;
 
-  return { valid: true, settings: { ...settings, ...(hybridPlannerConsentVersion !== undefined ? { hybridPlannerConsentVersion } : {}) } };
+  return { valid: true, settings: { ...settings, ...(hybridPlannerConsentVersion !== undefined ? { hybridPlannerConsentVersion } : {}), ...(privateAnalysisConsentVersion !== undefined ? { privateAnalysisConsentVersion } : {}) } };
 }

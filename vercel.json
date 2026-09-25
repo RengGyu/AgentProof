@@ -10,6 +10,10 @@
     {
       "path": "/api/cron/reports/cleanup",
       "schedule": "30 5 * * *"
+    },
+    {
+      "path": "/api/cron/github-sessions/cleanup",
+      "schedule": "45 5 * * *"
     }
   ]
 }

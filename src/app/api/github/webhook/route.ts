@@ -1,11 +1,15 @@
+import { PaidBudgetError, withPaidAnalysis, assertPaidAnalysisAllowed } from "@/lib/paid-budget";
 import { resolveNavigationProvider } from "@/lib/gemini-navigation";
 import { enrichReviewNavigation } from "@/lib/review-intent";
 import { buildGitHubPullRequestInput, fetchGitHubPullRequestAnchor, collectReviewArtifacts } from "@/lib/github";
 import {
   AnalysisJobQueueError,
+  claimAnalysisJobById,
+  DEFAULT_ANALYSIS_JOB_CI_DISCOVERY_MS,
   enqueueAnalysisJob,
   getAnalysisJobQueueStatus
 } from "@/lib/analysis-jobs";
+import { runClaimedAnalysisJob } from "@/lib/analysis-worker";
 import {
   getAuditLogStoreStatus,
   recordAuditEvent,
@@ -72,6 +76,7 @@ import {
   enrichReportWithOpenAISemantics
 } from "@/lib/llm-semantic-runtime";
 import { evaluateHybridPlannerGate } from "@/lib/hybrid-planner-consent";
+import { isPrivateAnalysisGrantCurrent } from "@/lib/github-analysis-access";
 import {
   createHybridPlannerGateReader,
   readHybridPlannerTenantAllowlist
@@ -82,8 +87,18 @@ import { after } from "next/server";
 
 const ALLOWED_EVENTS = new Set(["pull_request", "check_run", "check_suite", "status", "ping", "installation", "installation_repositories"]);
 const MAX_WEBHOOK_BODY_BYTES = 400_000;
+export const maxDuration = 300;
 
 export async function POST(request: Request) {
+  try {
+    return await withPaidAnalysis(`webhook:${request.headers.get("x-github-delivery") ?? "missing-delivery"}`, () => handlePost(request));
+  } catch (error) {
+    if (error instanceof PaidBudgetError) return noStoreJson({error:error.message,code:error.code},{status:503});
+    throw error;
+  }
+}
+
+async function handlePost(request: Request) {
   const webhookSecret = process.env.GITHUB_WEBHOOK_SECRET ?? "";
 
   if (!webhookSecret.trim()) {
@@ -446,6 +461,10 @@ async function handlePullRequestAutomation(
     return noStoreJson(body, { status });
   }
 
+  if (automation.repositoryPrivate === true && tenantGrant.grant?.privateAnalysisConsentVersion !== "2026-09-24.v1") {
+    return noStoreJson({ ok: true, ignored: true, willAnalyze: false, willComment: false, code: "private-consent-required", note: "Private repository analysis is off until its code-analysis notice is accepted." });
+  }
+
   if (!tenantGrant.enabled && !context.legacyRepoAllowed) {
     await recordWebhookAuditEvent("github_app_grant_denied", "blocked", automation, context, {
       statusCode: 200,
@@ -769,28 +788,49 @@ async function handlePullRequestAutomation(
             AGENTPROOF_HYBRID_PROOF_PILOT_ENABLED:
               process.env.AGENTPROOF_HYBRID_PROOF_PILOT_ENABLED
           }
-        }).enabled
+        }).enabled,
+        oncePerHead: true
       });
 
-      await recordWebhookAuditEvent("github_app_analysis_queued", "completed", automation, context, {
+      const queued = job.status === "queued";
+      await recordWebhookAuditEvent(queued ? "github_app_analysis_queued" : "github_app_duplicate_skipped", queued ? "completed" : "skipped", automation, context, {
         tenantId: tenantGrant.grant?.tenantId,
         statusCode: 202,
-        code: job.durable ? "github_app_analysis_queued_durable" : "github_app_analysis_queued_memory"
+        code: queued
+          ? job.durable ? "github_app_analysis_queued_durable" : "github_app_analysis_queued_memory"
+          : "github_app_head_already_claimed"
       });
+
+      if ((queued || (context.action === "check_run_completed" && job.status === "processing")) && process.env.VERCEL === "1") {
+        try {
+          const workerUrl = new URL("/api/ops/analysis-jobs/run", context.requestUrl).toString();
+          after(async () => {
+            try {
+              await new Promise<void>((resolve) => setTimeout(resolve, DEFAULT_ANALYSIS_JOB_CI_DISCOVERY_MS));
+              const claimed = await claimAnalysisJobById(job.id);
+              if (claimed.job) await runClaimedAnalysisJob(claimed.job, { requestUrl: workerUrl });
+            } catch {
+              // The daily cron recovers an unclaimed or expired job.
+            }
+          });
+        } catch {
+          // An unavailable post-response scheduler does not discard the queued job.
+        }
+      }
 
       return noStoreJson({
         ok: true,
         accepted: true,
-        queued: true,
+        queued,
         dryRun: false,
         event: safeWebhookString(context.event),
         delivery: safeWebhookString(context.delivery),
         action: context.action,
         automationEnabled: true,
-        willAnalyze: true,
-        willComment: plannedSideEffects.comment,
+        willAnalyze: job.status !== "completed" && job.status !== "failed_terminal",
+        willComment: job.status !== "completed" && job.status !== "failed_terminal" && plannedSideEffects.comment,
         analysis: {
-          status: "queued",
+          status: job.status,
           jobId: job.id,
           repository: automation.repositoryFullName,
           pullRequestNumber: automation.pullRequestNumber,
@@ -835,14 +875,19 @@ async function handlePullRequestAutomation(
     if (!input) {
       throw new Error("GitHub App PR analysis could not build a pull request input.");
     }
+    if (input.repositoryPrivate === true && tenantGrant.grant?.privateAnalysisConsentVersion !== "2026-09-24.v1") {
+      return noStoreJson({ ok: true, ignored: true, willAnalyze: false, willComment: false, code: "private-consent-required" });
+    }
 
     const deterministicReport = generateVerificationReportV2FromInput(input);
     const navigationEnabled = process.env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE === "advisory" && deterministicReport.verificationContract.state === "absent";
     const navigationProvider = resolveNavigationProvider(process.env);
     const semanticResult = navigationEnabled ? {report:await enrichReviewNavigation(input,deterministicReport,{
       model:navigationProvider.model,
-      ...(input.repositoryPrivate === false && navigationProvider.provider ? {
+      ...((input.repositoryPrivate === false || (input.repositoryPrivate === true && tenantGrant.grant?.privateAnalysisConsentVersion === "2026-09-24.v1" && input.sourceProvenance?.origin === "github_snapshot" && (input.taskText.trim() === "" || input.taskSource === "issue"))) && navigationProvider.provider ? {
         provider:navigationProvider.provider,
+        ...(input.repositoryPrivate === true && tenantGrant.grant?.tenantId && tenantGrant.grant?.repositoryId ? { authorizePrivate: () => isPrivateAnalysisGrantCurrent({ tenantId: tenantGrant.grant!.tenantId, repositoryFullName: automation.repositoryFullName, installationId: automation.installationId, repositoryId: tenantGrant.grant!.repositoryId! }) } : {}),
+        readRepositoryPrivate:()=>readGitHubRepositoryPrivate(automation.repositoryFullName,token),
         readArtifacts:(paths,headSha)=>collectReviewArtifacts(automation.pullRequestUrl,token,paths,headSha),
         readCurrentInput:()=>buildGitHubPullRequestInput(automation.pullRequestUrl,token,"",undefined,{expectedHeadSha:input.sourceProvenance?.headSha,expectedBaseSha:input.sourceProvenance?.baseSha})
       }:{})
@@ -864,11 +909,12 @@ async function handlePullRequestAutomation(
             ),
             readGrant: async () => {
               try {
-                return (await authorizeTenantRepositoryGrantAsync({
+                const decision = await authorizeTenantRepositoryGrantAsync({
                   installationId: automation.installationId,
                   repositoryId: automation.repositoryId,
                   repositoryFullName: automation.repositoryFullName
-                })).grant;
+                });
+                return !decision.reason && decision.grant?.privateAnalysisConsentVersion === "2026-09-24.v1" ? decision.grant : undefined;
               } catch {
                 return undefined;
               }
@@ -903,6 +949,7 @@ async function handlePullRequestAutomation(
     if (!runtimeReport.valid) {
       throw new Error(`Generated report failed runtime validation: ${runtimeReport.errors.join("; ")}`);
     }
+    assertPaidAnalysisAllowed();
     let report = runtimeReport.report;
 
     const finalAnchor = await fetchGitHubPullRequestAnchor(automation.pullRequestUrl, token);
@@ -917,8 +964,22 @@ async function handlePullRequestAutomation(
 
     const publicationSuppressed = "publicationSuppressed" in semanticResult &&
       semanticResult.publicationSuppressed === true;
-    const canSaveReport = !publicationSuppressed && plannedSideEffects.saveReport;
-    const canPostComment = !publicationSuppressed && plannedSideEffects.comment;
+    const currentGrantAllows = async (setting: "saveReportsEnabled" | "commentEnabled" | "slackNotificationsEnabled") => {
+      if (!tenantGrant.enabled) return automation.repositoryPrivate !== true && input.repositoryPrivate !== true;
+      try {
+        const current = await authorizeTenantRepositoryGrantAsync({
+          installationId: automation.installationId,
+          repositoryId: automation.repositoryId,
+          repositoryFullName: automation.repositoryFullName
+        });
+        const grant = current.grant;
+        return !current.reason && grant?.tenantId === tenantGrant.grant?.tenantId &&
+          grant?.installationId === automation.installationId && grant?.repositoryId === tenantGrant.grant?.repositoryId &&
+          (input.repositoryPrivate !== true || grant?.privateAnalysisConsentVersion === "2026-09-24.v1") &&
+          grant?.[setting] === true;
+      } catch { return false; }
+    };
+    const canSaveReport = !publicationSuppressed && plannedSideEffects.saveReport && await currentGrantAllows("saveReportsEnabled");
     let saved: Awaited<ReturnType<typeof createAutomationSavedReport>> | undefined;
     if (canSaveReport) {
       report = requirePublishableGeneratedReport(input, report);
@@ -935,12 +996,12 @@ async function handlePullRequestAutomation(
       });
     }
     let comment: Awaited<ReturnType<typeof postGitHubAppMarkerComment>> | undefined;
-    if (canPostComment) {
+    if (!publicationSuppressed && plannedSideEffects.comment && await currentGrantAllows("commentEnabled")) {
       report = requirePublishableGeneratedReport(input, report);
       comment = await postGitHubAppMarkerComment(automation, token, report);
     }
     let slack: Awaited<ReturnType<typeof sendSlackReportSummary>> | undefined;
-    if (!publicationSuppressed && plannedSideEffects.slackSummary) {
+    if (!publicationSuppressed && plannedSideEffects.slackSummary && await currentGrantAllows("slackNotificationsEnabled")) {
       report = requirePublishableGeneratedReport(input, report);
       slack = await sendSlackReportSummary(report);
     }

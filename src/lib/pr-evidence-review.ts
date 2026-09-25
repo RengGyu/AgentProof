@@ -1,3 +1,4 @@
+import { isTestFocusedReviewGoal } from "./review-intent";
 import type { ReviewIntentGraphV1, ReviewSourceRefV1 } from "./review-intent";
 import type { EvidenceItem, RequirementFinding, VerificationReport, VerificationReportV2 } from "./types";
 import type { DashboardReportDetail } from "./github-dashboard-view-model";
@@ -102,7 +103,7 @@ export function buildPrEvidenceReview(report: VerificationReport, context: PrEvi
   const legacyObjectives = report.requirements.map(requirement => objectiveFor(report, requirement, evidenceById, repositoryFullName, headSha, baseSha));
   const graph = (report as VerificationReportV2).reviewCandidates?.intentGraph;
   const objectives = graph ? projectReviewIntents(graph, legacyObjectives, evidenceById, repositoryFullName, headSha, baseSha) : legacyObjectives;
-  const linkedEvidenceIds = new Set(objectives.flatMap((objective) => [...objective.code, ...(objective.moreContext ?? []), ...objective.tests, ...objective.execution].map((item) => item.evidenceId)));
+  const linkedEvidenceIds = new Set(objectives.flatMap((objective) => [...(objective.firstInspection?[objective.firstInspection]:[]), ...objective.code, ...(objective.moreContext ?? []), ...objective.tests, ...objective.execution].map((item) => item.evidenceId)));
   return {
     mode: "objectives",
     source: sourceForDisplayedRequirements(report.requirements, report.analysisContext),
@@ -178,7 +179,7 @@ export function buildDashboardPrEvidenceReview(detail: DashboardReportDetail & {
   });
   const graph = report.reviewCandidates?.intentGraph;
   const objectives = graph ? projectReviewIntents(graph, legacyObjectives, evidenceById, detail.repositoryFullName, detail.headSha, undefined) : legacyObjectives;
-  const linkedEvidenceIds = new Set(objectives.flatMap((objective) => [...objective.code, ...(objective.moreContext ?? []), ...objective.tests, ...objective.execution].map((item) => item.evidenceId)));
+  const linkedEvidenceIds = new Set(objectives.flatMap((objective) => [...(objective.firstInspection?[objective.firstInspection]:[]), ...objective.code, ...(objective.moreContext ?? []), ...objective.tests, ...objective.execution].map((item) => item.evidenceId)));
   const analysisContext = detail.analysisContext ?? (report as { analysisContext?: VerificationReport["analysisContext"] }).analysisContext;
   return { mode: "objectives", source: sourceForDisplayedRequirements(report.requirements ?? [], analysisContext), objectives, ...(graph ? { retrievalNote: retrievalNote(graph) } : {}), changes: changes.filter((item) => !linkedEvidenceIds.has(item.evidenceId)), nextInspection: objectives[0]?.nextInspection ?? "Link unconfirmed; inspect collected changes separately." };
 }
@@ -413,8 +414,14 @@ function mergeReviewItems(...groups: PrEvidenceReviewItem[][]): PrEvidenceReview
 
 function projectReviewIntents(graph: ReviewIntentGraphV1, objectives: PrEvidenceReviewObjective[], evidence: ReadonlyMap<string,EvidenceItem>, repository: string|undefined, head: string|undefined, base: string|undefined): PrEvidenceReviewObjective[] {
   const assigned = new Set<string>();
-  const projected = graph.goals.map(goal => {
-    const legacy = goal.requirementIds.flatMap(id=>objectives.filter(o=>o.id===id));
+  const projected = graph.goals.flatMap(goal => {
+    const legacy = objectives.filter(o=>goal.requirementIds.includes(o.id));
+    // Offsets identify provenance, not a displayable objective. Unbound introductory
+    // prose must not become a goal or an implied first-file recommendation.
+    if (!legacy.length) return [];
+    const text=legacy.map(o=>o.text).join("; ");
+    const testFocused=isTestFocusedReviewGoal(text);
+    const groundedTestLocations=new Set<string>();
     for(const o of legacy)assigned.add(o.id);
     const retained=legacy.flatMap(o=>[...o.code,...o.tests,...o.execution]).filter(i=>i.relation!=="candidate"||i.kind==="execution" || i.candidateBasis==="Existing semantic relation");
     const candidates=graph.edges.filter(e=>e.goalId===goal.id).flatMap(edge=>{
@@ -425,15 +432,28 @@ function projectReviewIntents(graph: ReviewIntentGraphV1, objectives: PrEvidence
       if(chunk.evidenceId){
         const item=evidence.get(chunk.evidenceId);
         if(!item || (item.codeLocation?.path??item.locator)!==chunk.path || item.codeLocation?.revisionSha && chunk.revision && item.codeLocation.revisionSha!==chunk.revision)return [];
-        return [{...reviewItem(item,"candidate",repository,head,base),candidateBasis:`Candidate: ${edge.basis.join(" + ")}`}];
+        const url=edge.line && repository && graph.repository===repository && chunk.revision
+          ? buildExactGitHubFileUrl({repositoryFullName:repository,revisionSha:chunk.revision,path:chunk.path,line:edge.line}) : undefined;
+        if(url && edge.lineBasis==="test_body_match")groundedTestLocations.add(item.id);
+        return [{...reviewItem(item,"candidate",repository,head,base),...(url?{url,line:edge.line,whyInspect:"Goal words or identifiers occur here; inspect the surrounding code."}:{}),candidateBasis:`Candidate: ${edge.basis.join(" + ")}`}];
       }
       const url=repository && graph.repository===repository && chunk.revision ? buildExactGitHubFileUrl({repositoryFullName:repository,revisionSha:chunk.revision,path:chunk.path,line:chunk.startLine}) : undefined;
       return [{evidenceId:chunk.id,kind:/test|spec/i.test(chunk.path)?"test" as const:"code" as const,label:chunk.path,relation:"candidate" as const,...(url?{url,line:chunk.startLine}:{}),candidateBasis:`Available snapshot: ${edge.basis.join(" + ")}`}];
     });
-    const items=mergeReviewItems(retained,candidates);
+    const items=mergeReviewItems(retained,candidates).map(item=>{
+      // The evidence relation stays intact; only its same-file navigation hint changes.
+      const location=candidates.find(candidate=>candidate.evidenceId===item.evidenceId&&candidate.whyInspect);
+      const located=location?{...item,url:location.url,line:location.line,whyInspect:location.whyInspect,candidateBasis:location.candidateBasis}:item;
+      if(testFocused && item.kind!=="execution" && !(item.kind==="test" && groundedTestLocations.has(item.evidenceId))){
+        const {line:_,whyInspect:__,...file}=located;
+        return {...file,url:file.url?.replace(/#.*$/,""),uncertainty:"No goal-specific test body line was established; inspect this candidate file at the analyzed commit."};
+      }
+      return located;
+    });
     const code=items.filter(i=>i.kind==="code"), tests=items.filter(i=>i.kind==="test"), execution=items.filter(i=>i.kind==="execution" || i.candidateBasis==="Existing semantic relation");
-    const first=code[0]??tests[0]??execution[0];
-    return {id:goal.id,text:legacy[0]?.text??`Review goal at source offset ${goal.sourceRefs[0]!.start}`,code,tests,execution,moreContext:code.slice(1),sourceRefs:goal.sourceRefs,facets:goal.facets,nextInspection:first?`Inspect ${first.label}.`:"Link unconfirmed; not found does not mean not implemented."};
+    const first=testFocused?(tests[0]??code[0]??execution[0]):(code[0]??tests[0]??execution[0]);
+    const testFirst=first?.kind==="test"&&testFocused;
+    return [{id:goal.id,text,code,tests:testFirst?tests.filter(item=>item!==first):tests,execution,...(testFirst?{firstInspection:first}:{moreContext:code.slice(1)}),sourceRefs:goal.sourceRefs,facets:goal.facets,nextInspection:first?`Inspect ${first.label}.`:"Link unconfirmed; not found does not mean not implemented."}];
   });
   // Unmapped legacy objectives retain their evidence; a parser ceiling must not erase it.
   return [...projected,...objectives.filter(o=>!assigned.has(o.id))];
@@ -460,10 +480,11 @@ function projectNavigation(nav:import("./review-intent").ReviewNavigation,change
       return [{evidenceId:a.id,kind:a.kind,label:a.path,relation:"candidate" as const,line:a.startLine,...(nav.repository?{url:buildExactGitHubFileUrl({repositoryFullName:nav.repository,revisionSha:a.revision,path:a.path,line:a.startLine})}:{}),whyInspect:edge.whyInspect,reviewQuestion:edge.reviewQuestion,uncertainty:edge.uncertainty}];
     }):[];
     const firstInspection=items.find(i=>i.evidenceId===goal.firstInspection);
-    return {id:goal.id,text:goal.summary,sourceRefs:goal.sourceRefs,goalContext:[`${goal.emphasis} · ${goal.authority}`,...goal.facets.map(f=>`${f.kind==='motivation'?'Author-stated motivation':f.kind==='implementation_claim'?'Author implementation claim':f.kind==='test_claim'?'Author test claim':f.kind}: ${f.summary} (${['motivation','implementation_claim','test_claim'].includes(f.kind)?'unverified; ':''}${f.sourceRefs.map(r=>`${r.sourceId} ${r.start}–${r.end}`).join(', ')})`),...goal.openQuestions,...goal.uncertainty],...(firstInspection?{firstInspection}:{}),code:items.filter(i=>i.kind==="code"),tests:items.filter(i=>i.kind==="test"),execution:[],nextInspection:firstInspection?`Inspect ${firstInspection.label}. ${firstInspection.whyInspect}`:"No ranked first location; inspect collected evidence without a recommendation."};
+    const remainingItems=firstInspection?items.filter(item=>item.evidenceId!==firstInspection.evidenceId):items;
+    return {id:goal.id,text:goal.summary,sourceRefs:goal.sourceRefs,goalContext:[`${goal.emphasis} · ${goal.authority}`,...goal.facets.map(f=>`${f.kind==='motivation'?'Author-stated motivation':f.kind==='implementation_claim'?'Author implementation claim':f.kind==='test_claim'?'Author test claim':f.kind}: ${f.summary} (${['motivation','implementation_claim','test_claim'].includes(f.kind)?'unverified; ':''}${f.sourceRefs.map(r=>`${r.sourceId} ${r.start}–${r.end}`).join(', ')})`),...goal.openQuestions,...goal.uncertainty],...(firstInspection?{firstInspection}:{}),code:remainingItems.filter(i=>i.kind==="code"),tests:remainingItems.filter(i=>i.kind==="test"),execution:[],nextInspection:firstInspection?`Inspect ${firstInspection.label}. ${firstInspection.whyInspect}`:"No ranked first location; inspect collected evidence without a recommendation."};
   });
   const authorities=[...new Set(nav.sources.map(s=>s.authority))];
   const authority=authorities.length>1?'mixed_sources':authorities[0]??'provided_source';
   const kind=authority==='issue_source'?'linked_issue':authority==='pr_author_claim'?'pr_author_claim':authority==='mixed_sources'?'mixed':'provided_requirement';
-  return {mode:objectives.length?'objectives':'change_summary',sourceLinks:nav.sources.filter((s,index,all)=>all.findIndex(other=>other.url===s.url)===index).flatMap(s=>s.url?[{label:s.authority.replaceAll('_',' '),url:s.url}]:[]),source:nav.sources.length?{kind,authority:authority==='pr_author_claim'?'author_claim':authority,label:authority.replaceAll('_',' ')}:null,objectives,changes:bound?changes:changes.map(({url:_,...item})=>item),nextInspection:objectives[0]?.nextInspection??'Goal interpretation unavailable; source and unranked collected changes remain available.',retrievalNote:`Bounded supplied-artifact search; whole repository not searched.`};
+  return {mode:objectives.length?'objectives':'change_summary',sourceLinks:nav.sources.filter((s,index,all)=>all.findIndex(other=>other.url===s.url)===index).flatMap(s=>s.url?[{label:s.authority.replaceAll('_',' '),url:s.url}]:[]),source:nav.sources.length?{kind,authority:authority==='pr_author_claim'?'author_claim':authority,label:authority.replaceAll('_',' ')}:null,objectives,changes:bound?changes:changes.map(({url:_,...item})=>item),nextInspection:objectives[0]?.nextInspection??(nav.limitations.includes('no_interpreted_goal')&&!nav.failures?.some(f=>f.stage==='intent')?'No review goal was identified; inspect the source and collected changes.':'Goal interpretation unavailable; source and unranked collected changes remain available.'),retrievalNote:`Bounded supplied-artifact search; whole repository not searched.${nav.limitations.includes('freshness_unavailable')?' Current GitHub PR state was not reconfirmed; code links remain pinned to the analyzed commit.':''}`};
 }

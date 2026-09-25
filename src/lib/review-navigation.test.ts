@@ -1,3 +1,9 @@
+import { vi } from "vitest";
+// Downstream unit fixtures isolate budget; paid-budget*.test.ts checks the real boundary.
+vi.mock('@/lib/paid-budget', async importOriginal => ({
+  ...await importOriginal<typeof import('@/lib/paid-budget')>(),
+  ...(await import('@/lib/test-support/unmetered-budget')).unmeteredBudgetFixture
+}));
 import { createHash } from 'node:crypto';
 import { describe, it, expect } from 'vitest';
 import * as intent from './review-intent';
@@ -11,6 +17,7 @@ import { prepareTenantDetailReportForStorage } from './server-report-store';
 import { projectTenantPersistedReport, decodeTenantPersistedReport } from './tenant-report-validation';
 import { sanitizeReportForShare } from './report-share';
 import { buildDashboardPrEvidenceReview, buildPrEvidenceReview } from './pr-evidence-review';
+import { GitHubFetchError } from './github';
 import type { PullRequestInput } from './types';
 const head='a'.repeat(40),base='b'.repeat(40);
 const input=():PullRequestInput=>({title:'Retry queue',url:'https://github.com/acme/queue/pull/1',repositoryPrivate:false,taskSource:'issue',taskText:'Retain queued work when reconnecting.\n\nOptionally retire the switch.',description:'Restores pending work.',changedFiles:[{path:'src/queue.ts',status:'modified',patch:'@@ -1,2 +1,2 @@\n function reconnect(queue) {\n- return [];\n+ return queue.pending;'}],checks:[],logs:[],sourceProvenance:{version:1,origin:'github_snapshot',headSha:head,baseSha:base,evidenceCapturedAt:'2026-09-16T00:00:00Z',inputFingerprint:{version:1,algorithm:'sha256',value:'c'.repeat(64),coverage:'github_metadata'}}});
@@ -75,6 +82,18 @@ describe('navigation boundaries and surfaces',()=>{
  it('rechecks freshness and removes stale ranked locations',async()=>{
   const i=input();let reads=0;const r=await run(i,async(q:any)=>q.stage==='intent'?goals(q):ranks(q),{readCurrentInput:async()=>++reads===1?i:({...i,sourceProvenance:{...i.sourceProvenance,headSha:'d'.repeat(40)}})});
   expect(r.reviewCandidates.navigation.limitations).toContain('stale_snapshot');expect(buildPrEvidenceReview(r).objectives[0].firstInspection).toBeUndefined();
+ });
+ it('keeps exact-commit review navigation when only public GitHub recheck is rate limited',async()=>{
+  const i=input();let calls=0;
+  const r=await run(i,async(q:any)=>{calls++;return q.stage==='intent'?goals(q):ranks(q);},{
+   readCurrentInput:async()=>{throw new GitHubFetchError(403,'github_rate_limited','API limit reached',false);}
+  });
+  const view=buildPrEvidenceReview(r);
+  expect(calls).toBeGreaterThan(0);
+  expect(view.objectives[0].firstInspection?.url).toContain(`/blob/${head}/`);
+  expect(view.retrievalNote).toContain('not reconfirmed');
+  expect(r.reviewCandidates.navigation.limitations).toContain('freshness_unavailable');
+  expect(validateRuntimeReportBoundary({boundary:'generated_private_full',input:i,report:r}).valid).toBe(true);
  });
 });
 
@@ -206,7 +225,9 @@ describe('navigation refinement resilience',()=>{
   const r=await run(i,async(q:any)=>{if(q.stage==='intent')return goals(q);const first=q.artifacts.find((a:any)=>a.side==='head'&&a.startLine===40);return {...ranks(q),rankings:q.goals.map((g:any)=>({goalId:g.id,firstInspection:first.id,candidates:q.artifacts.map((a:any)=>({...ranks(q).rankings[0].candidates[0],artifactId:a.id})),uncertainty:[]}))};});
   const n=r.reviewCandidates.navigation;expect(n.goals[0].candidates).toHaveLength(4);expect(intent.validReviewNavigation(n)).toBe(true);
   expect(n.goals[0].candidates.map((c:any)=>{const a=n.artifacts.find((a:any)=>a.id===c.artifactId);return [a.side,a.revision,a.startLine];})).toEqual(expect.arrayContaining([['head',head,1],['base',base,1],['head',head,40],['base',base,40]]));
-  const view=buildPrEvidenceReview(r);expect(view.objectives[0].code).toHaveLength(4);expect(view.objectives[0].firstInspection).toMatchObject({label:'src/queue.ts',line:40,url:`https://github.com/acme/queue/blob/${head}/src/queue.ts#L40`});
+  const view=buildPrEvidenceReview(r);const locations=[view.objectives[0].firstInspection!,...view.objectives[0].code];expect(locations).toHaveLength(4);expect(new Set(locations.map(item=>item.evidenceId)).size).toBe(4);
+  expect(locations.map(item=>{const artifact=n.artifacts.find((artifact:any)=>artifact.id===item.evidenceId)!;return [artifact.side,artifact.revision,artifact.startLine];})).toEqual(expect.arrayContaining([['head',head,1],['base',base,1],['head',head,40],['base',base,40]]));
+  expect(view.objectives[0].firstInspection).toMatchObject({label:'src/queue.ts',line:40,url:`https://github.com/acme/queue/blob/${head}/src/queue.ts#L40`});
  });
  it('separates primary ranking readiness from partial source coverage across signed surfaces',async()=>{
   const i=input();const r=await run(i,async(q:any)=>q.stage==='intent'?goals(q):({...ranks(q),rankings:ranks(q).rankings.slice(0,1)}));
@@ -494,11 +515,11 @@ describe('navigation collection and terminal diagnostics',()=>{
   expect(reads).toBe(1);expect(packet.artifacts.some((a:any)=>a.origin==='snapshot'&&a.content.includes('return value'))).toBe(true);expect(JSON.stringify(packet)).not.toContain('cut_off');
   const events:any[]=intent.getReviewNavigationDiagnostics(r.reviewCandidates.navigation);expect(events.at(-1).lifecycle).toEqual(expect.arrayContaining([expect.objectContaining({kind:'read',trigger:'automatic',outcome:'supplied'})]));
  });
- it('collects zero-call freshness failures without claiming a changed snapshot',async()=>{
+ it('stops before the model when GitHub access is denied without claiming a changed snapshot',async()=>{
   const i=input();let calls=0;const emitted:any[]=[];
-  const r=await run(i,async()=>{calls++;},{readCurrentInput:async()=>{throw Object.assign(Error('DO_NOT_STORE'),{code:'github_rate_limited'});},onDiagnostics:(d:any)=>emitted.push(d)});
-  expect(calls).toBe(0);expect(r.reviewCandidates.navigation.limitations).toContain('freshness_unavailable');expect(r.reviewCandidates.navigation.limitations).not.toContain('stale_snapshot');expect(emitted).toHaveLength(1);
-  expect(emitted[0]).toMatchObject({stage:'preflight',providerCalled:false,lifecycle:expect.arrayContaining([expect.objectContaining({kind:'freshness',phase:'initial',outcome:'collection_failed',code:'github_rate_limited'})])});expect(JSON.stringify(emitted)).not.toContain('DO_NOT_STORE');
+  const r=await run(i,async()=>{calls++;},{readCurrentInput:async()=>{throw Object.assign(Error('DO_NOT_STORE'),{code:'github_permission_denied'});},onDiagnostics:(d:any)=>emitted.push(d)});
+  expect(calls).toBe(0);expect(r.reviewCandidates.navigation.limitations).toContain('freshness_access_changed');expect(r.reviewCandidates.navigation.limitations).not.toContain('stale_snapshot');expect(emitted).toHaveLength(1);
+  expect(emitted[0]).toMatchObject({stage:'preflight',providerCalled:false,lifecycle:expect.arrayContaining([expect.objectContaining({kind:'freshness',phase:'initial',outcome:'access_changed',code:'github_permission_denied'})])});expect(JSON.stringify(emitted)).not.toContain('DO_NOT_STORE');
  });
  it('distinguishes a known revision change thrown by the collector',async()=>{
   const {GitHubPullRequestHeadChangedError}=await import('./github');const i=input();
@@ -516,7 +537,7 @@ it('preserves independent test anchors through signed storage without duplicate 
  const r=await run(i,async(q:any)=>q.stage==='intent'?goals(q):{rankings:q.goals.map((g:any)=>({goalId:g.id,firstInspection:q.artifacts[1].id,candidates:[...q.artifacts,q.artifacts[1]].map((a:any)=>({artifactId:a.id,relevance:'possible',whyInspect:'Inspect the independent assertion',reviewQuestion:'Is pending work retained?',uncertainty:''})),uncertainty:[]})),readPaths:[]});
  expect(validateRuntimeReportBoundary({boundary:'generated_private_full',input:i,report:r}).valid).toBe(true);
  const saved=projectTenantPersistedReport(prepareTenantDetailReportForStorage(r,'verified_agentproof','test-key'),'test-key');const decoded=decodeTenantPersistedReport(saved,{signingSecret:'test-key',createdAt:r.createdAt});expect(decoded.status).toBe('valid');
- if(decoded.status!=='valid')throw Error('invalid storage');const view=buildPrEvidenceReview(decoded.report);expect(view.objectives[0].tests.map(t=>t.line)).toEqual([64,4]);
+ if(decoded.status!=='valid')throw Error('invalid storage');const view=buildPrEvidenceReview(decoded.report);const testAnchors=[view.objectives[0].firstInspection,...view.objectives[0].tests].filter((item):item is NonNullable<typeof item>=>item?.kind==='test');expect(testAnchors.map(item=>item.line)).toEqual([64,4]);expect(new Set(testAnchors.map(item=>item.evidenceId)).size).toBe(2);
 });
 it.each(['github_permission_denied','github_fetch_failed'])('keeps final authorization closed and diagnoses %s',async(code)=>{
  const i=input();let calls=0;const r=await run(i,async(q:any)=>q.stage==='intent'?goals(q):ranks(q),{readCurrentInput:async()=>{if(++calls===1)return i;throw Object.assign(Error('sensitive message'),{code});}});
@@ -579,4 +600,28 @@ it.each(['base','head'])('keeps the exact %s recommendation and safe description
  const review=buildPrEvidenceReview(decoded.report),first=review.objectives[0].firstInspection!;expect(first.evidenceId).toBe(g.firstInspection);expect(first.url).toBe(`https://github.com/acme/queue/blob/${side==='base'?base:head}/src/queue.ts#L1`);
  const html=renderToStaticMarkup(createElement(PrEvidenceReview,{review:{...review,changes:[]}}));expect(html).toContain('Open referenced lines');expect(html).not.toContain('Open first changed line');
  for(const surface of [html,reportToMarkdown(decoded.report)]){expect(surface).toContain('Does reconnect retain pending entries?');expect(surface).toContain('Runtime behavior was not exercised');expect(surface).not.toContain('return queue.pending;');}
+});
+
+it('distinguishes a completed no-goal interpretation from provider failure while retaining source and exact changes',async()=>{
+ const i=input();
+ for(const failed of [false,true]){
+  const r=await run(i,async()=>{if(failed)throw new Error('provider unavailable');return {goals:[],unprocessed:[]};});
+  const view=buildPrEvidenceReview(r);
+  expect(view.mode).toBe('change_summary');
+  expect(view.sourceLinks?.length).toBeGreaterThan(0);
+  expect(view.changes.some(item=>item.url?.includes(`/blob/${head}/`))).toBe(true);
+  expect(view.nextInspection).toContain(failed?'Goal interpretation unavailable':'No review goal was identified');
+ }
+});
+
+it('preserves the selected exact line link in both Markdown exports after deduplication',async()=>{
+ const {reportToMarkdown}=await import('./markdown');const {dashboardReportToMarkdown}=await import('./dashboard-report-export');
+ const r=await run(input(),async(q:any)=>q.stage==='intent'?goals(q):ranks(q));
+ const first=buildPrEvidenceReview(r).objectives[0].firstInspection!;
+ for(const markdown of [reportToMarkdown(r),dashboardReportToMarkdown({report:r,repositoryFullName:'acme/queue',headSha:head,freshness:'current',copyEligible:true})]){
+  const firstSection=markdown.split('**Inspect first**')[1]!.split('Next to inspect:')[0]!;
+  expect(firstSection).toContain(first.url);
+  expect(firstSection).toContain(first.whyInspect);
+  expect(firstSection).toContain(first.reviewQuestion);
+ }
 });

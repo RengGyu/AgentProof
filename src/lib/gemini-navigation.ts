@@ -1,3 +1,4 @@
+import { paidProviderCall, normalizePaidUsage } from './paid-budget';
 import { recordNavigationTransport, type NavigationTransportDiagnostics } from './review-navigation-diagnostics';
 import { GoogleGenAI } from '@google/genai';
 import {
@@ -12,9 +13,9 @@ import type { ReviewNavigationOptions, ReviewNavigationRequest } from './review-
 interface GeminiGenerateRequest {
   model:string;
   contents:string;
-  config:{systemInstruction:string;responseMimeType:string;responseJsonSchema:unknown;maxOutputTokens:number};
+  config:{systemInstruction:string;responseMimeType:string;responseJsonSchema:unknown;maxOutputTokens:number;abortSignal?:AbortSignal;httpOptions?:{retryOptions:{attempts:number}}};
 }
-interface GeminiResponse {text?:string;modelVersion?:string;usageMetadata?:{promptTokenCount?:number;candidatesTokenCount?:number;thoughtsTokenCount?:number};candidates?:Array<{finishReason?:string}>}
+interface GeminiResponse {text?:string;modelVersion?:string;usageMetadata?:{promptTokenCount?:number;candidatesTokenCount?:number;thoughtsTokenCount?:number;totalTokenCount?:number;toolUsePromptTokenCount?:number};candidates?:Array<{finishReason?:string}>}
 type GeminiGenerateContent=(request:GeminiGenerateRequest)=>Promise<GeminiResponse>;
 const directModel=(model:string)=>model.replace(/^google\//,'');
 
@@ -26,16 +27,18 @@ export async function submitReviewNavigationWithGemini(
   const started=Date.now();
   let response:GeminiResponse;
   try {
-    response=await generateContent({
+    response=await paidProviderCall({provider:"google",model:directModel(request.model),usage:result=>normalizePaidUsage("google",result.usageMetadata),invoke:signal=>generateContent({
       model:directModel(request.model),
       contents:JSON.stringify(request),
       config:{
         systemInstruction:reviewNavigationSystemInstruction(request.stage),
         responseMimeType:'application/json',
         responseJsonSchema:request.stage==='intent'?REVIEW_NAVIGATION_INTENT_SCHEMA:REVIEW_NAVIGATION_RANKING_SCHEMA,
-        maxOutputTokens:6000
+        maxOutputTokens:6000,
+        abortSignal:signal,
+        httpOptions:{retryOptions:{attempts:1}}
       }
-    });
+    })});
   } catch {
     recordNavigationTransport(request,{provider:'google',started,finishReasons:['failed']},options.onDiagnostics);
     throw new OpenAISemanticError('openai_provider_unavailable',true,'Gemini navigation provider unavailable.');
@@ -48,6 +51,11 @@ export async function submitReviewNavigationWithGemini(
 
 /** Navigation uses Google Gemini directly; the legacy variable name remains a compatibility alias. */
 export function resolveNavigationProvider(env:Record<string,string|undefined>):Pick<ReviewNavigationOptions,'model'|'provider'> {
+  const selection=env.AGENTPROOF_NAVIGATION_PROVIDER?.trim().toLowerCase();
+  if(selection==='openai'){
+    const apiKey=env.OPENAI_API_KEY?.trim(),model=env.OPENAI_MODEL?.trim();
+    return {model:model??'unconfigured',...(apiKey&&model?{provider:(request:ReviewNavigationRequest)=>submitReviewNavigationWithOpenAI(request,{apiKey})}:{})};
+  }
   const geminiKey=env.GEMINI_API_KEY?.trim()||env.AI_GATEWAY_API_KEY?.trim();
   if(geminiKey){
     const model=directModel(env.AGENTPROOF_LLM_MODEL?.trim()||'gemini-3.8-flash');

@@ -1,7 +1,24 @@
+// Downstream unit fixtures isolate budget; paid-budget*.test.ts checks the real boundary.
+vi.mock('@/lib/paid-budget', async importOriginal => ({
+  ...await importOriginal<typeof import('@/lib/paid-budget')>(),
+  ...(await import('@/lib/test-support/unmetered-budget')).unmeteredBudgetFixture
+}));
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { POST } from "./route";
+import { POST as routePOST } from "./route";
+// These downstream evidence/provider fixtures represent an authenticated caller.
+// auth.test.ts exercises the real durable session and CSRF boundary separately.
+vi.mock("@/lib/tenant-auth", async importOriginal => ({
+  ...await importOriginal<typeof import("@/lib/tenant-auth")>(),
+  resolveTenantAuthAccess: vi.fn(async () => ({ authorized: true, tenantId: "gh_123", memberId: "github:123", method: "durable-session", sessionState: "active" }))
+}));
+vi.mock("@/lib/github-analysis-access", () => ({ resolveGitHubAnalysisCredential: vi.fn(async () => ({ ok: true, token: "server-selected-test-token", kind: "installation" })) }));
+function POST(request: Request) {
+  const headers = new Headers(request.headers);
+  headers.set("origin", new URL(request.url).origin);
+  return routePOST(new Request(request, { headers }));
+}
 import { validateRuntimeReportBoundary } from "@/lib/report-runtime-validation";
 import { encodeReportForShare, decodeSharedReport } from "@/lib/report-share";
 import { projectTenantPersistedReport, decodeTenantPersistedReport, validateTenantPersistedReport } from "@/lib/tenant-report-validation";
@@ -69,6 +86,9 @@ describe("ordinary static type real analyze flow", () => {
         expect(output).toContain("not whole-goal or PR verification");
         expect(output).not.toContain("PRIVATE_CODE");
       }
+      const reportHtml = renderToStaticMarkup(createElement(ReportView, { report: json.report }));
+      expect(reportHtml).toContain('<details class="pr-evidence-context" aria-label="Scoped static evidence">');
+      expect(reportHtml).toContain("<summary>Static evidence</summary>");
       expect(JSON.parse(dashboardReportToJson(detail)).static_predicates).toEqual(json.report.ordinaryStaticSummary);
     }
   });

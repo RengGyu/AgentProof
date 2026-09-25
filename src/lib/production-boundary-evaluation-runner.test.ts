@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { POST } from "../app/api/analyze/route";
+vi.mock("./tenant-auth", async original => ({ ...await original<typeof import("./tenant-auth")>(), resolveTenantAuthAccess: async () => ({ authorized: true, tenantId: "gh_123", memberId: "github:123" }) }));
+vi.mock("./github-analysis-access", () => ({ resolveGitHubAnalysisCredential: vi.fn(async () => ({ ok: true, token: "server-selected-test-token", kind: "user" })) }));
 import { buildGitHubPullRequestInput, mergePastedEvidenceForAnalysis } from "./github";
 import { validateVerificationReport } from "./report-validation";
 import { validateRuntimeReportBoundary } from "./report-runtime-validation";
@@ -524,7 +526,7 @@ describe("production boundary evaluation runner", () => {
     expect(live?.sourceProvenance?.origin).toBe("github_snapshot");
     const response = await POST(new Request("http://localhost/api/analyze", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", origin: "http://localhost" },
       body: JSON.stringify(request)
     }));
     const payload = await response.json() as { report: VerificationReport };

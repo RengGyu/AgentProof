@@ -11,7 +11,8 @@ export async function POST(request: Request) {
     if (new URL(request.url).origin !== new URL(config.callbackUrl).origin) {
       return oauthCallbackOriginMismatch(config.callbackUrl);
     }
-    const started = beginGitHubOAuth(config);
+    const body = await request.json().catch(() => null);
+    const started = beginGitHubOAuth(config, Date.now(), body?.returnTo);
     return noStoreJson({ ok: true, authorizationUrl: started.authorizationUrl, privacy: "state-and-pkce-cookie-only", next: "github_login" }, {
       headers: cookieHeaders(started.stateCookie, clearGitHubOAuthInstallCookie())
     });

@@ -1,3 +1,8 @@
+// Downstream unit fixtures isolate budget; paid-budget*.test.ts checks the real boundary.
+vi.mock('@/lib/paid-budget', async importOriginal => ({
+  ...await importOriginal<typeof import('@/lib/paid-budget')>(),
+  ...(await import('@/lib/test-support/unmetered-budget')).unmeteredBudgetFixture
+}));
 import { createHash, createHmac, generateKeyPairSync } from "crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearAnalysisJobsForTests, getAnalysisJobsForTests } from "@/lib/analysis-jobs";
@@ -19,11 +24,13 @@ import { GET as GETSavedReport } from "@/app/api/reports/[id]/route";
 import { POST } from "./route";
 
 const deferredWebhookTasks = vi.hoisted(() => [] as Promise<unknown>[]);
+const afterBehavior = vi.hoisted(() => ({ failRegistration: false }));
 const mockedClaimAnalysisJobById = vi.hoisted(() => vi.fn());
 const mockedRunClaimedAnalysisJob = vi.hoisted(() => vi.fn());
 
 vi.mock("next/server", () => ({
   after(task: Promise<unknown> | (() => unknown)) {
+    if (afterBehavior.failRegistration) throw new Error("after unavailable");
     deferredWebhookTasks.push(Promise.resolve().then(() => typeof task === "function" ? task() : task));
   }
 }));
@@ -42,6 +49,7 @@ describe("POST /api/github/webhook", () => {
     vi.stubEnv("AGENTPROOF_REPORT_SIGNING_SECRET", "test-report-signing-secret-that-is-long-enough");
     vi.stubEnv("VERCEL", "");
     deferredWebhookTasks.length = 0;
+    afterBehavior.failRegistration = false;
     mockedClaimAnalysisJobById.mockReset();
     mockedClaimAnalysisJobById.mockResolvedValue({
       job: { id: "claimed-job" },
@@ -53,6 +61,7 @@ describe("POST /api/github/webhook", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
     clearAuditEventsForTests();
@@ -818,6 +827,8 @@ describe("POST /api/github/webhook", () => {
       installationId: 321,
       repositoryId: 100,
       repositoryFullName: "RengGyu/AgentProof",
+      repositoryPrivate: true,
+      privateAnalysisConsentVersion: "2026-09-24.v1",
       saveReportsEnabled: false,
       commentEnabled: false
     });
@@ -939,7 +950,8 @@ describe("POST /api/github/webhook", () => {
       commentEnabled: false,
       llmAnalysisMode: "enhanced",
       hybridPlannerConsentVersion: "2026-08-12.v1",
-      repositoryPrivate: true
+      repositoryPrivate: true,
+      privateAnalysisConsentVersion: "2026-09-24.v1"
     });
     const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       const href = String(url);
@@ -1006,6 +1018,7 @@ describe("POST /api/github/webhook", () => {
       save_report: false,
       comment: false,
       hybrid_planner_requested: true,
+      once_per_head: true,
       planner_contract_version: null,
       planner_input_hash: null
     });
@@ -1027,6 +1040,192 @@ describe("POST /api/github/webhook", () => {
     expect(deferredWebhookTasks).toHaveLength(0);
     expect(mockedClaimAnalysisJobById).not.toHaveBeenCalled();
     expect(mockedRunClaimedAnalysisJob).not.toHaveBeenCalled();
+  });
+
+  it("wakes an automatic PR job after CI discovery without waiting for the daily cron", async () => {
+    vi.useFakeTimers();
+    vi.stubEnv("VERCEL", "1");
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY", "true");
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    await createTenantRepositoryGrant({
+      tenantId: "tenant_test", installationId: 321, repositoryId: 100,
+      repositoryFullName: "RengGyu/AgentProof"
+    });
+    const realJobs = await vi.importActual<typeof import("@/lib/analysis-jobs")>("@/lib/analysis-jobs");
+    mockedClaimAnalysisJobById.mockImplementation(realJobs.claimAnalysisJobById);
+
+    const response = await POST(signedRequest(JSON.stringify(automationPayload()), {
+      event: "pull_request", delivery: "123e4567-e89b-12d3-a456-426614174390", secret: "secret"
+    }));
+    expect(response.status).toBe(202);
+    expect(await response.json()).toMatchObject({ queued: true, analysis: { status: "queued" } });
+    expect(deferredWebhookTasks).toHaveLength(1);
+    expect(mockedClaimAnalysisJobById).not.toHaveBeenCalled();
+    expect(mockedRunClaimedAnalysisJob).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(44_999);
+    expect(mockedRunClaimedAnalysisJob).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    await Promise.all(deferredWebhookTasks);
+    expect(mockedClaimAnalysisJobById).toHaveBeenCalledTimes(1);
+    expect(mockedRunClaimedAnalysisJob).toHaveBeenCalledTimes(1);
+    expect(mockedRunClaimedAnalysisJob.mock.calls[0][0]).toMatchObject({ status: "processing" });
+  });
+
+  it("wakes a waiting head on check completion once and skips later completed-head events", async () => {
+    vi.useFakeTimers();
+    vi.stubEnv("VERCEL", "1");
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY", "true");
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    await createTenantRepositoryGrant({
+      tenantId: "tenant_test", installationId: 321, repositoryId: 100,
+      repositoryFullName: "RengGyu/AgentProof"
+    });
+    const realJobs = await vi.importActual<typeof import("@/lib/analysis-jobs")>("@/lib/analysis-jobs");
+    const waiting = await realJobs.enqueueAnalysisJob({
+      tenantId: "tenant_test", idempotencyKey: "head-abc123", deliveryId: "123e4567-e89b-12d3-a456-426614174391",
+      event: "pull_request", action: "opened", installationId: 321, repositoryId: 100,
+      repositoryFullName: "RengGyu/AgentProof", pullRequestNumber: 7,
+      pullRequestUrl: "https://github.com/RengGyu/AgentProof/pull/7", headSha: "abc123",
+      saveReport: false, comment: false, oncePerHead: true, now: new Date(Date.now() - 60_000)
+    });
+    mockedClaimAnalysisJobById.mockImplementation(realJobs.claimAnalysisJobById);
+    mockedRunClaimedAnalysisJob.mockImplementation(async (job) => {
+      await realJobs.completeAnalysisJob({ id: job.id, claimGeneration: job.claim_generation!, now: new Date() });
+      return { status: "completed" };
+    });
+    const body = JSON.stringify({
+      action: "completed", repository: { id: 100, full_name: "RengGyu/AgentProof" }, installation: { id: 321 },
+      check_run: { id: 999, head_sha: "abc123", pull_requests: [{ number: 7 }] }
+    });
+    const send = (delivery: string) => POST(signedRequest(body, { event: "check_run", delivery, secret: "secret" }));
+
+    const first = await send("delivery-check-wake-1");
+    expect(first.status).toBe(202);
+    expect(await first.json()).not.toHaveProperty("analysis");
+    await deferredWebhookTasks[0];
+    expect(deferredWebhookTasks).toHaveLength(2);
+    expect(mockedRunClaimedAnalysisJob).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(45_000);
+    await Promise.all(deferredWebhookTasks);
+    expect(mockedRunClaimedAnalysisJob).toHaveBeenCalledTimes(1);
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({ id: waiting.id, status: "completed" });
+
+    const duplicate = await send("delivery-check-wake-2");
+    expect(duplicate.status).toBe(202);
+    await deferredWebhookTasks[2];
+    expect(deferredWebhookTasks).toHaveLength(3);
+    expect(mockedRunClaimedAnalysisJob).toHaveBeenCalledTimes(1);
+  });
+
+  it("wakes a head when check completion races with a processing claim that later waits", async () => {
+    vi.useFakeTimers();
+    vi.stubEnv("VERCEL", "1");
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY", "true");
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    await createTenantRepositoryGrant({
+      tenantId: "tenant_test", installationId: 321, repositoryId: 100,
+      repositoryFullName: "RengGyu/AgentProof"
+    });
+    const realJobs = await vi.importActual<typeof import("@/lib/analysis-jobs")>("@/lib/analysis-jobs");
+    const queued = await realJobs.enqueueAnalysisJob({
+      tenantId: "tenant_test", idempotencyKey: "head-abc123", deliveryId: "123e4567-e89b-12d3-a456-426614174394",
+      event: "pull_request", action: "opened", installationId: 321, repositoryId: 100,
+      repositoryFullName: "RengGyu/AgentProof", pullRequestNumber: 7,
+      pullRequestUrl: "https://github.com/RengGyu/AgentProof/pull/7", headSha: "abc123",
+      saveReport: false, comment: false, oncePerHead: true, now: new Date(Date.now() - 60_000)
+    });
+    const active = (await realJobs.claimAnalysisJobById(queued.id, { now: new Date() })).job!;
+    mockedClaimAnalysisJobById.mockImplementation(realJobs.claimAnalysisJobById);
+    const body = JSON.stringify({
+      action: "completed", repository: { id: 100, full_name: "RengGyu/AgentProof" }, installation: { id: 321 },
+      check_run: { id: 999, head_sha: "abc123", pull_requests: [{ number: 7 }] }
+    });
+    const response = await POST(signedRequest(body, {
+      event: "check_run", delivery: "delivery-check-race", secret: "secret"
+    }));
+    expect(response.status).toBe(202);
+    await deferredWebhookTasks[0];
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({ status: "processing" });
+    await realJobs.deferAnalysisJob({
+      id: queued.id, claimGeneration: active.claim_generation!, runningRevision: active.running_revision!,
+      attempts: active.attempts, runAfter: new Date(Date.now() + 30_000), now: new Date()
+    });
+    await vi.advanceTimersByTimeAsync(45_000);
+    await Promise.all(deferredWebhookTasks);
+    expect(mockedRunClaimedAnalysisJob).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves a failed event wake queued for cron recovery", async () => {
+    vi.useFakeTimers();
+    vi.stubEnv("VERCEL", "1");
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY", "true");
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    await createTenantRepositoryGrant({
+      tenantId: "tenant_test", installationId: 321, repositoryId: 100,
+      repositoryFullName: "RengGyu/AgentProof"
+    });
+    mockedClaimAnalysisJobById.mockRejectedValueOnce(new Error("worker wake unavailable"));
+
+    const response = await POST(signedRequest(JSON.stringify(automationPayload()), {
+      event: "pull_request", delivery: "123e4567-e89b-12d3-a456-426614174392", secret: "secret"
+    }));
+    expect(response.status).toBe(202);
+    await vi.advanceTimersByTimeAsync(45_000);
+    await Promise.all(deferredWebhookTasks);
+    expect(mockedRunClaimedAnalysisJob).not.toHaveBeenCalled();
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({ status: "queued" });
+    const realJobs = await vi.importActual<typeof import("@/lib/analysis-jobs")>("@/lib/analysis-jobs");
+    const recovered = await realJobs.claimNextAnalysisJob({ now: new Date() });
+    expect(recovered.job).toMatchObject({ status: "processing" });
+  });
+
+  it("retains a queued job when post-response wake registration fails", async () => {
+    vi.stubEnv("VERCEL", "1");
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY", "true");
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    await createTenantRepositoryGrant({
+      tenantId: "tenant_test", installationId: 321, repositoryId: 100,
+      repositoryFullName: "RengGyu/AgentProof"
+    });
+    afterBehavior.failRegistration = true;
+
+    const response = await POST(signedRequest(JSON.stringify(automationPayload()), {
+      event: "pull_request", delivery: "123e4567-e89b-12d3-a456-426614174393", secret: "secret"
+    }));
+    expect(response.status).toBe(202);
+    expect(await response.json()).toMatchObject({ queued: true, analysis: { status: "queued" } });
+    expect(getAnalysisJobsForTests()[0]).toMatchObject({ status: "queued" });
+    expect(deferredWebhookTasks).toHaveLength(0);
   });
 
   it("clamps queued side effects to the tenant plan before Slack config or token fetch", async () => {
@@ -1113,6 +1312,36 @@ describe("POST /api/github/webhook", () => {
       tenant_id: "tenant_test"
     });
     expectAuditEventIsSummaryOnly(getAuditEventsForTests()[0]);
+  });
+
+  it("reports a completed same-head automatic job without promising another analysis", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL", "https://agentproof-test.supabase.co");
+    vi.stubEnv("AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY", "service-role-secret");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY", "true");
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    await createTenantRepositoryGrant({
+      tenantId: "tenant_test", installationId: 321, repositoryId: 100,
+      repositoryFullName: "RengGyu/AgentProof"
+    });
+    vi.stubGlobal("fetch", vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      const { job_payload } = JSON.parse(String(init?.body));
+      return Response.json([{ ...job_payload, status: "completed" }]);
+    }));
+
+    const response = await POST(signedRequest(JSON.stringify(automationPayload()), {
+      event: "pull_request", delivery: "123e4567-e89b-12d3-a456-426614174399", secret: "secret"
+    }));
+    expect(response.status).toBe(202);
+    expect(await response.json()).toMatchObject({
+      queued: false, willAnalyze: false, willComment: false,
+      analysis: { status: "completed" }
+    });
+    expect(getAuditEventsForTests()[0]).toMatchObject({ action: "github_app_duplicate_skipped", result: "skipped" });
   });
 
   it("fails closed before quota, idempotency, or token fetch when queue mode lacks storage", async () => {
@@ -1420,6 +1649,20 @@ describe("POST /api/github/webhook", () => {
     }));
     expect(json.note).toContain("analysis is disabled");
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("ignores a private PR before token fetch when a legacy ON grant lacks the new consent", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_REPOSITORY_GRANTS", tenantGrantJson({ repositoryPrivate: true, analysisEnabled: true, llmAnalysisMode: "enhanced", hybridPlannerConsentVersion: "2026-08-12.v1" }));
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await POST(signedRequest(JSON.stringify(automationPayload({ repository: { id: 100, full_name: "RengGyu/AgentProof", private: true } })), { event: "pull_request", delivery: "delivery-private-consent-required", secret: "secret" }));
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ ignored: true, willAnalyze: false, willComment: false });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(getAnalysisJobsForTests()).toEqual([]);
   });
 
   it("fails closed for invalid tenant grant configuration before token fetch", async () => {
@@ -1847,6 +2090,71 @@ describe("POST /api/github/webhook", () => {
     expectAuditEventIsSummaryOnly(getAuditEventsForTests()[0]);
   });
 
+  it("does not publish inline results when private analysis consent is withdrawn during collection", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_SAVE_REPORTS", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_COMMENT_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    const onGrant = { repositoryId: 100, repositoryPrivate: true, privateAnalysisConsentVersion: "2026-09-24.v1", saveReportsEnabled: true, commentEnabled: true };
+    vi.stubEnv("AGENTPROOF_TENANT_REPOSITORY_GRANTS", tenantGrantJson(onGrant));
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    const baseFetch = mockAutomationFetch();
+    let revoked = false;
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url) === "https://api.github.com/repos/RengGyu/AgentProof/pulls/7") {
+        const response = await baseFetch(url, init);
+        const payload = await response.json();
+        if (!revoked) {
+          revoked = true;
+          vi.stubEnv("AGENTPROOF_TENANT_REPOSITORY_GRANTS", tenantGrantJson({ ...onGrant, privateAnalysisConsentVersion: undefined }));
+        }
+        return jsonResponse({ ...payload, base: { ...(payload.base as object), repo: { private: true } } });
+      }
+      return baseFetch(url, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await POST(signedRequest(JSON.stringify(automationPayload({ repository: { id: 100, full_name: "RengGyu/AgentProof", private: true } })), { event: "pull_request", delivery: "delivery-private-consent-revoked-inline", secret: "secret" }));
+    const json = await response.json();
+    expect(revoked).toBe(true);
+    expect(response.status).toBe(200);
+    expect(json.analysis).not.toHaveProperty("savedReport");
+    expect(json.analysis).not.toHaveProperty("comment");
+    expect(json.analysis).not.toHaveProperty("slack");
+    expect(fetchMock.mock.calls.some(([url, init]) => String(url).endsWith("/issues/7/comments") && init?.method === "POST")).toBe(false);
+  });
+
+  it("does not publish inline results when a public repository switches analysis OFF during collection", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_SAVE_REPORTS", "true");
+    vi.stubEnv("AGENTPROOF_GITHUB_APP_COMMENT_ENABLED", "true");
+    vi.stubEnv("AGENTPROOF_TENANT_CONTROL_PLANE_ENABLED", "true");
+    const onGrant = { repositoryId: 100, repositoryPrivate: false, saveReportsEnabled: true, commentEnabled: true };
+    vi.stubEnv("AGENTPROOF_TENANT_REPOSITORY_GRANTS", tenantGrantJson(onGrant));
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_PRIVATE_KEY", testPrivateKey());
+    const baseFetch = mockAutomationFetch();
+    let off = false;
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      if (!off && String(url) === "https://api.github.com/repos/RengGyu/AgentProof/pulls/7") {
+        off = true;
+        vi.stubEnv("AGENTPROOF_TENANT_REPOSITORY_GRANTS", tenantGrantJson({ ...onGrant, analysisEnabled: false }));
+      }
+      return baseFetch(url, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await POST(signedRequest(JSON.stringify(automationPayload()), { event: "pull_request", delivery: "delivery-public-analysis-off-inline", secret: "secret" }));
+    const json = await response.json();
+    expect(off).toBe(true);
+    expect(response.status).toBe(200);
+    expect(json.analysis).not.toHaveProperty("savedReport");
+    expect(json.analysis).not.toHaveProperty("comment");
+    expect(json.analysis).not.toHaveProperty("slack");
+    expect(fetchMock.mock.calls.some(([url, init]) => String(url).endsWith("/issues/7/comments") && init?.method === "POST")).toBe(false);
+  });
+
   it("suppresses external side effects when a same-head PR relinks to an identical-content Issue during sync finalization", async () => {
     vi.stubEnv("GITHUB_WEBHOOK_SECRET", "secret");
     vi.stubEnv("AGENTPROOF_GITHUB_APP_AUTOMATION_ENABLED", "true");
@@ -1861,6 +2169,7 @@ describe("POST /api/github/webhook", () => {
       repositoryPrivate: true,
       llmAnalysisMode: "enhanced",
       hybridPlannerConsentVersion: "2026-08-12.v1",
+      privateAnalysisConsentVersion: "2026-09-24.v1",
       saveReportsEnabled: true,
       commentEnabled: true
     }));
@@ -2899,6 +3208,10 @@ function mockAutomationFetch() {
 
     if (href === "https://api.github.com/app/installations/321/access_tokens") {
       return jsonResponse({ token: "installation-token" });
+    }
+
+    if (href === "https://api.github.com/repos/RengGyu/AgentProof") {
+      return jsonResponse({ private: false });
     }
 
     if (href === "https://api.github.com/repos/RengGyu/AgentProof/pulls/7") {

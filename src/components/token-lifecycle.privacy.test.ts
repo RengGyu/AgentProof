@@ -5,11 +5,10 @@ import { describe, expect, it } from "vitest";
 const root = process.cwd();
 
 describe("client token lifecycle privacy", () => {
-  it("clears the optional analysis token in the analysis finally path", () => {
+  it("does not collect a client-supplied analysis token", () => {
     const source = readFileSync(join(root, "src/components/AnalyzeWorkspace.tsx"), "utf8");
-    const runAnalysis = functionSource(source, "async function runAnalysis");
-
-    expect(runAnalysis).toMatch(/finally\s*{[\s\S]*githubToken:\s*""[\s\S]*setLoading\(false\)/);
+    expect(source).not.toContain('id="githubToken"');
+    expect(source).not.toContain('githubToken:');
   });
 
   it("clears the one-time PR comment token in the comment finally path", () => {

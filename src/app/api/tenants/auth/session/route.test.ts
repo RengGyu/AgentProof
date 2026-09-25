@@ -7,6 +7,7 @@ describe("/api/tenants/auth/session", () => {
   afterEach(() => {
     clearAuditEventsForTests();
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
     clearTenantAuthSessionsForTests();
   });
 
@@ -159,6 +160,19 @@ describe("/api/tenants/auth/session", () => {
       tenantId: "tenant_a",
       cookieHeader: startCookie
     })).resolves.toEqual({ authorized: false });
+  });
+
+  it("does not claim logout succeeded when server-side revocation fails", async () => {
+    vi.stubEnv("AGENTPROOF_TENANT_AUTH_SESSIONS_SUPABASE_URL", "https://store.invalid");
+    vi.stubEnv("AGENTPROOF_TENANT_AUTH_SESSIONS_SUPABASE_SERVICE_ROLE_KEY", "service-role-test");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 503 })));
+    const response = await DELETE(new Request("http://localhost/api/tenants/auth/session", {
+      method: "DELETE",
+      headers: { ...sameOriginHeaders(), cookie: `${TENANT_AUTH_SESSION_COOKIE}=opaque` }
+    }));
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Set-Cookie")).toBeNull();
+    await expect(response.json()).resolves.toMatchObject({ code: "tenant_auth_logout_unavailable" });
   });
 
   it("rejects cross-site durable auth session creation without issuing a cookie", async () => {

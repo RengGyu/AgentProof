@@ -2,6 +2,8 @@ import { readFileSync } from "fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { VerificationReportV2 } from "@/lib/types";
 import { POST } from "./route";
+vi.mock("@/lib/tenant-auth", async original => ({ ...await original<typeof import("@/lib/tenant-auth")>(), resolveTenantAuthAccess: async () => ({ authorized: true, tenantId: "gh_123", memberId: "github:123" }) }));
+vi.mock("@/lib/github-analysis-access", () => ({ resolveGitHubAnalysisCredential: vi.fn(async () => ({ ok: true, token: "server-selected-test-token", kind: "user" })) }));
 
 interface ReplayRow {
   id: string;
@@ -116,7 +118,7 @@ describe("POST /api/analyze production-shaped GitHub replay", () => {
 
     const response = await POST(new Request("http://localhost/api/analyze", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", origin: "http://localhost" },
       body: JSON.stringify(requestBody)
     }));
     const json = await response.json() as { report?: VerificationReportV2; error?: string };

@@ -16,7 +16,7 @@ describe("deriveRequirementPresentationV2", () => {
     expect(result).toMatchObject({
       outcome: "unclear",
       observedEvidence: "met",
-      outcomeLabel: "Unclear against approved contract",
+      outcomeLabel: "No verified outcome against approved contract",
       observationLabel: "Supported",
       outcomeBasis: "Required criterion evidence was incomplete or unavailable.",
       primaryGap: "evidence_unavailable",
@@ -34,7 +34,7 @@ describe("deriveRequirementPresentationV2", () => {
 
     expect(result).toMatchObject({
       outcome: "partial",
-      outcomeLabel: "Partially supported against PR-description contract",
+      outcomeLabel: "PR claim — reviewer confirmation needed",
       outcomeBasis: "This result uses a PR-description contract and requires reviewer confirmation."
     });
   });
@@ -50,7 +50,7 @@ describe("deriveRequirementPresentationV2", () => {
     }), "vc_o1");
 
     expect(result).toMatchObject({
-      outcomeLabel: "Unclear — approved verification contract missing",
+      outcomeLabel: "No approved verification contract",
       primaryGap: "verification_contract_missing"
     });
   });

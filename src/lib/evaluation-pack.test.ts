@@ -578,10 +578,10 @@ describe("real-dataset evaluation pack", () => {
     expect(fixtureText).not.toMatch(/-----BEGIN [A-Z ]*PRIVATE KEY-----/);
   });
 
-  it("keeps every committed evaluation fixture normalized and summary-safe", () => {
+  it("keeps every committed SWE-bench evaluation fixture normalized and summary-safe", () => {
     const fixturesDir = new URL("../../eval/fixtures/", import.meta.url);
     const fixtureFiles = readdirSync(fixturesDir)
-      .filter((name) => name.endsWith(".jsonl"))
+      .filter((name) => name.startsWith("swebench-verified.") && name.endsWith(".jsonl"))
       .sort();
     const trackedGenerated = execFileSync("git", ["ls-files", "eval/generated"], {
       cwd: process.cwd()

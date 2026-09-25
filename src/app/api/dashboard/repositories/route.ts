@@ -36,6 +36,7 @@ export async function GET(request: Request) {
         commentEnabled: repository.commentEnabled,
         llmAnalysisMode: repository.llmAnalysisMode ?? "essential",
         hybridPlannerConsentVersion: repository.hybridPlannerConsentVersion ?? null,
+        privateAnalysisConsentVersion: repository.privateAnalysisConsentVersion ?? null,
         repositoryPrivate: repository.repositoryPrivate === true
       })),
       privacy: "grant-metadata-only"
