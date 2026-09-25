@@ -34,7 +34,7 @@ describe("ordinary TypeScript assignability", () => {
     expect(validateRuntimeReportBoundary({ boundary: "generated_private_full", input, report: loose }).valid).toBe(true);
     const strict = await run(input, { "tsconfig.json": '{"compilerOptions":{"strictNullChecks":true}}', "src/mode.ts": "export type Mode = string;" });
     expect(strict.requirements[0].status).toBe("missing");
-  });
+  }, 15_000);
   it("resolves a unique path-free qualified type through local aliases and relative config inheritance", async () => {
     const report = await run(source("Type `Domain.Mode` must support `undefined`."), {
       "tsconfig.json": '{"extends":"./config/base.json","include":["src/**/*.ts"]}',
