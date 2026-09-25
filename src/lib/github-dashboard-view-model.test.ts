@@ -38,6 +38,28 @@ describe("github dashboard view model", () => {
     expect(toRequirementCoverageLabel("unclear")).toBe("No verified evidence conclusion");
   });
 
+  it("keeps linked evidence visible in the quick summary when gaps remain", () => {
+    const summary = toQuickSummary({
+      report: {
+        requirements: [{ requirementId: "req_1", status: "partial", evidenceRefs: ["ev_1"], gaps: ["Individual test execution was not established."] }],
+        evidenceIndex: [{ id: "ev_1", locator: "test/repository-name-regression.test.js" }]
+      }
+    });
+
+    expect(summary.primaryEvidenceState).toBe("Some evidence linked");
+    expect(summary.primaryEvidenceDetail).toBe("Individual test execution was not established.");
+  });
+
+  it("does not turn an unclear requirement with a gap into a claim that all evidence is missing", () => {
+    const summary = toQuickSummary({
+      report: {
+        requirements: [{ requirementId: "req_1", status: "unclear", evidenceRefs: ["ev_1"], gaps: ["The relation needs inspection."] }]
+      }
+    });
+
+    expect(summary.primaryEvidenceState).toBe("No verified evidence conclusion");
+  });
+
   it("labels the verification outcome separately from saved-report availability", () => {
     expect(verificationOutcomeLabel("supported")).toBe("SUPPORTED");
     expect(verificationOutcomeLabel("partial")).toBe("PARTIALLY SUPPORTED");
@@ -70,7 +92,7 @@ describe("github dashboard view model", () => {
     })).toMatchObject({
       freshness: "STALE",
       checkState: "CI failed",
-      primaryEvidenceState: "Evidence missing",
+      primaryEvidenceState: "Some evidence linked",
       inspectFirst: "src/auth.ts",
       githubUrl: "https://github.com/RengGyu/dongo/pull/14"
     });
@@ -160,7 +182,7 @@ describe("github dashboard view model", () => {
       }
     });
 
-    expect(summary.primaryEvidenceState).toBe("Evidence missing");
+    expect(summary.primaryEvidenceState).toBe("Some evidence linked");
     expect(summary.aiEvidenceState).toBe("Unavailable");
   });
 

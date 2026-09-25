@@ -78,7 +78,7 @@ export interface RepositoryWorkspaceRow extends DashboardRepositoryGrant {
 export interface QuickSummary {
   freshness: "CURRENT" | "REFRESHING" | "REFRESH FAILED" | "SUPERSEDED" | "STALE" | "SAVED";
   checkState: string;
-  primaryEvidenceState: "Evidence found" | "Evidence missing" | "Needs attention" | "No verified evidence conclusion" | "Unavailable";
+  primaryEvidenceState: "Evidence found" | "Evidence missing" | "Some evidence linked" | "No verified evidence conclusion" | "Unavailable";
   primaryEvidenceDetail?: string;
   aiEvidenceState: "Available" | "Unavailable" | "Not requested";
   inspectFirst: string;
@@ -194,9 +194,10 @@ function toCheckState(testing: NonNullable<DashboardReportDetail["report"]>["tes
 
 function toEvidenceState(status: string | undefined, gapCount: number): QuickSummary["primaryEvidenceState"] {
   if (!status) return "Unavailable";
-  if (gapCount > 0 || status === "missing") return "Evidence missing";
-  if (status === "partial") return "Needs attention";
+  if (status === "missing") return "Evidence missing";
+  if (status === "partial") return "Some evidence linked";
   if (status === "unclear") return "No verified evidence conclusion";
+  if (gapCount > 0) return "Evidence missing";
   return "Evidence found";
 }
 
