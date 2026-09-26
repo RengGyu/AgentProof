@@ -13,6 +13,10 @@ interface SaveReportRequest {
 }
 
 export async function POST(request: Request) {
+  if (process.env.NODE_ENV === "production") {
+    return noStoreJson({ error: "Public report URL creation is unavailable." }, { status: 410 });
+  }
+
   const bodyText = await request.text();
 
   if (utf8ByteLength(bodyText) > MAX_REPORT_REQUEST_BYTES) {

@@ -14,8 +14,8 @@ It is deliberately not a generic diff-first review bot. AgentProof maps the orig
 - 30-second reviewer card and detailed report
 - Demo mode with realistic sample data
 - Summary-only recent report history in the browser
-- Summary-only share links
-- Summary-only saved report links for short handoff
+- Signed-in access to your own saved report history
+- Explicit report and JSON copy actions
 - Optional GitHub PR comment posting with a one-time write token
 
 ## First Real PR Workflow
@@ -24,7 +24,7 @@ It is deliberately not a generic diff-first review bot. AgentProof maps the orig
 2. Paste a public GitHub PR URL.
 3. Add the original task or issue text when the PR does not clearly link it.
 4. Review the first screen for the evidence answer, requirement status counts, top risks, first files to inspect, missing-test count, execution evidence status, and next re-prompt.
-5. Use summary-only share links for handoff, or export Markdown only when you intentionally want the full report.
+5. Copy the report or JSON only when you intentionally want to move it outside AgentProof; saved reports remain available to the signed-in owner.
 
 For a guided 10-minute path, see `docs/first-real-pr-report.md`.
 For reviewer outreach messages and the bounded feedback form, see `docs/reviewer-validation-packet.md`.
@@ -50,7 +50,7 @@ Use the left demo selector to compare the intended verifier signals:
 - `Failed CI`: workspace invite validation with a failing unit-test log. Expect a blocker from failed execution evidence.
 - `Vague task`: dashboard polish without concrete acceptance criteria. Expect unclear coverage and low confidence.
 
-The demo is a verification handoff, not an approval gate. Share links and Recent history are summary-only; full Markdown export and PR comment copy are explicit user actions.
+The demo is a verification handoff, not an approval gate. Recent history is summary-only; report copy, JSON copy, Markdown export, and PR comment copy are explicit user actions. Public report-sharing links are disabled in deployed environments.
 
 For frozen portfolio artifacts, see `docs/example-reports.md`. For the MVP completion record and the latest deployment smoke checklist, see `docs/mvp-completion.md` and `docs/deployment-smoke.md`.
 
@@ -67,7 +67,7 @@ pnpm build
 
 ## Privacy Boundary
 
-AgentProof can run in demo mode without secrets. For live PR fetches, a fine-grained GitHub token may be pasted for that request only; it is not stored. Browser recent history, portable share links, Slack payloads, and saved reports are summary-only. They omit raw evidence, patch/log excerpts, claims, evidence references, and raw re-prompt text. Full Markdown export remains an explicit user action.
+AgentProof can run in demo mode without secrets. For live PR fetches, a fine-grained GitHub token may be pasted for that request only; it is not stored. Browser recent history, Slack payloads, and saved reports are summary-only. They omit raw evidence, patch/log excerpts, claims, evidence references, and raw re-prompt text. Saved reports require the owner's signed-in session in deployed environments; public sharing URLs are unavailable. Full report and JSON copy remain explicit user actions.
 
 ## Production Smoke
 
@@ -117,7 +117,7 @@ AgentProof separates test/build execution proof from other GitHub checks:
 - Requirement `met` status still requires passing execution evidence linked through evidence IDs.
 - GitHub Actions fallback collects bounded job/step metadata when available, keeps only execution-like steps such as test/build commands, and never fetches or stores raw log archives in this MVP.
 - Failed execution checks may include bounded Check Run annotation locations such as `path:line`; full annotation messages, raw annotation details, and raw log archives are not fetched or stored.
-- Failed check locations appear only in full reports, Markdown exports, and intentional PR comments; summary share links and saved reports remain summary-only.
+- Failed check locations appear only in full reports, Markdown exports, and intentional PR comments; saved report history remains summary-only.
 
 ## Product Position
 
@@ -141,7 +141,7 @@ AgentProof does not decide whether to merge. It gives a human reviewer a compact
 - `src/lib/verifier.ts`: evidence scoring and report generation
 - `src/lib/structured-output.ts`: JSON schema contract for future LLM calls
 - `src/lib/report-validation.ts`: runtime report validation and evidence-ref integrity checks
-- `src/lib/report-share.ts`: summary-only portable share links
+- `src/lib/report-share.ts`: summary-only report projection used by saved history and compatibility code; public link rendering is disabled in deployed environments
 - `src/lib/server-report-store.ts`: summary-only saved report store with in-memory and optional Supabase backends
 - `src/lib/audit-log.ts`: bounded audit event writer and privacy scanner for SaaS automation metadata
 - `src/lib/analysis-jobs.ts`: metadata-only async analysis job queue, tenant summaries, and aggregate queue metrics

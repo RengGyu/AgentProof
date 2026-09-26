@@ -31,6 +31,38 @@ describe("POST /api/reports", () => {
     global.fetch = originalFetch;
   });
 
+  it("does not create public saved-report URLs in a deployed environment", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const response = await POST(new Request("http://localhost/api/reports", {
+      method: "POST",
+      body: JSON.stringify({ report: generateVerificationReport(demoScenarios.clean) })
+    }));
+    const body = await response.json();
+    expect(response.status).toBe(410);
+    expect(response.headers.get("Cache-Control")).toContain("no-store");
+    expect(body).not.toHaveProperty("url");
+    expect(body).not.toHaveProperty("id");
+  });
+
+  it("does not honor a saved-report URL key in a deployed environment", async () => {
+    const saved = await createSavedReport(generateVerificationReport(demoScenarios.clean), { tenantId: "tenant_test" });
+    vi.stubEnv("NODE_ENV", "production");
+    const response = await GET(new Request(`http://localhost/api/reports/${saved.id}?key=${saved.accessToken}`), {
+      params: Promise.resolve({ id: saved.id })
+    });
+    expect(response.status).toBe(404);
+    expect(await response.json()).not.toHaveProperty("report");
+  });
+
+  it("does not read an unscoped development report in a deployed environment", async () => {
+    const saved = await createSavedReport(generateVerificationReport(demoScenarios.clean));
+    vi.stubEnv("NODE_ENV", "production");
+    const response = await GET(new Request(`http://localhost/api/reports/${saved.id}`), {
+      params: Promise.resolve({ id: saved.id })
+    });
+    expect(response.status).toBe(404);
+  });
+
   it("saves a summary-only report and returns a private no-store response", async () => {
     const response = await POST(
       new Request("http://localhost/api/reports", {

@@ -60,12 +60,13 @@ describe('analysis and share failure states',()=>{
   expect(hooks.updates).not.toContainEqual(report);
   expect(JSON.stringify(hooks.updates)).not.toContain('PRIVATE_NETWORK_DETAIL');
  });
- it('never reports share-copy success when both clipboard paths fail',async()=>{
-  vi.stubGlobal('navigator',{clipboard:{writeText:async()=>{throw Error('denied');}}});
-  vi.stubGlobal('document',undefined);
-  await button(ReportView({report}),'Copy Share Link').onClick();
-  expect(hooks.updates).toContainEqual(expect.objectContaining({tone:'error'}));
-  expect(hooks.updates).not.toContainEqual(expect.objectContaining({text:'Summary share link copied.'}));
+ it('hides portable sharing while retaining explicit report exports',()=>{
+  const full=ReportView({report});
+  expect(()=>button(full,'Copy Share Link')).toThrow('Button unavailable: Copy Share Link');
+  expect(()=>button(full,'Copy Report')).not.toThrow();
+  expect(()=>button(full,'Copy PR Comment')).not.toThrow();
+  expect(()=>button(full,'Download')).not.toThrow();
+  expect(()=>button(ReportView({report,mode:'summary'}),'Copy Share Link')).toThrow('Button unavailable: Copy Share Link');
  });
 });
 

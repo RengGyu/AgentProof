@@ -455,6 +455,25 @@ describe("smoke-analyze-pr-url", () => {
     expect(result.savedEvidenceRefsCleared).toBe(true);
   });
 
+  it("continues deployed analysis smoke when public report URL creation is disabled", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ report: reportFixture() }))
+      .mockResolvedValueOnce(jsonResponse({ error: "Public report URL creation is unavailable." }, 410));
+
+    const result = await runAnalyzePrSmoke({
+      baseUrl: "https://agentproof.example",
+      prUrl: "https://github.com/org/repo/pull/1",
+      fetchImpl: fetchMock
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.savedReportPrivacy).toBe("disabled");
+    expect(result.savedReportDeleted).toBeNull();
+    expect(result.savedEvidenceCount).toBeNull();
+    expect(result.qualityGate.checks.some((check) => check.id === "summary_only_privacy")).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("rejects saved reports that retain raw evidence or re-prompt data", () => {
     const fullReport = reportFixture();
 

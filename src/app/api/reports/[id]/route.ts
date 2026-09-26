@@ -11,9 +11,11 @@ export async function GET(request: Request, context: RouteContext) {
   const { id } = await context.params;
   const status = getSavedReportStoreStatus();
   let saved;
+  const tenantId = process.env.NODE_ENV === "production" ? await authorizedTenantId(request) : undefined;
+  if (process.env.NODE_ENV === "production" && !tenantId) return unavailableReport();
 
   try {
-    saved = await getSavedReport(id, await savedReportAccessFromRequest(request));
+    saved = await getSavedReport(id, tenantId ? { tenantId } : await savedReportAccessFromRequest(request));
   } catch (error) {
     if (error instanceof SavedReportStoreError) {
       return noStoreJson({ error: "Saved report lookup failed.", detail: redactSecrets(error.message) }, { status: 503 });
@@ -22,9 +24,7 @@ export async function GET(request: Request, context: RouteContext) {
     throw error;
   }
 
-  if (!saved) {
-    return noStoreJson({ error: "Saved report was not found or has expired." }, { status: 404 });
-  }
+  if (!saved || (tenantId && saved.tenantId !== tenantId)) return unavailableReport();
 
   return noStoreJson({
     report: saved.report,
@@ -40,9 +40,16 @@ export async function GET(request: Request, context: RouteContext) {
 export async function DELETE(request: Request, context: RouteContext) {
   const { id } = await context.params;
   let deleted;
+  const tenantId = process.env.NODE_ENV === "production" ? await authorizedTenantId(request) : undefined;
+  if (process.env.NODE_ENV === "production" && !tenantId) return unavailableReport();
 
   try {
-    deleted = await deleteSavedReport(id, await savedReportAccessFromRequest(request));
+    const access = tenantId ? { tenantId } : await savedReportAccessFromRequest(request);
+    if (tenantId) {
+      const saved = await getSavedReport(id, access);
+      if (!saved || saved.tenantId !== tenantId) return unavailableReport();
+    }
+    deleted = await deleteSavedReport(id, access);
   } catch (error) {
     if (error instanceof SavedReportStoreError) {
       return noStoreJson({ error: "Saved report delete failed.", detail: redactSecrets(error.message) }, { status: 503 });
@@ -52,6 +59,15 @@ export async function DELETE(request: Request, context: RouteContext) {
   }
 
   return noStoreJson({ deleted });
+}
+
+function unavailableReport() {
+  return noStoreJson({ error: "Saved report was not found or has expired." }, { status: 404 });
+}
+
+async function authorizedTenantId(request: Request) {
+  const access = await resolveTenantAuthAccess({ cookieHeader: request.headers.get("cookie") });
+  return access.authorized ? access.tenantId : undefined;
 }
 
 async function savedReportAccessFromRequest(request: Request) {

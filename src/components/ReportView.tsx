@@ -12,7 +12,6 @@ import {
   FileWarning,
   Gauge,
   GitCommitVertical,
-  Link2,
   ListChecks,
   LockKeyhole,
   MessageSquareText,
@@ -27,7 +26,6 @@ import { presentOrdinaryDocumentationSummary } from "@/lib/general-pr-documentat
 import { presentOrdinaryStaticSummary } from "@/lib/general-pr-static-types-presentation";
 import { reportToGitHubComment, reportToMarkdown } from "@/lib/markdown";
 import { writeTextWithBrowserFallback as writeClipboardText } from "@/lib/browser-clipboard";
-import { buildShareUrl } from "@/lib/report-share";
 import { buildPrEvidenceReview, usesPrEvidenceReview } from "@/lib/pr-evidence-review";
 import type { CheckStatus, PriorityLevel, RequirementStatus, VerificationReport } from "@/lib/types";
 import { deriveRequirementPresentationV2, isVerificationReportV2 } from "@/lib/requirement-presentation-v2";
@@ -70,7 +68,7 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
       : undefined,
     [isSummaryMode, report]
   );
-  const [copiedAction, setCopiedAction] = useState<"report" | "comment" | "reprompt" | "share" | null>(null);
+  const [copiedAction, setCopiedAction] = useState<"report" | "comment" | "reprompt" | null>(null);
   const [actionMessage, setActionMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
   const [commentToken, setCommentToken] = useState("");
   const [postingComment, setPostingComment] = useState(false);
@@ -118,7 +116,7 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
     [ordinaryPrReview?.mode, report.limitations]
   );
 
-  async function copyText(text: string, action: "report" | "comment" | "reprompt" | "share") {
+  async function copyText(text: string, action: "report" | "comment" | "reprompt") {
     try {
       await writeClipboardText(text);
       setCopiedAction(action);
@@ -150,20 +148,6 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
       window.setTimeout(() => setActionMessage(null), 1800);
     } catch {
       setActionMessage({ tone: "error", text: "Download failed in this browser. Use Copy Report instead." });
-    }
-  }
-
-  async function copyShareLink() {
-    try {
-      const url = buildShareUrl(report, window.location.origin);
-      if (await copyText(url, "share")) {
-        setActionMessage({ tone: "success", text: "Summary share link copied." });
-      }
-    } catch (error) {
-      setActionMessage({
-        tone: "error",
-        text: error instanceof Error ? error.message : "Share link could not be created."
-      });
     }
   }
 
@@ -330,7 +314,7 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
               <LockKeyhole size={14} />
               Human handoff
             </span>
-            <small>Share surfaces stay summary-only; full export is explicit.</small>
+            <small>Copy or download only when you intend to move this report outside AgentProof.</small>
           </div>
           <div className="report-actions" aria-label="Report export actions">
             {!isSummaryMode ? (
@@ -345,10 +329,6 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
                 </button>
               </>
             ) : null}
-            <button className="button compact" onClick={copyShareLink}>
-              {copiedAction === "share" ? <CheckCircle2 size={15} /> : <Link2 size={15} />}
-              {copiedAction === "share" ? "Copied" : "Copy Share Link"}
-            </button>
             {!isSummaryMode ? (
               <button className="button compact" onClick={downloadMarkdown}>
                 <Download size={15} />
@@ -885,7 +865,7 @@ function getMissingProofSummary(
 
 function getRepromptLead(prompt: string, isSummaryMode: boolean): string {
   if (isSummaryMode) {
-    return "Hidden in summary-only share.";
+    return "Hidden in summary-only view.";
   }
 
   const lead = prompt

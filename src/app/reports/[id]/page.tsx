@@ -16,9 +16,11 @@ export default async function SavedReportPage({ params, searchParams }: SavedRep
   let saved;
 
   try {
-    const access = key ? null : await resolveTenantAuthAccess({ cookieHeader: (await headers()).get("cookie") });
-    saved = await getSavedReport(id, key ? { accessToken: key.slice(0, 200) } :
-      access?.authorized && access.tenantId ? { tenantId: access.tenantId } : {});
+    const production = process.env.NODE_ENV === "production";
+    const access = production || !key ? await resolveTenantAuthAccess({ cookieHeader: (await headers()).get("cookie") }) : null;
+    const tenantId = access?.authorized ? access.tenantId : undefined;
+    saved = production && !tenantId ? null : await getSavedReport(id, production ? { tenantId } : key ? { accessToken: key.slice(0, 200) } : tenantId ? { tenantId } : {});
+    if (production && saved?.tenantId !== tenantId) saved = null;
   } catch (error) {
     if (error instanceof SavedReportStoreError) {
       saved = null;

@@ -220,12 +220,14 @@ async function executeAnalyzePrSmoke({
   onStage("summary_save");
   const saveResult = await saveSummaryOnlyReport({ baseUrl, report, fetchImpl });
   const savedReport = saveResult.savedReport;
-  onStage("summary_privacy");
-  assertSummaryOnlyReport(savedReport, {
-    originalReprompt: report.reprompt?.prompt,
-    githubToken,
-    failedCheckLocations
-  });
+  if (savedReport) {
+    onStage("summary_privacy");
+    assertSummaryOnlyReport(savedReport, {
+      originalReprompt: report.reprompt?.prompt,
+      githubToken,
+      failedCheckLocations
+    });
+  }
   onStage("quality_gate");
   const qualityGate = evaluateReportQualityGate(report, {
     savedReport,
@@ -263,16 +265,16 @@ async function executeAnalyzePrSmoke({
     expectationCheckCount: expectationResult.checks.length,
     expectationChecks: expectationResult.checks,
     failedCheckLocationCount: failedCheckLocations.length,
-    savedFailedCheckLocationsOmitted: true,
+    savedFailedCheckLocationsOmitted: savedReport ? true : null,
     githubTokenForwarded: Boolean(githubToken),
     productionTokenForwarded: Boolean(githubToken && isRemoteProductionLikeBaseUrl(baseUrl)),
     savedReportPrivacy: saveResult.privacy,
     savedReportDurability: saveResult.durability,
     savedReportDurabilityWarning: Boolean(saveResult.durabilityWarning),
-    savedEvidenceCount: Array.isArray(savedReport.evidenceIndex) ? savedReport.evidenceIndex.length : null,
-    savedClaimCount: Array.isArray(savedReport.claims) ? savedReport.claims.length : null,
-    savedRepromptOmitted: /omit|shared summary|summary/i.test(savedReport.reprompt?.prompt ?? ""),
-    savedEvidenceRefsCleared: evidenceRefsCleared(savedReport),
+    savedEvidenceCount: Array.isArray(savedReport?.evidenceIndex) ? savedReport.evidenceIndex.length : null,
+    savedClaimCount: Array.isArray(savedReport?.claims) ? savedReport.claims.length : null,
+    savedRepromptOmitted: savedReport ? /omit|shared summary|summary/i.test(savedReport.reprompt?.prompt ?? "") : null,
+    savedEvidenceRefsCleared: savedReport ? evidenceRefsCleared(savedReport) : null,
     savedReportDeleted: saveResult.deleted,
     savedReportDeleteWarning: saveResult.deleteWarning,
     operatorSemanticDiagnostics,
@@ -758,7 +760,7 @@ export function evaluateReportQualityGate(report, {
     ciExecutionQualityCheck(report),
     reviewerLeadProvenanceQualityCheck(report),
     humanDecisionSupportQualityCheck(report),
-    summaryOnlyPrivacyQualityCheck(savedReport)
+    ...(savedReport ? [summaryOnlyPrivacyQualityCheck(savedReport)] : [])
   ];
 
   return {
@@ -1062,6 +1064,13 @@ async function saveSummaryOnlyReport({ baseUrl, report, fetchImpl }) {
 
   if (!saveResponse.headers.get("cache-control")?.includes("no-store")) {
     throw smokeError("Saved-report response was not marked no-store.", saveResponse.status);
+  }
+
+  if (saveResponse.status === 410 &&
+    savePayload.error === "Public report URL creation is unavailable." &&
+    !Object.hasOwn(savePayload, "id") && !Object.hasOwn(savePayload, "url")) {
+    return { privacy: "disabled", durability: null, durabilityWarning: null,
+      savedReport: null, deleted: null, deleteWarning: undefined };
   }
 
   if (
