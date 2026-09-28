@@ -132,10 +132,10 @@
 .github-dashboard .dashboard-list-row { min-height: 64px; padding: 16px; gap: 14px; font-weight: 550; }
 .github-dashboard .dashboard-activity-row > span:nth-child(2) { gap: 8px; }
 .github-dashboard .dashboard-activity-row > span:nth-child(2) :is(strong, small) { white-space: normal; overflow-wrap: anywhere; }
-.github-dashboard .dashboard-report-layout { grid-template-columns: minmax(265px, 290px) minmax(0, 1fr); gap: 32px; margin-top: 28px; align-items: start; }
+.github-dashboard .dashboard-report-layout { grid-template-columns: minmax(265px, 290px) minmax(0, 1fr); gap: 32px; margin-top: 28px; align-items: flex-start; }
 .github-dashboard .dashboard-report-navigation { min-width: 0; }
 .github-dashboard .report-list { gap: 12px; }
-.github-dashboard .report-row { grid-template-columns: 28px minmax(0, 1fr); min-height: 110px; padding: 18px; gap: 12px; align-items: start; border-radius: 10px; }
+.github-dashboard .report-row { grid-template-columns: 28px minmax(0, 1fr); min-height: 110px; padding: 18px; gap: 12px; align-items: flex-start; border-radius: 10px; }
 .github-dashboard .report-row > span:nth-child(2) { gap: 8px; }
 .github-dashboard .report-row > span:nth-child(2) strong { font-size: 15px; font-weight: 600; }
 .github-dashboard .report-row > span:nth-child(2) small { font-size: 12px; white-space: normal; overflow-wrap: anywhere; line-height: 1.65; }
@@ -149,7 +149,7 @@
 .github-dashboard .summary-priority { font-size: 13px; line-height: 1.6; }
 .github-dashboard .dashboard-selected-report { min-width: 0; scroll-margin-top: 24px; }
 .github-dashboard .quick-summary { min-width: 0; margin: 0; padding: 32px; border-radius: 14px; }
-.github-dashboard .quick-summary-header { gap: 20px; align-items: start; }
+.github-dashboard .quick-summary-header { gap: 20px; align-items: flex-start; }
 .github-dashboard .quick-summary-header h2 { margin: 0; font-size: 28px; font-weight: 600; letter-spacing: -.025em; line-height: 1.3; }
 .github-dashboard .summary-badges { align-items: center; gap: 10px; }
 .github-dashboard .summary-status-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 28px; margin-top: 28px; }
@@ -161,7 +161,7 @@
 .github-dashboard .summary-callout strong { font-size: 17px; font-weight: 600; line-height: 1.5; }
 .github-dashboard .summary-callout p:not(.dashboard-eyebrow) { font-size: 15px; line-height: 1.75; margin-top: 10px; }
 .github-dashboard .summary-actions { gap: 12px; margin-top: 24px; }
-.github-dashboard .dashboard-boundary { align-items: start; gap: 10px; margin-top: 24px; color: var(--workspace-muted); font-size: 13px; font-weight: 400; line-height: 1.75; }
+.github-dashboard .dashboard-boundary { align-items: flex-start; gap: 10px; margin-top: 24px; color: var(--workspace-muted); font-size: 13px; font-weight: 400; line-height: 1.75; }
 .github-dashboard .dashboard-boundary svg { flex: 0 0 auto; margin-top: 3px; }
 .github-dashboard .dashboard-boundary p { margin: 0; }
 .github-dashboard .dashboard-notice { padding: 18px; border-radius: 10px; }
@@ -195,7 +195,7 @@
 .github-dashboard .pr-evidence-group ul { display: grid; gap: 24px; padding: 0; list-style: none; }
 .github-dashboard .pr-evidence-group li { min-width: 0; padding: 0; background: transparent; }
 .github-dashboard .pr-evidence-group li + li { padding-top: 22px; border-top: 1px solid var(--workspace-line); }
-.github-dashboard .pr-evidence-group li > div { display: flex; align-items: start; flex-wrap: wrap; gap: 10px 14px; }
+.github-dashboard .pr-evidence-group li > div { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 10px 14px; }
 .github-dashboard .pr-evidence-group li p { margin: 14px 0; max-width: 72ch; font-size: 15px; line-height: 1.8; }
 .github-dashboard .pr-evidence-group li a { display: inline-flex; align-items: center; min-height: 44px; color: var(--workspace-violet); font-size: 14px; text-underline-offset: 4px; }
 .github-dashboard .pr-evidence-relation { font-size: 12px; line-height: 1.6; padding: 5px 9px; }
@@ -239,7 +239,7 @@
   .github-dashboard .dashboard-top-actions { width: 100%; }
   .github-dashboard .dashboard-settings-action { flex: 1; }
   .github-dashboard .dashboard-section-heading,
-  .github-dashboard .dashboard-workspace > .dashboard-section-heading { flex-wrap: wrap; align-items: start; gap: 16px; }
+  .github-dashboard .dashboard-workspace > .dashboard-section-heading { flex-wrap: wrap; align-items: flex-start; gap: 16px; }
   .github-dashboard .dashboard-section-heading h3,
 .github-dashboard .dashboard-workspace > .dashboard-section-heading h3 { font-size: 23px; }
   .github-dashboard .dashboard-section,
@@ -284,4 +284,62 @@
 
 @media (prefers-reduced-motion: reduce) {
   .github-entry *, .github-dashboard * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+
+/* Lead with the review task; keep every snapshot field available underneath.
+   Interactive controls retain their relative order and nothing is hidden. */
+.github-dashboard .quick-summary { display: flex; flex-direction: column; }
+.github-dashboard .quick-summary > * { order: 5; }
+.github-dashboard .quick-summary > .quick-summary-header { order: 0; }
+.github-dashboard .quick-summary > .dashboard-notice { order: 1; }
+.github-dashboard .quick-summary > .summary-callout { order: 2; }
+.github-dashboard .quick-summary > .summary-actions { order: 3; }
+.github-dashboard .quick-summary > .summary-status-grid { order: 4; }
+.github-dashboard .quick-summary > .evidence-overview { order: 2; }
+.github-dashboard .quick-summary > .dashboard-supporting-details { order: 6; }
+.github-dashboard .quick-summary > .dashboard-boundary:not(.dashboard-notice) { order: 7; }
+
+/* A quiet 22px checkbox inside an unchanged 44px click target. Native checked
+   semantics, label activation and keyboard focus are preserved. */
+.github-dashboard .dashboard-toggle-row input {
+  appearance: none;
+  position: relative;
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+}
+.github-dashboard .dashboard-toggle-row input::before {
+  content: "";
+  position: absolute;
+  top: 11px;
+  left: 11px;
+  width: 22px;
+  height: 22px;
+  border: 1.5px solid #8a9d91;
+  border-radius: 5px;
+  background: #fff;
+}
+.github-dashboard .dashboard-toggle-row input:checked::before { background: var(--workspace-violet); border-color: var(--workspace-violet); }
+.github-dashboard .dashboard-toggle-row input:checked::after {
+  content: "";
+  position: absolute;
+  top: 14px;
+  left: 18px;
+  width: 7px;
+  height: 12px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.github-dashboard .dashboard-toggle-row input:disabled { opacity: .55; cursor: not-allowed; }
+@media (max-width: 700px) {
+  .github-dashboard .dashboard-workspace > .dashboard-section-heading .dashboard-text-action { min-height: 44px; font-size: 14px; }
+}
+@media (forced-colors: active) {
+  .github-dashboard .dashboard-toggle-row input { appearance: auto; }
+  .github-dashboard .dashboard-toggle-row input::before,
+  .github-dashboard .dashboard-toggle-row input::after { display: none; }
 }

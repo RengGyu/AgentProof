@@ -60,6 +60,14 @@ async function noHorizontalOverflow(page) {
     await record(`${label}: existing report and evidence render without overflow`, async () => {
       await page.goto(base + '/dashboard?demo=1', { waitUntil: 'networkidle' });
       await page.locator('.quick-summary').waitFor();
+      const gap = page.locator('.quick-summary > .summary-callout');
+      if (await gap.count()) {
+        const gapBox = await gap.boundingBox();
+        const metaBox = await page.locator('.quick-summary > .summary-status-grid').boundingBox();
+        const actionBox = await page.locator('.quick-summary > .summary-actions').boundingBox();
+        assert.ok(gapBox.y < metaBox.y, 'Evidence gap must appear before snapshot metadata');
+        assert.ok(actionBox.y < metaBox.y, 'Next actions must appear before snapshot metadata');
+      }
       await noHorizontalOverflow(page); await screenshot(page, `dashboard-${label}`);
       const expand = page.getByRole('button', { name: 'View detailed evidence', exact: true });
       if (await expand.isVisible()) await expand.click();
@@ -81,6 +89,8 @@ async function noHorizontalOverflow(page) {
       const comments = page.locator('.dashboard-toggle-row').filter({ hasText: 'Summary comments' }).locator('input');
       assert.equal(await comments.isChecked(), false);
       assert.ok((await comments.boundingBox()).height >= 44);
+      const checkboxGlyph = await comments.evaluate(el => getComputedStyle(el, '::before').width);
+      assert.equal(checkboxGlyph, '22px', 'Checkbox glyph stays compact within its touch target');
       await noHorizontalOverflow(page); await screenshot(page, `settings-${label}`);
     });
     await record(`${label}: no uncaught browser exceptions`, async () => assert.deepEqual(errors, []));

@@ -28,6 +28,8 @@ jobs:
         run: node scripts/check-reading-workspace.mjs
       - name: Component regression tests
         run: pnpm exec vitest run src/components
+      - name: Full regression suite
+        run: pnpm test
       - name: Typecheck
         run: pnpm typecheck
       - name: Production build (not deployment)
