@@ -23,11 +23,12 @@ jobs:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
+      - name: Export exact source for isolated visual review
+        run: git archive --format=tar HEAD | gzip > "$RUNNER_TEMP/ui-source.tar.gz"
       - uses: actions/setup-node@v5
         with:
           node-version: 22
-      - name: Export exact source for isolated visual review
-        run: git archive --format=tar HEAD | gzip > "$RUNNER_TEMP/ui-source.tar.gz"
+          package-manager-cache: false
       - name: Install locked dependencies
         run: |
           corepack enable
