@@ -19,12 +19,11 @@ jobs:
     env:
       CI: true
       NEXT_TELEMETRY_DISABLED: "1"
+      VERCEL_ENV: preview
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
-      - name: Export exact source for isolated visual review
-        run: git archive --format=tar HEAD | gzip > "$RUNNER_TEMP/ui-source.tar.gz"
       - uses: actions/setup-node@v5
         with:
           node-version: 22
@@ -33,17 +32,45 @@ jobs:
         run: |
           corepack enable
           pnpm install --frozen-lockfile
-      - name: Export dependencies for offline UI rendering
-        run: tar -czf "$RUNNER_TEMP/ui-dependencies.tar.gz" node_modules
-      - name: Baseline component tests
+      - name: Component regression tests
         run: pnpm exec vitest run src/components
-      - name: Review workspace (no Git credentials or application secrets)
+      - name: Install isolated browser test tools
+        run: |
+          npm install --prefix "$RUNNER_TEMP/ui-browser" --no-package-lock playwright@1.56.1
+          "$RUNNER_TEMP/ui-browser/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Capture actual application screens
+        env:
+          PLAYWRIGHT_MODULE: ${{ runner.temp }}/ui-browser/node_modules/playwright/index.mjs
+        run: |
+          mkdir -p ui-review-results
+          pnpm dev --hostname 127.0.0.1 --port 3000 > ui-review-results/server.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://127.0.0.1:3000/ >/dev/null && break; sleep 2; done
+          node --input-type=module <<'JS'
+          import { writeFile } from 'node:fs/promises';
+          const { chromium } = await import(process.env.PLAYWRIGHT_MODULE);
+          const browser = await chromium.launch();
+          const results = [];
+          for (const [device, width, height] of [['desktop', 1440, 1000], ['mobile', 390, 844]]) {
+            const page = await browser.newPage({ viewport: { width, height } });
+            const errors = [];
+            page.on('pageerror', error => errors.push(error.message));
+            for (const [name, path] of [['entry', '/'], ['dashboard', '/dashboard?demo=1']]) {
+              await page.goto(`http://127.0.0.1:3000${path}`, { waitUntil: 'networkidle' });
+              await page.screenshot({ path: `ui-review-results/${name}-${device}.png`, fullPage: true });
+              results.push({ device, name, title: await page.title(), overflow: await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), errors: [...errors] });
+            }
+            await page.getByRole('button', { name: 'Settings', exact: true }).click();
+            await page.screenshot({ path: `ui-review-results/settings-${device}.png`, fullPage: true });
+            await page.close();
+          }
+          await browser.close();
+          await writeFile('ui-review-results/results.json', JSON.stringify(results, null, 2));
+          JS
+      - name: UI review evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ui-review-workspace-${{ github.sha }}
-          path: |
-            ${{ runner.temp }}/ui-source.tar.gz
-            ${{ runner.temp }}/ui-dependencies.tar.gz
-          retention-days: 1
-          if-no-files-found: error
+          name: ui-screens-${{ github.sha }}
+          path: ui-review-results/
+          retention-days: 7
+          if-no-files-found: warn
