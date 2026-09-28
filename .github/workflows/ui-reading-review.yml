@@ -1,0 +1,49 @@
+name: Reading workspace UI checks
+
+on:
+  push:
+    branches:
+      - codex/ui-calm-reading-20260929
+
+permissions:
+  contents: read
+
+jobs:
+  ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CI: true
+      VERCEL_ENV: preview
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v5
+      - run: corepack enable
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Reading layout contracts
+        run: node scripts/check-reading-workspace.mjs
+      - name: Component regression tests
+        run: pnpm exec vitest run src/components
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Production build (not deployment)
+        run: pnpm build
+      - name: Install isolated browser-test runner
+        run: |
+          npm install --prefix /tmp/agentproof-ui-runner --no-save --no-package-lock playwright@1.63.0
+          node /tmp/agentproof-ui-runner/node_modules/playwright/cli.js install --with-deps chromium
+      - name: Desktop and mobile browser checks
+        env:
+          NODE_PATH: /tmp/agentproof-ui-runner/node_modules
+        run: node scripts/smoke-reading-workspace.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reading-workspace-browser-results
+          path: artifacts/reading-workspace/
+          retention-days: 7
+          if-no-files-found: warn
