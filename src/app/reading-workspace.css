@@ -1,0 +1,345 @@
+/* Presentation only. Evidence, permissions, consent and export contracts live
+   in the existing components and view models; this layer never hides them. */
+.github-entry,
+.github-dashboard {
+  --workspace-ink: #24352d;
+  --workspace-muted: #617168;
+  --workspace-line: #dce4de;
+  --workspace-canvas: #f5f7f5;
+  --workspace-panel: #ffffff;
+  --workspace-navy: #20372c;
+  /* Keep legacy token names so all existing controls share the same accent. */
+  --workspace-violet: #285b46;
+  --workspace-violet-soft: #edf4ef;
+  --workspace-amber: #8a5a12;
+  --workspace-amber-soft: #fcf7eb;
+  --workspace-green: #256747;
+  --workspace-red: #a8393b;
+  color: var(--workspace-ink);
+  background: var(--workspace-canvas);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-text-size-adjust: 100%;
+}
+
+.github-entry :is(button, a, summary, input):focus-visible,
+.github-dashboard :is(button, a, summary, input):focus-visible {
+  outline: 2px solid var(--workspace-violet);
+  outline-offset: 4px;
+}
+
+.github-entry :is(button, a),
+.github-dashboard :is(button, a, summary) {
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.github-entry .dashboard-brand,
+.github-dashboard .dashboard-brand { color: var(--workspace-ink); gap: 12px; font-weight: 700; }
+.github-entry .dashboard-brand small,
+.github-dashboard .dashboard-brand small { color: var(--workspace-muted); font-size: 11px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.github-entry .dashboard-brand-mark,
+.github-dashboard .dashboard-brand-mark,
+.github-dashboard .github-sign-in-mark { background: var(--workspace-violet); border-radius: 10px; box-shadow: none; }
+
+.github-entry .dashboard-primary-action,
+.github-dashboard .dashboard-primary-action {
+  min-height: 44px;
+  padding: 11px 18px;
+  border: 1px solid var(--workspace-violet);
+  border-radius: 9px;
+  background: var(--workspace-violet);
+  box-shadow: none;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.github-entry .dashboard-primary-action:hover:not(:disabled),
+.github-dashboard .dashboard-primary-action:hover:not(:disabled) { background: #204b39; border-color: #204b39; }
+.github-entry button:disabled,
+.github-dashboard button:disabled { cursor: not-allowed; }
+.github-dashboard :is(.dashboard-secondary-action, .dashboard-text-action, .dashboard-icon-button, .dashboard-disabled-action) {
+  min-height: 44px;
+  border-radius: 9px;
+  box-shadow: none;
+  font-size: 14px;
+  font-weight: 550;
+  line-height: 1.5;
+}
+.github-dashboard :is(.dashboard-secondary-action, .dashboard-text-action) { padding: 10px 15px; }
+.github-dashboard .dashboard-icon-button { width: 44px; height: 44px; flex: 0 0 44px; }
+.github-dashboard :is(.dashboard-secondary-action, .dashboard-text-action, .dashboard-icon-button, .dashboard-list-row):hover:not(:disabled) {
+  color: var(--workspace-violet);
+  border-color: #9ab3a2;
+  background: #f0f5f1;
+}
+
+/* Sign-in is a destination, not a landing-page campaign. */
+.github-entry { min-height: 100svh; display: flex; flex-direction: column; }
+.github-entry-header { width: min(1240px, 100%); min-height: 88px; margin: 0 auto; padding: 24px 40px; border: 0; }
+.github-entry-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 0;
+  gap: 22px;
+  margin: 0;
+  padding: 32px 24px 100px;
+}
+.github-entry-copy { width: min(100%, 440px); padding: 40px; border: 1px solid var(--workspace-line); border-radius: 16px; background: #fff; box-shadow: 0 4px 18px rgb(24 45 31 / 3%); }
+.github-entry-copy h1 { max-width: none; margin: 0; font-size: 28px; font-weight: 650; line-height: 1.25; letter-spacing: -.035em; }
+.github-entry-copy > p:not(.github-entry-access):not(.github-entry-error) { max-width: none; margin: 14px 0 28px; color: var(--workspace-muted); font-size: 15px; line-height: 1.65; }
+.github-entry .github-entry-action { width: 100%; min-height: 48px; margin: 0; font-size: 15px; }
+.github-entry-copy .github-entry-access { margin: 12px 0 0; color: var(--workspace-muted); font-size: 13px; line-height: 1.6; text-align: center; }
+.github-entry-alternatives { display: flex; flex-direction: column; align-items: center; gap: 4px; margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--workspace-line); }
+.github-entry .github-entry-secondary-link { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; gap: 8px; color: var(--workspace-muted); font-size: 14px; font-weight: 500; text-decoration: none; }
+.github-entry .github-entry-secondary-link:hover { color: var(--workspace-violet); text-decoration: underline; text-underline-offset: 4px; }
+.github-entry .github-entry-demo-link { margin: 0; }
+.github-entry .github-entry-boundary { display: block; width: min(100%, 430px); margin: 0; padding: 0 8px; border: 0; background: none; color: var(--workspace-muted); font-size: 12px; line-height: 1.75; text-align: center; }
+.github-entry .github-entry-error { margin: 20px 0 0; padding: 14px; border: 1px solid #e3b6b6; border-radius: 8px; color: #893638; background: #fff5f4; font-size: 14px; line-height: 1.65; }
+
+/* Workspace: report navigation is quiet; evidence is the reading surface. */
+.github-dashboard { min-height: 100svh; }
+.github-dashboard .dashboard-canvas { width: min(1460px, 100%); margin: 0 auto; padding: 0 40px 64px; }
+.github-dashboard .dashboard-topbar { min-height: 88px; gap: 24px; }
+.github-dashboard .dashboard-top-actions { gap: 10px; }
+.github-dashboard .dashboard-eyebrow { font-size: 11px; font-weight: 600; letter-spacing: .05em; line-height: 1.5; }
+.github-dashboard .dashboard-section-heading,
+.github-dashboard .dashboard-workspace > .dashboard-section-heading { gap: 20px; align-items: center; }
+.github-dashboard .dashboard-section-heading h3,
+.github-dashboard .dashboard-workspace > .dashboard-section-heading h3 { font-size: 22px; font-weight: 600; line-height: 1.35; letter-spacing: -.025em; }
+.github-dashboard .dashboard-section-copy { font-size: 14px; line-height: 1.65; margin-top: 8px; }
+.github-dashboard .dashboard-message { font-size: 14px; line-height: 1.6; margin: 20px 0 0; }
+.github-dashboard .dashboard-demo-banner { color: var(--workspace-muted); font-size: 12px; font-weight: 500; line-height: 1.6; }
+.github-dashboard .dashboard-section,
+.github-dashboard .dashboard-inbox,
+.github-dashboard .dashboard-workspace { padding: 28px; margin-top: 24px; border-radius: 12px; box-shadow: none; }
+.github-dashboard .dashboard-workspace:not(.settings-panel) { padding: 28px 0 0; border: 0; background: transparent; }
+.github-dashboard .dashboard-repository-strip { padding: 0; background: #fff; }
+.github-dashboard .dashboard-repository-strip > summary { min-height: 64px; padding: 18px 24px; gap: 14px; font-size: 14px; line-height: 1.5; }
+.github-dashboard .dashboard-repository-strip > summary strong { overflow-wrap: anywhere; font-weight: 600; }
+.github-dashboard .dashboard-repository-strip > :not(summary) { margin: 0 24px 24px; }
+.github-dashboard .dashboard-repository-strip[open] > summary { margin-bottom: 20px; border-bottom: 1px solid var(--workspace-line); }
+.github-dashboard .repository-tabs { gap: 14px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); }
+.github-dashboard .repository-tab { min-height: 88px; padding: 18px; gap: 8px; border-radius: 10px; }
+.github-dashboard .repository-tab span { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+.github-dashboard :is(.repository-tab small, .dashboard-list-row small) { font-size: 13px; line-height: 1.5; }
+.github-dashboard .repository-tab.active { background: var(--workspace-violet-soft); border-color: #9ab3a2; }
+.github-dashboard .dashboard-list-row { min-height: 64px; padding: 16px; gap: 14px; font-weight: 550; }
+.github-dashboard .dashboard-activity-row > span:nth-child(2) { gap: 8px; }
+.github-dashboard .dashboard-activity-row > span:nth-child(2) :is(strong, small) { white-space: normal; overflow-wrap: anywhere; }
+.github-dashboard .dashboard-report-layout { grid-template-columns: minmax(265px, 290px) minmax(0, 1fr); gap: 32px; margin-top: 28px; align-items: flex-start; }
+.github-dashboard .dashboard-report-navigation { min-width: 0; }
+.github-dashboard .report-list { gap: 12px; }
+.github-dashboard .report-row { grid-template-columns: 28px minmax(0, 1fr); min-height: 110px; padding: 18px; gap: 12px; align-items: flex-start; border-radius: 10px; }
+.github-dashboard .report-row > span:nth-child(2) { gap: 8px; }
+.github-dashboard .report-row > span:nth-child(2) strong { font-size: 15px; font-weight: 600; }
+.github-dashboard .report-row > span:nth-child(2) small { font-size: 12px; white-space: normal; overflow-wrap: anywhere; line-height: 1.65; }
+.github-dashboard .report-row-meta { grid-column: 2; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 10px; }
+.github-dashboard .report-row-meta small { font-size: 12px; }
+.github-dashboard .report-row-icon { background: #edf3ee; color: var(--workspace-violet); }
+.github-dashboard .report-row:hover:not(:disabled),
+.github-dashboard .report-row.active { border-color: #99b19f; background: var(--workspace-violet-soft); }
+.github-dashboard .status-token { min-height: 28px; padding: 5px 9px; gap: 6px; border-color: transparent; font-size: 12px; font-weight: 550; line-height: 1.4; white-space: normal; }
+.github-dashboard .status-token svg { flex: 0 0 auto; }
+.github-dashboard .summary-priority { font-size: 13px; line-height: 1.6; }
+.github-dashboard .dashboard-selected-report { min-width: 0; scroll-margin-top: 24px; }
+.github-dashboard .quick-summary { min-width: 0; margin: 0; padding: 32px; border-radius: 14px; }
+.github-dashboard .quick-summary-header { gap: 20px; align-items: flex-start; }
+.github-dashboard .quick-summary-header h2 { margin: 0; font-size: 28px; font-weight: 600; letter-spacing: -.025em; line-height: 1.3; }
+.github-dashboard .summary-badges { align-items: center; gap: 10px; }
+.github-dashboard .summary-status-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 28px; margin-top: 28px; }
+.github-dashboard .summary-status-grid > div { min-height: 0; padding: 16px 0; border: 0; border-bottom: 1px solid var(--workspace-line); border-radius: 0; background: transparent; overflow: visible; }
+.github-dashboard .summary-status-grid p { margin-bottom: 6px; font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.github-dashboard .summary-status-grid strong { font-size: 14px; font-weight: 550; line-height: 1.7; }
+.github-dashboard .summary-status-grid strong.mono { font-size: 13px; }
+.github-dashboard .summary-callout { margin-top: 28px; padding: 22px; gap: 14px; border-color: #e6d8b7; border-radius: 10px; }
+.github-dashboard .summary-callout strong { font-size: 17px; font-weight: 600; line-height: 1.5; }
+.github-dashboard .summary-callout p:not(.dashboard-eyebrow) { font-size: 15px; line-height: 1.75; margin-top: 10px; }
+.github-dashboard .summary-actions { gap: 12px; margin-top: 24px; }
+.github-dashboard .dashboard-boundary { align-items: flex-start; gap: 10px; margin-top: 24px; color: var(--workspace-muted); font-size: 13px; font-weight: 400; line-height: 1.75; }
+.github-dashboard .dashboard-boundary svg { flex: 0 0 auto; margin-top: 3px; }
+.github-dashboard .dashboard-boundary p { margin: 0; }
+.github-dashboard .dashboard-notice { padding: 18px; border-radius: 10px; }
+
+/* Progressive disclosure and readable source material, not nested card grids. */
+.github-dashboard .detailed-evidence { margin-top: 28px; padding-top: 28px; }
+.github-dashboard .detailed-evidence-actions { gap: 12px; }
+.github-dashboard .evidence-overview .detailed-evidence-actions > button { min-height: 44px; padding: 10px 15px; font-size: 14px; }
+.github-dashboard .detail-grid { grid-template-columns: minmax(0, 1fr); gap: 28px; margin-top: 24px; }
+.github-dashboard .detail-grid > section { padding: 0 0 24px; border: 0; border-bottom: 1px solid var(--workspace-line); border-radius: 0; background: transparent; }
+.github-dashboard .detail-grid h5 { font-size: 16px; font-weight: 600; margin-bottom: 18px; }
+.github-dashboard .detail-row { font-size: 14px; line-height: 1.75; padding: 14px 0; gap: 8px; }
+.github-dashboard :is(.agent-request, .requirement-explanation, .requirement-primary-gap, .requirement-next-action, .requirement-inspect-first) { font-size: 15px; font-weight: 400; line-height: 1.8; }
+.github-dashboard .requirement-evidence-list { gap: 24px; }
+.github-dashboard .requirement-evidence-card { padding: 24px; border-radius: 10px; }
+.github-dashboard .requirement-evidence-card-header { flex-direction: column; gap: 18px; }
+.github-dashboard .requirement-evidence-heading h6 { margin: 0; font-size: 17px; font-weight: 600; line-height: 1.65; }
+.github-dashboard .requirement-evidence-disclosure { width: 100%; }
+.github-dashboard .requirement-evidence-disclosure summary { min-height: 48px; gap: 16px; font-size: 13px; flex-wrap: wrap; }
+.github-dashboard .requirement-evidence-disclosure-action { font-size: 13px; }
+.github-dashboard .requirement-evidence-disclosure-content { gap: 14px; padding: 16px 0; font-size: 14px; line-height: 1.8; }
+.github-dashboard .requirement-evidence-disclosure-content ul { gap: 12px; }
+.github-dashboard :is(.dashboard-supporting-details, .pr-evidence-context) { margin-top: 24px; padding-top: 14px; border-top: 1px solid var(--workspace-line); }
+.github-dashboard :is(.dashboard-supporting-details, .pr-evidence-context) > summary { min-height: 48px; padding: 12px 0; font-size: 14px; font-weight: 550; line-height: 1.6; cursor: pointer; }
+.github-dashboard .pr-evidence-objective { padding: 28px 0; border: 0; border-bottom: 1px solid var(--workspace-line); border-radius: 0; background: transparent; }
+.github-dashboard .pr-evidence-objective h3 { margin: 10px 0 24px; font-size: 21px; font-weight: 600; line-height: 1.6; }
+.github-dashboard .pr-evidence-groups { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; }
+.github-dashboard .pr-evidence-group { min-width: 0; padding: 22px 0; border: 0; border-bottom: 1px solid var(--workspace-line); border-radius: 0; background: transparent; }
+.github-dashboard .pr-evidence-group.inspect-first { padding: 24px; border: 1px solid #cfddd2; border-radius: 10px; background: #f4f8f5; }
+.github-dashboard .pr-evidence-group h4 { margin: 0 0 16px; font-size: 15px; font-weight: 600; }
+.github-dashboard .pr-evidence-group ul { display: grid; gap: 24px; padding: 0; list-style: none; }
+.github-dashboard .pr-evidence-group li { min-width: 0; padding: 0; background: transparent; }
+.github-dashboard .pr-evidence-group li + li { padding-top: 22px; border-top: 1px solid var(--workspace-line); }
+.github-dashboard .pr-evidence-group li > div { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 10px 14px; }
+.github-dashboard .pr-evidence-group li p { margin: 14px 0; max-width: 72ch; font-size: 15px; line-height: 1.8; }
+.github-dashboard .pr-evidence-group li a { display: inline-flex; align-items: center; min-height: 44px; color: var(--workspace-violet); font-size: 14px; text-underline-offset: 4px; }
+.github-dashboard .pr-evidence-relation { font-size: 12px; line-height: 1.6; padding: 5px 9px; }
+.github-dashboard .pr-evidence-next { margin-top: 24px; font-size: 15px; line-height: 1.8; }
+.github-dashboard :is(code, .mono) { font-size: 13px; line-height: 1.75; overflow-wrap: anywhere; }
+.github-dashboard pre { max-width: 100%; overflow-x: auto; padding: 20px; border-radius: 10px; font-size: 13px; line-height: 1.85; tab-size: 2; }
+.github-dashboard pre code { white-space: pre; overflow-wrap: normal; word-break: normal; }
+
+/* Settings/consent stay explicit, in the normal reading flow. */
+.github-dashboard .settings-panel { max-width: 880px; }
+.github-dashboard .dashboard-toggle-row { min-height: 88px; gap: 24px; padding: 24px 0; }
+.github-dashboard .dashboard-toggle-row span { min-width: 0; gap: 8px; }
+.github-dashboard .dashboard-toggle-row strong { font-size: 15px; font-weight: 600; line-height: 1.6; }
+.github-dashboard .dashboard-toggle-row small { font-size: 14px; line-height: 1.7; }
+.github-dashboard .dashboard-toggle-row input { flex: 0 0 44px; width: 44px; height: 44px; cursor: pointer; accent-color: var(--workspace-violet); }
+.github-dashboard .dashboard-account-settings { margin-top: 32px; padding-top: 28px; }
+.github-dashboard .analysis-choice-dialog { padding: 28px; gap: 24px; max-width: 100%; border-radius: 12px; }
+.github-dashboard .analysis-choice-dialog p { font-size: 15px; line-height: 1.8; }
+.github-dashboard .analysis-choice-actions { gap: 12px; flex-wrap: wrap; }
+.github-dashboard .dashboard-empty { min-height: 176px; gap: 14px; padding: 28px; font-size: 15px; line-height: 1.75; }
+.github-dashboard .dashboard-empty small { font-size: 14px; }
+.github-dashboard.github-sign-in { max-width: 480px; min-height: auto; margin: 12svh auto; padding: 36px 28px; border: 1px solid var(--workspace-line); border-radius: 16px; background: #fff; }
+
+@media (max-width: 1080px) {
+  .github-dashboard .dashboard-canvas { padding-right: 28px; padding-left: 28px; }
+  .github-dashboard .dashboard-report-layout { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  .github-dashboard .dashboard-report-picker { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 52px; width: 100%; padding: 14px 18px; border: 1px solid var(--workspace-line); border-radius: 10px; background: #fff; color: var(--workspace-ink); font-size: 14px; }
+  .github-dashboard .report-list.mobile-collapsed { display: none; }
+}
+
+@media (max-width: 700px) {
+  .github-entry-header { min-height: 80px; padding: 22px 24px; }
+  .github-entry-main { justify-content: flex-start; padding: 44px 20px 40px; gap: 24px; }
+  .github-entry-copy { padding: 28px 24px; border-radius: 14px; }
+  .github-entry-copy h1 { font-size: 25px; }
+  .github-entry-copy > p:not(.github-entry-access):not(.github-entry-error) { font-size: 16px; }
+  .github-entry .github-entry-boundary { font-size: 13px; }
+  .github-dashboard { font-size: 16px; }
+  .github-dashboard .dashboard-canvas { padding: 0 20px 40px; }
+  .github-dashboard .dashboard-topbar { flex-wrap: wrap; min-height: 84px; padding: 22px 0; gap: 20px; }
+  .github-dashboard .dashboard-top-actions { width: 100%; }
+  .github-dashboard .dashboard-settings-action { flex: 1; }
+  .github-dashboard .dashboard-section-heading,
+  .github-dashboard .dashboard-workspace > .dashboard-section-heading { flex-wrap: wrap; align-items: flex-start; gap: 16px; }
+  .github-dashboard .dashboard-section-heading h3,
+.github-dashboard .dashboard-workspace > .dashboard-section-heading h3 { font-size: 23px; }
+  .github-dashboard .dashboard-section,
+  .github-dashboard .dashboard-inbox,
+  .github-dashboard .dashboard-workspace { padding: 24px 20px; margin-top: 28px; }
+  .github-dashboard .dashboard-workspace:not(.settings-panel) { padding: 0; }
+  .github-dashboard .dashboard-repository-strip { padding: 0; }
+  .github-dashboard .dashboard-repository-strip > summary { flex-wrap: wrap; padding: 20px; gap: 8px 12px; }
+  .github-dashboard .dashboard-repository-strip > :not(summary) { margin: 0 20px 24px; }
+  .github-dashboard .repository-tabs,
+  .github-dashboard .summary-status-grid,
+  .github-dashboard .detail-grid,
+  .github-dashboard .pr-evidence-groups { grid-template-columns: minmax(0, 1fr); }
+  .github-dashboard .dashboard-report-layout { margin-top: 24px; gap: 24px; }
+  .github-dashboard .quick-summary { padding: 24px 20px; }
+  .github-dashboard .quick-summary-header { flex-direction: column; gap: 16px; }
+  .github-dashboard .summary-badges { justify-content: flex-start; gap: 12px; }
+  .github-dashboard .summary-status-grid > div { padding: 18px 0; }
+  .github-dashboard .summary-status-grid strong { font-size: 15px; line-height: 1.75; }
+  .github-dashboard .summary-callout { padding: 20px; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .github-dashboard .summary-callout p:not(.dashboard-eyebrow) { font-size: 16px; line-height: 1.8; }
+  .github-dashboard .summary-actions { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .github-dashboard .summary-actions > * { width: 100%; min-height: 48px; }
+  .github-dashboard .detailed-evidence > .dashboard-section-heading { display: block; }
+  .github-dashboard .detailed-evidence-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 18px; }
+  .github-dashboard .detailed-evidence-actions > button,
+  .github-dashboard .evidence-overview .detailed-evidence-actions > button { flex: 1 1 120px; }
+  .github-dashboard .requirement-evidence-card { padding: 22px 18px; }
+  .github-dashboard .requirement-evidence-heading h6 { font-size: 17px; }
+  .github-dashboard .pr-evidence-objective { padding-top: 24px; }
+  .github-dashboard .pr-evidence-objective h3 { font-size: 20px; line-height: 1.7; }
+  .github-dashboard .pr-evidence-group.inspect-first { padding: 20px 18px; }
+  .github-dashboard .pr-evidence-group li > div { align-items: flex-start; flex-direction: column; gap: 12px; }
+  .github-dashboard .pr-evidence-group li p { font-size: 16px; }
+  .github-dashboard .dashboard-boundary { font-size: 14px; }
+  .github-dashboard .dashboard-toggle-row { align-items: flex-start; gap: 18px; }
+  .github-dashboard .dashboard-toggle-row input { margin-top: 2px; }
+  .github-dashboard .analysis-choice-actions { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .github-dashboard .dashboard-list-row { flex-wrap: wrap; }
+  .github-dashboard.github-sign-in { margin: 32px 20px; padding: 28px 24px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .github-entry *, .github-dashboard * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+
+/* Lead with the review task; keep every snapshot field available underneath.
+   Interactive controls retain their relative order and nothing is hidden. */
+.github-dashboard .quick-summary { display: flex; flex-direction: column; }
+.github-dashboard .quick-summary > * { order: 5; }
+.github-dashboard .quick-summary > .quick-summary-header { order: 0; }
+.github-dashboard .quick-summary > .dashboard-notice { order: 1; }
+.github-dashboard .quick-summary > .summary-callout { order: 2; }
+.github-dashboard .quick-summary > .summary-actions { order: 3; }
+.github-dashboard .quick-summary > .summary-status-grid { order: 4; }
+.github-dashboard .quick-summary > .evidence-overview { order: 2; }
+.github-dashboard .quick-summary > .dashboard-supporting-details { order: 6; }
+.github-dashboard .quick-summary > .dashboard-boundary:not(.dashboard-notice) { order: 7; }
+
+/* A quiet 22px checkbox inside an unchanged 44px click target. Native checked
+   semantics, label activation and keyboard focus are preserved. */
+.github-dashboard .dashboard-toggle-row input {
+  appearance: none;
+  position: relative;
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+}
+.github-dashboard .dashboard-toggle-row input::before {
+  content: "";
+  position: absolute;
+  top: 11px;
+  left: 11px;
+  width: 22px;
+  height: 22px;
+  border: 1.5px solid #8a9d91;
+  border-radius: 5px;
+  background: #fff;
+}
+.github-dashboard .dashboard-toggle-row input:checked::before { background: var(--workspace-violet); border-color: var(--workspace-violet); }
+.github-dashboard .dashboard-toggle-row input:checked::after {
+  content: "";
+  position: absolute;
+  top: 14px;
+  left: 18px;
+  width: 7px;
+  height: 12px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.github-dashboard .dashboard-toggle-row input:disabled { opacity: .55; cursor: not-allowed; }
+@media (max-width: 700px) {
+  .github-dashboard .dashboard-workspace > .dashboard-section-heading .dashboard-text-action { min-height: 44px; font-size: 14px; }
+}
+@media (forced-colors: active) {
+  .github-dashboard .dashboard-toggle-row input { appearance: auto; }
+  .github-dashboard .dashboard-toggle-row input::before,
+  .github-dashboard .dashboard-toggle-row input::after { display: none; }
+}

@@ -31,9 +31,37 @@ export function PublicGitHubEntry({ previewDemoAvailable = false }: { previewDem
   }
 
   return <main className="github-entry">
-    <header className="github-entry-header"><Link href="/" className="dashboard-brand"><span className="dashboard-brand-mark"><ShieldCheck size={18} /></span><span>AgentProof<small>Evidence workspace</small></span></Link><a className="github-entry-secondary-link" href="/analyze">Analyze a public PR <ArrowRight size={15} /></a></header>
-    <section className="github-entry-main">
-      <div className="github-entry-copy"><p className="dashboard-eyebrow">EVIDENCE-FIRST PULL REQUEST REVIEW</p><h1>Connect GitHub to start an evidence review.</h1><p>Choose a repository, then open the evidence behind each saved PR report.</p><button className="dashboard-primary-action github-entry-action" onClick={() => { void continueWithGitHub(); }} disabled={pending}><Github size={19} /> {pending ? "Connecting GitHub…" : "Continue with GitHub"}</button>{previewDemoAvailable ? <Link className="dashboard-secondary-action github-entry-demo-link" href="/dashboard?demo=1">Preview dashboard</Link> : null}{message ? <p className="github-entry-error" role="status">{message}</p> : null}<p className="dashboard-boundary"><ShieldCheck size={15} /> AgentProof does not establish correctness, safety, requirement satisfaction, or merge readiness.</p></div>
+    <header className="github-entry-header">
+      <Link href="/" className="dashboard-brand" aria-label="AgentProof home">
+        <span className="dashboard-brand-mark" aria-hidden="true"><ShieldCheck size={18} /></span>
+        <span>AgentProof<small>Evidence workspace</small></span>
+      </Link>
+    </header>
+    <section className="github-entry-main" aria-labelledby="github-sign-in-title">
+      <div className="github-entry-copy">
+        <h1 id="github-sign-in-title">Sign in to AgentProof</h1>
+        <p>Open your repositories and review PR evidence.</p>
+        <button
+          type="button"
+          className="dashboard-primary-action github-entry-action"
+          onClick={() => { void continueWithGitHub(); }}
+          disabled={pending}
+          aria-busy={pending}
+          aria-describedby="github-sign-in-access"
+        >
+          <Github size={19} aria-hidden="true" />
+          {pending ? "Connecting GitHub…" : "Continue with GitHub"}
+        </button>
+        <p id="github-sign-in-access" className="github-entry-access">You’ll choose repository access next.</p>
+        {message ? <p className="github-entry-error" role="status">{message} Please try again.</p> : null}
+        <div className="github-entry-alternatives">
+          <a className="github-entry-secondary-link" href="/analyze">Analyze a public PR <ArrowRight size={15} aria-hidden="true" /></a>
+          {previewDemoAvailable ? <Link className="github-entry-secondary-link github-entry-demo-link" href="/dashboard?demo=1">Preview dashboard</Link> : null}
+        </div>
+      </div>
+      <p className="dashboard-boundary github-entry-boundary">
+        AgentProof organizes evidence. It does not establish correctness, safety, requirement satisfaction, or merge readiness.
+      </p>
     </section>
   </main>;
 }

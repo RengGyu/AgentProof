@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./reading-workspace.css";
 
 export const metadata: Metadata = {
   title: "AgentProof",
