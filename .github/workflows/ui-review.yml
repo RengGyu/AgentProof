@@ -1,0 +1,48 @@
+name: Maintainer UI review
+
+on:
+  push:
+    branches:
+      - design/maintainer-workspace-20260929
+
+permissions:
+  contents: read
+
+concurrency:
+  group: maintainer-ui-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CI: true
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Export exact source for isolated visual review
+        run: git archive --format=tar HEAD | gzip > "$RUNNER_TEMP/ui-source.tar.gz"
+      - name: Install locked dependencies
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+      - name: Export dependencies for offline UI rendering
+        run: tar -czf "$RUNNER_TEMP/ui-dependencies.tar.gz" node_modules
+      - name: Baseline component tests
+        run: pnpm exec vitest run src/components
+      - name: Review workspace (no Git credentials or application secrets)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-review-workspace-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/ui-source.tar.gz
+            ${{ runner.temp }}/ui-dependencies.tar.gz
+          retention-days: 1
+          if-no-files-found: error
