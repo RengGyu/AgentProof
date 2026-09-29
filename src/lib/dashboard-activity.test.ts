@@ -142,3 +142,13 @@ describe("dashboard activity", () => {
     expect(activity.map((event) => event.id)).toEqual(["job:job_other", "report:report_dongo"]);
   });
 });
+
+it("joins completed jobs to saved reports by stable repository ID even without repository names", () => {
+  const activity = buildDashboardActivity({
+    repositories: [],
+    reports: [{ id: "saved", repositoryId: 42, pullRequestNumber: 1, headSha: "a".repeat(40), priority: "low", createdAt: "2026-09-29T00:00:00Z" }],
+    jobs: [{ id: "completed", repositoryId: 42, repositoryFullName: "Owner/renamed", pullRequestNumber: 1, headShaPrefix: "a".repeat(12), status: "completed", createdAt: "2026-09-29T00:00:00Z", updatedAt: "2026-09-29T00:00:00Z", attempts: 1, sideEffects: { saveReport: true, comment: false }, privacy: "analysis-job-summary-only" }]
+  });
+  expect(activity).toHaveLength(1);
+  expect(activity[0]).toMatchObject({ kind: "report_ready", reportId: "saved" });
+});

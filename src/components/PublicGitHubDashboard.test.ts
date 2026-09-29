@@ -106,7 +106,7 @@ describe("PublicGitHubDashboard saved reports", () => {
 
   it("renders the evidence workspace without inventing issue grouping", () => {
     expect(source).toContain("Repository reports");
-    expect(source).toContain("No saved reports");
+    expect(source).toContain("No current saved reports in this list.");
     expect(source).toContain("Quick Summary");
     expect(source).toContain("View detailed evidence");
     expect(source).toContain("report_stale");
@@ -126,7 +126,7 @@ describe("PublicGitHubDashboard saved reports", () => {
     expect(source).not.toContain("Reports remain available while an update runs.");
     expect(source).not.toContain("New analyses, pending work, and previous-result notices");
     expect(source).not.toContain("New PR events will appear here after analysis.");
-    expect(source).toMatch(/if \(event\.kind === "analysis_completed"\) \{\s*setMessage\("No saved report for this analysis\."\);\s*return;\s*\}/);
+    expect(source).toContain("No report in recent saved reports");
     expect(source).toContain("Refresh reports and activity");
     expect(source).toContain("<RotateCw size={18} />");
   });
@@ -139,7 +139,7 @@ describe("PublicGitHubDashboard saved reports", () => {
   });
 
   it("opens the saved previous report when a stale Inbox item is selected", () => {
-    expect(source).toMatch(/if \(event\.kind === "report_stale"\) \{\s*if \(event\.reportId\) \{\s*setMessage\("Showing this previous result\."\);\s*await openReport\(event\.reportId\);/);
+    expect(source).toMatch(/if \(event\.reportId\) \{\s*await openReport\(event\.reportId\);/);
   });
 
   it("refreshes visible signed-in workspaces and gives the owner a session-only logout", () => {

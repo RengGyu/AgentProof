@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { claimAnalysisJobById, clearAnalysisJobsForTests, enqueueAnalysisJob, failAnalysisJob } from "@/lib/analysis-jobs";
+import { claimAnalysisJobById, completeAnalysisJob, clearAnalysisJobsForTests, enqueueAnalysisJob, failAnalysisJob } from "@/lib/analysis-jobs";
 import { clearSavedReportsForTests, createVerifiedSavedReport } from "@/lib/server-report-store";
 import { clearTenantAuthSessionsForTests, createTenantAuthSessionForMember } from "@/lib/tenant-auth";
 import { demoScenarios } from "@/lib/sample-data";
 import { generateVerificationReport } from "@/lib/verifier";
 import { GET } from "./route";
+import { GET as getReports } from "../reports/route";
 
 describe("GET /api/dashboard/activity", () => {
   beforeEach(() => {
@@ -67,6 +68,24 @@ describe("GET /api/dashboard/activity", () => {
     expect(serialized).not.toContain("token");
     expect(serialized).not.toContain("payload");
     expect(serialized).not.toContain("raw");
+  });
+
+  it("keeps completion metadata separate from saved reports and links a report once it exists", async () => {
+    const session = await createTenantAuthSessionForMember({ tenantId: "tenant_a", memberId: "github:1" });
+    const queued = await enqueueAnalysisJob(jobInput({ saveReport: false }));
+    const { job } = await claimAnalysisJobById(queued.id, { now: new Date(Date.now() + 60_000) });
+    expect(await completeAnalysisJob({ id: queued.id, claimGeneration: job!.claim_generation! })).toBe(true);
+    const request = (path: string) => new Request(`http://localhost/api/dashboard/${path}`, { headers: { cookie: session.sessionCookie } });
+    const before = await (await GET(request("activity"))).json();
+    expect(before.activity).toEqual([expect.objectContaining({ kind: "analysis_completed", repositoryId: 100 })]);
+    expect(before.activity[0]).not.toHaveProperty("reportId");
+    expect(await (await getReports(request("reports"))).json()).toMatchObject({ reports: [] });
+
+    const saved = await createVerifiedSavedReport(generateVerificationReport(demoScenarios.clean), {
+      tenantId: "tenant_a", installationId: 321, repositoryId: 100, pullRequestNumber: 14, headSha: "a".repeat(40)
+    });
+    expect(await (await GET(request("activity"))).json()).toMatchObject({ activity: [expect.objectContaining({ kind: "report_ready", reportId: saved.id })] });
+    expect(await (await getReports(request("reports"))).json()).toMatchObject({ reports: [expect.objectContaining({ id: saved.id })] });
   });
 
   it("requires a signed-in tenant session", async () => {

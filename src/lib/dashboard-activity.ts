@@ -33,10 +33,10 @@ export function buildDashboardActivity(input: {
   const repositoryNames = new Map((input.repositories ?? [])
     .filter((repository) => typeof repository.repositoryId === "number")
     .map((repository) => [repository.repositoryId!, repository.repositoryFullName]));
-  const reportKeys = new Set(input.reports.map((report) => reportKey(report, repositoryNames)));
+  const reportKeys = new Set(input.reports.map((report) => reportKey(report)));
   const events = [
     ...input.reports.map((report) => reportEvent(report, repositoryNames)),
-    ...input.jobs.flatMap((job) => jobEvents(job, reportKeys))
+    ...input.jobs.flatMap((job) => jobEvents(job, reportKeys, repositoryNames))
   ];
 
   return events
@@ -59,8 +59,8 @@ function reportEvent(report: DashboardSavedReport, repositoryNames: Map<number, 
   };
 }
 
-function jobEvents(job: TenantAnalysisJobSummary, reportKeys: Set<string>): DashboardActivityEvent[] {
-  if (job.status === "completed" && reportKeys.has(jobKey(job))) return [];
+function jobEvents(job: TenantAnalysisJobSummary, reportKeys: Set<string>, repositoryNames: Map<number, string>): DashboardActivityEvent[] {
+  if (job.status === "completed" && reportKeys.has(jobKey(job, repositoryNames))) return [];
 
   if (job.status === "queued" || job.status === "processing") {
     return [jobEvent(job, "analysis_pending", "Analysis pending")];
@@ -98,13 +98,14 @@ function jobEvent(
   };
 }
 
-function reportKey(report: DashboardSavedReport, repositoryNames: Map<number, string>): string {
-  const repositoryName = report.repositoryId ? repositoryNames.get(report.repositoryId) : undefined;
-  return `${repositoryName ?? `repository:${report.repositoryId ?? "unknown"}`}:${report.pullRequestNumber ?? "unknown"}:${safeHeadPrefix(report.headSha) ?? "unknown"}`;
+function reportKey(report: DashboardSavedReport): string {
+  return `repository:${report.repositoryId ?? "unknown"}:${report.pullRequestNumber ?? "unknown"}:${safeHeadPrefix(report.headSha) ?? "unknown"}`;
 }
 
-function jobKey(job: TenantAnalysisJobSummary): string {
-  return `${job.repositoryFullName}:${job.pullRequestNumber}:${safeHeadPrefix(job.headShaPrefix) ?? "unknown"}`;
+function jobKey(job: TenantAnalysisJobSummary, repositoryNames: Map<number, string>): string {
+  const repositoryId = job.repositoryId ?? [...repositoryNames].find(([, name]) => name.toLowerCase() === job.repositoryFullName.toLowerCase())?.[0];
+  // Old job summaries may lack an ID; resolve their name only when the grant supplies one.
+  return `${repositoryId ? `repository:${repositoryId}` : job.repositoryFullName.toLowerCase()}:${job.pullRequestNumber}:${safeHeadPrefix(job.headShaPrefix) ?? "unknown"}`;
 }
 
 function safeHeadPrefix(value: string | undefined): string | undefined {
