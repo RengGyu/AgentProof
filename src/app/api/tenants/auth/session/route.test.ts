@@ -150,6 +150,7 @@ describe("/api/tenants/auth/session", () => {
 
     expect(response.status).toBe(200);
     expect(clearCookie).toContain(`${TENANT_AUTH_SESSION_COOKIE}=deleted`);
+    expect(clearCookie).toContain("agentproof_github_choose_account=1");
     expect(clearCookie).toContain("Max-Age=0");
     expect(json).toEqual({
       ok: true,

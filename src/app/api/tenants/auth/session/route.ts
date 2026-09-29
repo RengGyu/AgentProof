@@ -8,6 +8,7 @@ import {
 import { recordAuditEvent } from "@/lib/audit-log";
 import { csrfFailureResponse, verifySameOriginMutationRequest } from "@/lib/csrf";
 import { noStoreJson, parseJsonSafely, utf8ByteLength } from "@/lib/http";
+import { chooseGitHubAccountOnNextLogin } from "@/lib/public-github-auth";
 
 const MAX_AUTH_SESSION_REQUEST_BYTES = 10_000;
 
@@ -106,15 +107,14 @@ export async function DELETE(request: Request) {
     return noStoreJson({ error: "Your session could not be ended. Try again.", code: "tenant_auth_logout_unavailable" }, { status: 503 });
   }
 
+  const headers = new Headers();
+  headers.append("Set-Cookie", clearTenantAuthSessionCookie());
+  headers.append("Set-Cookie", chooseGitHubAccountOnNextLogin());
   return noStoreJson({
     ok: true,
     deleted: true,
     privacy: "tenant-auth-session-cookie-only"
-  }, {
-    headers: {
-      "Set-Cookie": clearTenantAuthSessionCookie()
-    }
-  });
+  }, { headers });
 }
 
 async function recordTenantAuthFailure(input: {

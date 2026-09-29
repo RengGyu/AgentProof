@@ -1,5 +1,5 @@
 import { csrfFailureResponse, verifySameOriginMutationRequest } from "@/lib/csrf";
-import { beginGitHubOAuth, clearGitHubOAuthInstallCookie, getGitHubOAuthConfig, GitHubOAuthError } from "@/lib/public-github-auth";
+import { beginGitHubOAuth, clearGitHubAccountChoice, clearGitHubOAuthInstallCookie, getGitHubOAuthConfig, GitHubOAuthError, shouldChooseGitHubAccount } from "@/lib/public-github-auth";
 import { noStoreJson } from "@/lib/http";
 
 export async function POST(request: Request) {
@@ -12,9 +12,9 @@ export async function POST(request: Request) {
       return oauthCallbackOriginMismatch(config.callbackUrl);
     }
     const body = await request.json().catch(() => null);
-    const started = beginGitHubOAuth(config, Date.now(), body?.returnTo);
+    const started = beginGitHubOAuth(config, Date.now(), body?.returnTo, shouldChooseGitHubAccount(request.headers.get("cookie")));
     return noStoreJson({ ok: true, authorizationUrl: started.authorizationUrl, privacy: "state-and-pkce-cookie-only", next: "github_login" }, {
-      headers: cookieHeaders(started.stateCookie, clearGitHubOAuthInstallCookie())
+      headers: cookieHeaders(started.stateCookie, clearGitHubOAuthInstallCookie(), clearGitHubAccountChoice())
     });
   } catch (error) {
     if (error instanceof GitHubOAuthError) return oauthUnavailable();

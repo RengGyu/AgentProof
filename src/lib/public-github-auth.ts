@@ -2,6 +2,7 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes, timingSafeEq
 
 export const GITHUB_OAUTH_STATE_COOKIE = "agentproof_github_oauth_state";
 export const GITHUB_OAUTH_INSTALL_COOKIE = "agentproof_github_oauth_install";
+const GITHUB_CHOOSE_ACCOUNT_COOKIE = "agentproof_github_choose_account";
 
 const OAUTH_TTL_MS = 15 * 60 * 1000;
 const OAUTH_CALLBACK_PATH = "/api/auth/github/callback";
@@ -80,7 +81,7 @@ export function getGitHubOAuthConfig(env = process.env): GitHubOAuthConfig | nul
   return { clientId, clientSecret, callbackUrl, secret };
 }
 
-export function beginGitHubOAuth(config: GitHubOAuthConfig, now = Date.now(), returnTo?: unknown): GitHubOAuthStart {
+export function beginGitHubOAuth(config: GitHubOAuthConfig, now = Date.now(), returnTo?: unknown, chooseAccount = false): GitHubOAuthStart {
   const state: OAuthState = {
     returnTo: returnTo === "/analyze" ? "/analyze" : "/dashboard",
     state: randomBytes(32).toString("base64url"),
@@ -93,7 +94,20 @@ export function beginGitHubOAuth(config: GitHubOAuthConfig, now = Date.now(), re
   url.searchParams.set("state", state.state);
   url.searchParams.set("code_challenge", base64Url(createHash("sha256").update(state.verifier).digest()));
   url.searchParams.set("code_challenge_method", "S256");
+  if (chooseAccount) url.searchParams.set("prompt", "select_account");
   return { authorizationUrl: url.toString(), stateCookie: sealCookie(GITHUB_OAUTH_STATE_COOKIE, state, config.secret, state.expiresAt, now, OAUTH_CALLBACK_PATH) };
+}
+
+export function chooseGitHubAccountOnNextLogin(now = Date.now()): string {
+  return cookie(GITHUB_CHOOSE_ACCOUNT_COOKIE, "1", now + 30 * 24 * 60 * 60 * 1000, now, "/api/auth/github/start");
+}
+
+export function shouldChooseGitHubAccount(cookieHeader: string | null): boolean {
+  return readCookie(cookieHeader, GITHUB_CHOOSE_ACCOUNT_COOKIE) === "1";
+}
+
+export function clearGitHubAccountChoice(now = Date.now()): string {
+  return expiredCookie(GITHUB_CHOOSE_ACCOUNT_COOKIE, "/api/auth/github/start", now);
 }
 
 export async function finishGitHubOAuth(

@@ -17,6 +17,22 @@ describe("POST /api/auth/github/start", () => {
     expect(cookies).toContain("agentproof_github_oauth_state=");
     expect(cookies).toContain("agentproof_github_oauth_install=deleted");
     expect(cookies).not.toContain("agentproof_tenant_auth_session=deleted");
+    const body = await response.json();
+    expect(new URL(body.authorizationUrl).searchParams.has("prompt")).toBe(false);
+  });
+
+  it("asks GitHub to choose an account once after AgentProof logout", async () => {
+    stubOAuthEnv();
+    const response = await POST(new Request("http://localhost/api/auth/github/start", {
+      method: "POST",
+      headers: { Origin: "http://localhost", Cookie: "agentproof_github_choose_account=1" },
+      body: "{}"
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(new URL(body.authorizationUrl).searchParams.get("prompt")).toBe("select_account");
+    expect(response.headers.get("set-cookie")).toContain("agentproof_github_choose_account=deleted");
   });
 
   it("does not issue an OAuth state cookie on a host different from the configured callback origin", async () => {
