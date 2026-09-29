@@ -106,7 +106,7 @@ describe("PublicGitHubDashboard saved reports", () => {
 
   it("renders the evidence workspace without inventing issue grouping", () => {
     expect(source).toContain("Repository reports");
-    expect(source).toContain("No reports yet");
+    expect(source).toContain("No saved reports");
     expect(source).toContain("Quick Summary");
     expect(source).toContain("View detailed evidence");
     expect(source).toContain("report_stale");
@@ -120,6 +120,15 @@ describe("PublicGitHubDashboard saved reports", () => {
     expect(source).toContain("Recent activity");
     expect(source).toContain("openActivity");
     expect(source).not.toContain("Issue grouping and inbox are unavailable");
+  });
+
+  it("keeps navigation copy concise without confusing completed jobs with saved reports", () => {
+    expect(source).not.toContain("Reports remain available while an update runs.");
+    expect(source).not.toContain("New analyses, pending work, and previous-result notices");
+    expect(source).not.toContain("New PR events will appear here after analysis.");
+    expect(source).toMatch(/if \(event\.kind === "analysis_completed"\) \{\s*setMessage\("No saved report for this analysis\."\);\s*return;\s*\}/);
+    expect(source).toContain("Refresh reports and activity");
+    expect(source).toContain("<RotateCw size={18} />");
   });
 
   it("shows a safe refresh-failure explanation in the existing dashboard workspace", () => {
