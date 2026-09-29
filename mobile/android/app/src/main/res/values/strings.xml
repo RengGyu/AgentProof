@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">AgentProof</string>
+    <string name="title_activity_main">AgentProof</string>
+    <string name="package_name">app.agentproof.mobile</string>
+    <string name="custom_url_scheme">app.agentproof.mobile</string>
+</resources>

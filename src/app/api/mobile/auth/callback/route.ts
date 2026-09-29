@@ -40,4 +40,8 @@ export async function GET(request: Request) {
 }
 
 function failure(headers: Headers) { return new Response("<!doctype html><title>Sign-in failed</title><p>Sign-in could not be completed. Return to AgentProof and try again.</p>", { status: 401, headers }); }
-function navigation(headers: Headers, url: string) { return new Response(`<!doctype html><title>Return to AgentProof</title><meta name="referrer" content="no-referrer"><a href="${url}">Return to AgentProof</a>`, { headers }); }
+function navigation(headers: Headers, url: string) {
+  headers.set("Location", url);
+  headers.delete("Content-Type");
+  return new Response(null, { status: 302, headers });
+}
