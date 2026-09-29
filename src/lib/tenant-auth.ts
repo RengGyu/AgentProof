@@ -5,6 +5,7 @@ import { getControlPlaneSupabaseEnv } from "./control-plane-supabase";
 import { readTenantAccountSummary, type TenantMemberRole } from "./tenant-accounts";
 
 export const TENANT_AUTH_SESSION_COOKIE = "agentproof_tenant_auth_session";
+export const MOBILE_AUTH_SESSION_COOKIE = "agentproof_mobile_session";
 export const DEFAULT_TENANT_AUTH_SESSIONS_TABLE = "agentproof_tenant_auth_sessions";
 export const TENANT_AUTH_BOOTSTRAPS_ENV = "AGENTPROOF_TENANT_AUTH_BOOTSTRAPS";
 
@@ -57,7 +58,7 @@ interface TenantAuthSessionRecord {
   createdAt: string;
   expiresAt: string;
   revokedAt?: string;
-  authSource?: "github" | "bootstrap";
+  authSource?: "github" | "bootstrap" | "mobile";
   githubUserId?: string;
   githubAccessCiphertext?: string;
   githubAccessExpiresAt?: string;
@@ -199,6 +200,24 @@ export async function createTenantAuthSessionForMember(
   };
 }
 
+/** Mobile sessions have separate credentials and never receive GitHub OAuth tokens. */
+export async function createTenantAuthSessionForMobileMember(
+  input: { tenantId?: unknown; memberId?: unknown },
+  env = process.env,
+  now = Date.now()
+): Promise<TenantAuthSession> {
+  const tenantId = normalizeTenantId(input.tenantId);
+  const memberId = normalizeMemberId(input.memberId);
+  if (!tenantId || !memberId) throw new TenantAuthError("Mobile session request is invalid.");
+  const member = await readActiveTenantMember({ tenantId, memberId }, env);
+  if (!member) throw new TenantAuthError("Mobile session member is not active.");
+  const token = randomToken();
+  const expiresAt = new Date(now + TENANT_AUTH_SESSION_TTL_MS).toISOString();
+  const id = randomToken();
+  await storeTenantAuthSession({ id, tokenHash: hashToken(token), tenantId, memberId, createdAt: new Date(now).toISOString(), expiresAt, authSource: "mobile" }, env);
+  return { sessionId: id, tenantId, memberId, role: member.role, expiresAt, sessionCookie: buildCookie(MOBILE_AUTH_SESSION_COOKIE, token, expiresAt, now) };
+}
+
 export async function verifyTenantAuthAccess(
   input: { tenantId?: unknown; cookieHeader?: string | null },
   env = process.env,
@@ -210,7 +229,7 @@ export async function verifyTenantAuthAccess(
 
   const record = await findTenantAuthSession({ tokenHash: hashToken(sessionToken) }, env);
   if (!record) return { authorized: false };
-  if (record.tenantId !== tenantId) return { authorized: false };
+  if (record.authSource === "mobile" || record.tenantId !== tenantId) return { authorized: false };
   if (Date.parse(record.expiresAt) <= now) return { authorized: false };
   if (record.revokedAt) return { authorized: false };
 
@@ -231,15 +250,15 @@ export async function verifyTenantAuthAccess(
 
 /** Resolves the tenant solely from the opaque session cookie. */
 export async function resolveTenantAuthAccess(
-  input: { cookieHeader?: string | null },
+  input: { cookieHeader?: string | null; expectedSource?: "web" | "mobile" },
   env = process.env,
   now = Date.now()
 ): Promise<TenantAuthAccessResult> {
-  const sessionToken = readCookie(input.cookieHeader, TENANT_AUTH_SESSION_COOKIE);
+  const sessionToken = readCookie(input.cookieHeader, input.expectedSource === "mobile" ? MOBILE_AUTH_SESSION_COOKIE : TENANT_AUTH_SESSION_COOKIE);
   if (!sessionToken) return { authorized: false };
 
   const record = await findTenantAuthSession({ tokenHash: hashToken(sessionToken) }, env);
-  if (!record || Date.parse(record.expiresAt) <= now || record.revokedAt) return { authorized: false };
+  if (!record || Date.parse(record.expiresAt) <= now || record.revokedAt || (input.expectedSource === "mobile" ? record.authSource !== "mobile" : record.authSource === "mobile")) return { authorized: false };
 
   const member = await readActiveTenantMember({ tenantId: record.tenantId, memberId: record.memberId }, env);
   if (!member) return { authorized: false };
@@ -257,13 +276,14 @@ export async function resolveTenantAuthAccess(
 }
 
 export async function revokeTenantAuthSession(
-  input: { cookieHeader?: string | null },
+  input: { cookieHeader?: string | null; source?: "web" | "mobile" },
   env = process.env,
   now = Date.now()
 ): Promise<void> {
-  const sessionToken = readCookie(input.cookieHeader, TENANT_AUTH_SESSION_COOKIE);
+  const sessionToken = readCookie(input.cookieHeader, input.source === "mobile" ? MOBILE_AUTH_SESSION_COOKIE : TENANT_AUTH_SESSION_COOKIE);
   if (!sessionToken) return;
-  await revokeTenantAuthSessionByHash(hashToken(sessionToken), new Date(now).toISOString(), env);
+  const record = await findTenantAuthSession({ tokenHash: hashToken(sessionToken) }, env);
+  if (record && (input.source === "mobile" ? record.authSource === "mobile" : record.authSource !== "mobile")) await revokeTenantAuthSessionByHash(hashToken(sessionToken), new Date(now).toISOString(), env);
 }
 
 export function clearTenantAuthSessionCookie(now = Date.now()): string {
@@ -749,7 +769,7 @@ function normalizeSupabaseTenantAuthSessionRow(row: unknown): TenantAuthSessionR
     createdAt,
     expiresAt,
     ...(revokedAt ? { revokedAt } : {}),
-    authSource: value.auth_source === "github" ? "github" : "bootstrap",
+    authSource: value.auth_source === "github" ? "github" : value.auth_source === "mobile" ? "mobile" : "bootstrap",
     githubUserId: normalizeGitHubUserId(value.github_user_id) ?? undefined,
     githubAccessCiphertext: typeof value.github_access_ciphertext === "string" ? value.github_access_ciphertext : undefined,
     githubAccessExpiresAt: normalizeIsoDate(value.github_access_expires_at) ?? undefined,
