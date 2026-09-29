@@ -18,7 +18,7 @@ import {
   Info,
   Link2,
   Loader2,
-  Settings2,
+  Settings,
   ShieldCheck,
   XCircle
 } from "lucide-react";
@@ -49,8 +49,8 @@ import {
   resolveRepositorySelectionLoad,
   type RepositorySelectionLoadResult
 } from "@/lib/repository-selection-state";
-import { dashboardReportsToMarkdown, dashboardReportToJson, dashboardReportToMarkdown } from "@/lib/dashboard-report-export";
-import { prepareCurrentDashboardDetailForCopy, prepareCurrentDashboardBundleForCopy } from "@/lib/dashboard-copy-revalidation";
+import { dashboardReportToJson, dashboardReportToMarkdown } from "@/lib/dashboard-report-export";
+import { prepareCurrentDashboardDetailForCopy } from "@/lib/dashboard-copy-revalidation";
 import { writeDeferredTextWithBrowserFallback, writeTextWithBrowserFallback } from "@/lib/browser-clipboard";
 import { isCopyEligibleReport, partitionVisibleRepositoryReports, reportWorkspaceStatusLabel } from "@/lib/dashboard-report-list";
 
@@ -135,6 +135,7 @@ const PREVIEW_DEMO_ACTIVITY: DashboardActivityEvent[] = [{
 export function PublicGitHubDashboard({ installationId, previewDemoEnabled = false }: { installationId?: string; previewDemoEnabled?: boolean }) {
   const [demoMode] = useState(previewDemoEnabled);
   const [signedIn, setSignedIn] = useState(previewDemoEnabled);
+  const [sessionStatus, setSessionStatus] = useState<"checking" | "ready" | "error">(previewDemoEnabled ? "ready" : "checking");
   const [activeInstallationId, setActiveInstallationId] = useState(installationId);
   const [existingInstallations, setExistingInstallations] = useState<ExistingInstallation[]>([]);
   const [repositorySelection, setRepositorySelection] = useState<RepositorySelectionLoadResult>({ status: "idle", repositories: [], message: "" });
@@ -159,8 +160,6 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
   const [inboxSeenAt, setInboxSeenAt] = useState<string | null>(null);
   const [settingsPending, setSettingsPending] = useState<string | null>(null);
   const [logoutPending, setLogoutPending] = useState(false);
-  const [bulkCopyState, setBulkCopyState] = useState<"idle" | "copying" | "copied" | "error">("idle");
-  const [bulkCopyCount, setBulkCopyCount] = useState(0);
   const [reportListExpanded, setReportListExpanded] = useState(false);
   const [unavailableHistoryExpanded, setUnavailableHistoryExpanded] = useState(false);
   const repositorySelectionGate = useRef(createRepositorySelectionGate());
@@ -181,7 +180,7 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
   const displayedReports = reportListExpanded
     ? selectedReports
     : selectedReports.slice(0, DASHBOARD_REPORT_LIST_LIMIT);
-  const copyableSelectedReports = selectedReports.filter(isCopyEligibleReport);
+  const hasCopyableSelectedReport = selectedReports.some(isCopyEligibleReport);
   const selectedRepositoryName = selectedRepository?.repositoryFullName;
   const quickSummary = detail
     ? toQuickSummary({ ...detail, repositoryFullName: repositoryLabel(detail.repositoryId, connectedRepositories) })
@@ -196,6 +195,7 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
   useEffect(() => {
     if (demoMode) {
       setSignedIn(true);
+      setSessionStatus("ready");
       setConnectedRepositories(PREVIEW_DEMO_REPOSITORIES);
       setReports(PREVIEW_DEMO_REPORTS);
       setActivity(PREVIEW_DEMO_ACTIVITY);
@@ -207,10 +207,14 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
     }
     let cancelled = false;
     fetch("/api/dashboard/session", { cache: "no-store" })
-      .then(async (response) => response.ok ? response.json() : null)
+      .then(async (response) => {
+        if (!response.ok) throw new Error("session_unavailable");
+        return response.json();
+      })
       .then((body) => {
         if (cancelled) return;
         setSignedIn(body?.signedIn === true);
+        setSessionStatus("ready");
         if (body?.signedIn) {
           setMessage("Review connected repositories or connect another repository.");
           void refreshReports();
@@ -218,7 +222,7 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
           void refreshConnectedRepositories();
         }
       })
-      .catch(() => { if (!cancelled) setMessage("Session status is temporarily unavailable."); });
+      .catch(() => { if (!cancelled) setSessionStatus("error"); });
     return () => { cancelled = true; };
   }, [demoMode]);
 
@@ -492,51 +496,6 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
     setMessage("Report could not be opened.");
   }
 
-  async function copySelectedRepositoryReports() {
-    const repositoryId = selectedRepository?.repositoryId;
-    if (!selectedRepository || !repositoryId || copyableSelectedReports.length === 0 || bulkCopyState === "copying") return;
-    setBulkCopyState("copying");
-    const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => controller.abort(), 15_000);
-    try {
-      let copiedCount = 0;
-      await writeDeferredTextWithBrowserFallback({
-        loadText: async () => {
-          const details = demoMode
-            ? copyableSelectedReports.map((report) => ({ ...PREVIEW_DEMO_DETAIL, ...report, repositoryFullName: selectedRepository.repositoryFullName }))
-            : await prepareCurrentDashboardBundleForCopy({
-              repositoryId,
-              repositoryFullName: selectedRepository.repositoryFullName,
-              fetchBundle: async () => {
-                const response = await fetch(`/api/dashboard/reports?repositoryId=${encodeURIComponent(String(repositoryId))}&scope=current`, { cache: "no-store", signal: controller.signal });
-                if (!response.ok) throw new Error("dashboard_reports_unavailable");
-                return response.json().catch(() => null);
-              }
-            });
-          copiedCount = details.length;
-          return dashboardReportsToMarkdown(details);
-        }
-      });
-      setBulkCopyCount(copiedCount);
-      setBulkCopyState("copied");
-      setMessage(`Copied ${copiedCount} current report${copiedCount === 1 ? "" : "s"} from ${selectedRepository.repositoryFullName}.`);
-    } catch (error) {
-      setBulkCopyState("error");
-      if (isBulkCopyPreparationError(error)) {
-        setMessage("Current reports could not be prepared. Refresh reports and try again.");
-      } else {
-        setMessage("Copy is blocked in this browser. Try again after refreshing the page.");
-      }
-    } finally {
-      window.clearTimeout(timeoutId);
-    }
-  }
-
-  function isBulkCopyPreparationError(error: unknown): boolean {
-    if (!(error instanceof Error)) return false;
-    return error.name === "AbortError" || error.message === "dashboard_reports_unavailable" || error.message.startsWith("Dashboard report bundle");
-  }
-
   async function updateRepositorySetting(setting: RepositorySetting, nextValue: boolean, privateAnalysisConsent = false) {
     if (!selectedRepository?.repositoryId) return;
     if (demoMode) {
@@ -604,6 +563,9 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
     }
   }
 
+  if (sessionStatus === "checking") return <section className="github-dashboard github-session-loading" role="status"><Loader2 size={22} className="spin" aria-hidden="true" /><p>Opening your workspace…</p></section>;
+  if (sessionStatus === "error") return <section className="github-dashboard github-session-loading" role="alert"><p>We couldn’t load your session.</p><button className="dashboard-secondary-action" onClick={() => window.location.reload()}>Try again</button></section>;
+
   if (!signedIn) return <section className="github-dashboard github-sign-in">
     <div className="github-sign-in-mark"><ShieldCheck size={28} /></div>
     <p className="dashboard-eyebrow">EVIDENCE-FIRST REVIEW</p>
@@ -618,7 +580,7 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
     <main className="dashboard-canvas">
       <header className="dashboard-topbar">
         <a className="dashboard-brand" href="/"><span className="dashboard-brand-mark"><ShieldCheck size={18} /></span><span>AgentProof<small>Evidence workspace</small></span></a>
-        <div className="dashboard-top-actions"><button className="dashboard-icon-button dashboard-inbox-action" aria-label="Open Inbox" aria-expanded={inboxOpen} onClick={toggleInbox}><Bell size={18} />{unreadActivityCount > 0 ? <span className="dashboard-unread-badge">{Math.min(unreadActivityCount, 9)}</span> : null}</button><button className="dashboard-text-action dashboard-settings-action" onClick={() => setScreen(screen === "settings" ? "repositories" : "settings")}><Settings2 size={16} /> {screen === "settings" ? "Reports" : "Settings"}</button><button className="dashboard-icon-button" aria-label="Refresh reports" onClick={() => { void refreshReports(); void refreshActivity(); }}><Clock3 size={18} /></button></div>
+        <div className="dashboard-top-actions"><button className="dashboard-icon-button dashboard-inbox-action" aria-label="Open Inbox" aria-expanded={inboxOpen} onClick={toggleInbox}><Bell size={18} />{unreadActivityCount > 0 ? <span className="dashboard-unread-badge">{Math.min(unreadActivityCount, 9)}</span> : null}</button><button className="dashboard-text-action dashboard-settings-action" aria-label={screen === "settings" ? "Show reports" : "Open settings"} aria-pressed={screen === "settings"} onClick={() => setScreen(screen === "settings" ? "repositories" : "settings")}><Settings size={18} aria-hidden="true" /><span className="dashboard-settings-label">{screen === "settings" ? "Reports" : "Settings"}</span></button><button className="dashboard-icon-button" aria-label="Refresh reports" onClick={() => { void refreshReports(); void refreshActivity(); }}><Clock3 size={18} /></button></div>
       </header>
       {!demoMode && message !== "Review connected repositories or connect another repository." ? <p className="dashboard-message" role="status">{message}</p> : null}
       {demoMode ? <p className="dashboard-demo-banner"><Info size={15} /> Preview demo · sample data only · GitHub, database, and comments are disabled.</p> : null}
@@ -627,7 +589,7 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
       {screen === "repositories" ? <>
         <details className="dashboard-section dashboard-repository-strip" open={repositoryPickerOpen || !selectedRepository} onToggle={(event) => { if (selectedRepository) setRepositoryPickerOpen(event.currentTarget.open); }}><summary><span>Repository</span><strong>{selectedRepositoryName ?? "Connect a repository"}</strong><ChevronRight size={16} /></summary>
           <div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">CONNECTIONS</p><h3 id="connected-repositories-title">Connected repositories</h3></div>{signedIn && !activeInstallationId ? <button className="dashboard-text-action" onClick={install}><Link2 size={15} /> {demoMode ? "Sample repository" : "Connect repository"}</button> : null}</div>
-          {!connectionsLoaded ? <p className="dashboard-empty"><Loader2 size={16} className="spin" /> Loading connected repositories</p> : activeRepositoryRows.length > 0 ? <div className="repository-tabs">{activeRepositoryRows.map((repository) => <button key={`${repository.installationId}:${repository.repositoryId ?? repository.repositoryFullName}`} aria-pressed={repository.repositoryId === selectedRepository?.repositoryId} className={repository.repositoryId === selectedRepository?.repositoryId ? "repository-tab active" : "repository-tab"} onClick={() => { setSelectedRepositoryId(repository.repositoryId); setDetail(null); setBulkCopyCount(0); setBulkCopyState("idle"); setReportListExpanded(false); setRepositoryPickerOpen(false); }}><span>{repository.repositoryFullName}</span><small>Analysis on · {repository.commentsEnabled ? "Comments on" : "Comments off"}</small></button>)}</div> : <p className="dashboard-empty">No active repository. Open Settings to enable analysis, or connect a repository.</p>}
+          {!connectionsLoaded ? <p className="dashboard-empty"><Loader2 size={16} className="spin" /> Loading connected repositories</p> : activeRepositoryRows.length > 0 ? <div className="repository-tabs">{activeRepositoryRows.map((repository) => <button key={`${repository.installationId}:${repository.repositoryId ?? repository.repositoryFullName}`} aria-pressed={repository.repositoryId === selectedRepository?.repositoryId} className={repository.repositoryId === selectedRepository?.repositoryId ? "repository-tab active" : "repository-tab"} onClick={() => { setSelectedRepositoryId(repository.repositoryId); setDetail(null); setReportListExpanded(false); setRepositoryPickerOpen(false); }}><span>{repository.repositoryFullName}</span><small>Analysis on · {repository.commentsEnabled ? "Comments on" : "Comments off"}</small></button>)}</div> : <p className="dashboard-empty">No active repository. Open Settings to enable analysis, or connect a repository.</p>}
         </details>
 
         {existingInstallations.length > 0 ? <section className="dashboard-section"><div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">GITHUB APP</p><h3>Choose an installation</h3></div></div><div className="installation-list">{existingInstallations.map((installation) => <button key={installation.installationId} className="dashboard-list-row" onClick={() => { void activateExistingInstallation(installation.installationId); }}><Github size={17} /> {installation.accountLogin}<ChevronRight size={16} /></button>)}</div></section> : null}
@@ -636,12 +598,12 @@ export function PublicGitHubDashboard({ installationId, previewDemoEnabled = fal
          {privateRepositoryChoice ? <section className="analysis-choice-dialog" role="dialog" aria-modal="true" aria-labelledby="analysis-choice-title"><div><p className="dashboard-eyebrow">PRIVATE REPOSITORY</p><h3 id="analysis-choice-title">Choose private analysis</h3><p>With analysis ON, AgentProof sends bounded private PR goal text and selected changed-code excerpts to the configured model provider to identify a first inspection location. Evidence reports may retain short summaries, file paths, and commit references. With analysis OFF, PR events do not run model analysis and this repository stays out of the active list.</p><label className="dashboard-toggle-row"><span><strong>I approve private PR analysis</strong><small>Required to turn analysis ON for this repository.</small></span><input type="checkbox" checked={privateAnalysisConsentOnConnect} onChange={(event) => setPrivateAnalysisConsentOnConnect(event.target.checked)} /></label><label className="dashboard-toggle-row"><span><strong>Private enhanced planning consent</strong><small>Separately allow bounded redacted private Issue and PR source spans for enhanced planning.</small></span><input type="checkbox" checked={hybridPlannerConsentOnConnect} onChange={(event) => setHybridPlannerConsentOnConnect(event.target.checked)} /></label></div><div className="analysis-choice-actions"><button className="dashboard-secondary-action" disabled={repositorySelectionPending} onClick={() => { void selectRepository(privateRepositoryChoice, "essential"); }}>Connect with analysis OFF</button><button className="dashboard-primary-action" disabled={repositorySelectionPending || !privateAnalysisConsentOnConnect} onClick={() => { void selectRepository(privateRepositoryChoice, "enhanced", true); }}>Connect with analysis ON</button></div></section> : null}
 
         <section className="dashboard-workspace" id="dashboard-reports" tabIndex={-1}>
-          <div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">{selectedRepositoryName ?? "SELECT A REPOSITORY"}</p><h3>Repository reports</h3><p className="dashboard-section-copy">Saved evidence reports from this connected repository.</p></div><button className="dashboard-text-action" disabled={copyableSelectedReports.length === 0 || bulkCopyState === "copying"} onClick={() => { void copySelectedRepositoryReports(); }}><Clipboard size={15} /> {bulkCopyState === "copying" ? "Preparing reports…" : bulkCopyState === "copied" ? `Copied ${bulkCopyCount} reports` : bulkCopyState === "error" ? "Try copy again" : "Copy all reports"}</button></div>
+          <div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">{selectedRepositoryName ?? "SELECT A REPOSITORY"}</p><h3>Repository reports</h3><p className="dashboard-section-copy">Saved evidence reports from this connected repository.</p></div></div>
           {!selectedRepository ? <p className="dashboard-empty">Connect a GitHub repository to review saved evidence reports.</p> : selectedReports.length === 0 && unavailableHistoryReports.length === 0 ? <p className="dashboard-empty"><FileCheck2 size={20} /> No reports yet<br /><small>New PR events will appear here after analysis.</small></p> : <div className="dashboard-report-layout">
             <div className="dashboard-report-navigation">{detail ? <button className="dashboard-report-picker" aria-expanded={reportPickerOpen} aria-controls="dashboard-report-list" onClick={() => setReportPickerOpen((current) => !current)}><span>{formatPrNumber(detail.pullRequestNumber)}</span><span>{reportPickerOpen ? "Hide list" : "Change report"} <ChevronRight size={14} /></span></button> : null}
             <div id="dashboard-report-list" className={`report-list${!reportPickerOpen && detail ? " mobile-collapsed" : ""}`} aria-label="Saved analysis reports">{displayedReports.map((report) => <button key={report.id} aria-current={detail?.id === report.id ? "true" : undefined} className={detail?.pullRequestNumber === report.pullRequestNumber && detail?.headSha === report.headSha ? "report-row active" : "report-row"} disabled={report.availability === "unavailable" || report.availability === "analysis_failed"} title={report.availability === "unavailable" ? "This saved report cannot be opened right now. Run the analysis again if the state does not recover." : report.availability === "analysis_failed" ? "The latest analysis failed before AgentProof could save a report." : undefined} onClick={() => { setReportPickerOpen(false); void openReport(report.id); }}><span className="report-row-icon"><FileCheck2 size={17} /></span><span><strong>{report.availability === "unavailable" ? "REPORT UNAVAILABLE" : formatPrNumber(report.pullRequestNumber)}</strong><small>{formatCreatedAt(report.createdAt)} · head {headPrefix(report.headSha)}</small>{report.freshness === "refresh_failed" ? <small>Analysis refresh failed{report.failure?.summary ?? report.failure?.code ? ` · ${report.failure?.summary ?? report.failure?.code}` : "."}</small> : null}</span><span className="report-row-meta"><small><strong>Report:</strong> {report.availability === "unavailable" ? "Unavailable" : report.availability === "analysis_failed" ? "Not saved" : "Saved"}</small><StatusToken label={report.availability === "unavailable" ? "REPORT UNAVAILABLE" : reportWorkspaceStatusLabel(report.freshness)} title={report.availability === "unavailable" ? "This saved report cannot be opened right now. Run the analysis again if the state does not recover." : report.availability === "analysis_failed" ? "The latest analysis failed before AgentProof could save a report." : report.copyEligible ? "Latest saved report" : report.freshness === "refresh_failed" ? "A newer analysis failed before a report was saved." : "A newer analysis is still being prepared"} />{report.priority && report.priority !== "unknown" ? <small><strong>Priority:</strong> {report.priority}</small> : null}</span></button>)}{selectedReports.length > DASHBOARD_REPORT_LIST_LIMIT ? <button className="dashboard-secondary-action" aria-expanded={reportListExpanded} onClick={() => setReportListExpanded((current) => !current)}>{reportListExpanded ? "Show fewer reports" : `Show all ${selectedReports.length} reports`}</button> : null}</div>
             {unavailableHistoryReports.length > 0 ? <section className="dashboard-boundary" aria-label="Previous unavailable reports"><button className="dashboard-secondary-action" aria-expanded={unavailableHistoryExpanded} onClick={() => setUnavailableHistoryExpanded((current) => !current)}>{unavailableHistoryExpanded ? "Hide previous unavailable reports" : `Previous unavailable reports (${unavailableHistoryReports.length})`}</button>{unavailableHistoryExpanded ? <><div className="report-list">{unavailableHistoryReports.map((report) => <button key={report.id} className="report-row" disabled title="This saved report cannot be opened right now. Run the analysis again if the state does not recover."><span className="report-row-icon"><FileCheck2 size={17} /></span><span><strong>REPORT UNAVAILABLE</strong><small>{formatCreatedAt(report.createdAt)} · head {headPrefix(report.headSha)}</small></span><span className="report-row-meta"><small><strong>Report:</strong> Unavailable</small><StatusToken label="REPORT UNAVAILABLE" title="This saved report cannot be opened right now. Run the analysis again if the state does not recover." /></span></button>)}</div><p><Info size={15} /> This saved report cannot be opened right now. Run the analysis again if the state does not recover.</p></> : null}</section> : null}
-            {copyableSelectedReports.length === 0 ? <p className="dashboard-boundary"><Info size={15} /> Reports remain available while an update runs. Copy is enabled when a current report is ready.</p> : null}
+            {!hasCopyableSelectedReport ? <p className="dashboard-boundary"><Info size={15} /> Reports remain available while an update runs. Copy is enabled when a current report is ready.</p> : null}
             </div>
             {detail?.report && quickSummary ? <section ref={selectedReportRef} className="dashboard-selected-report" tabIndex={-1} aria-label="Selected report"><QuickSummaryPanel detail={{ ...detail, repositoryFullName: repositoryLabel(detail.repositoryId, connectedRepositories) }} quickSummary={quickSummary} onShowDetail={() => setShowDetailedEvidence((current) => !current)} showDetailedEvidence={showDetailedEvidence} demoMode={demoMode} /></section> : <div className="dashboard-empty dashboard-summary-placeholder"><Info size={20} /> Select a report to open its Quick Summary.</div>}
           </div>}

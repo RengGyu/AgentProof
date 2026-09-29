@@ -18,7 +18,6 @@ describe("PublicGitHubDashboard saved reports", () => {
     expect(source).toContain("formatCreatedAt(report.createdAt)");
     expect(source).toContain("headPrefix(report.headSha)");
     expect(source).toContain("partitionVisibleRepositoryReports");
-    expect(source).toContain("copyableSelectedReports");
     expect(source).toContain("reportWorkspaceStatusLabel");
     expect(source).toContain("reportWorkspaceStatusLabel(report.freshness)");
     expect(source).toContain('event.kind === "report_stale"');
@@ -64,19 +63,12 @@ describe("PublicGitHubDashboard saved reports", () => {
     expect(source).toContain('"/api/dashboard/repositories"');
   });
 
-  it("offers one temporary action to copy every current report from the selected repository", () => {
-    expect(source).toContain("Copy all reports");
-    expect(source).toContain("copySelectedRepositoryReports");
-    expect(source).toContain("dashboardReportsToMarkdown");
-    expect(source).toContain("repositoryId=${encodeURIComponent(String(repositoryId))}");
-    expect(source).toContain("scope=current");
-    expect(source).toContain("AbortController");
-    expect(source).toContain("prepareCurrentDashboardBundleForCopy");
+  it("keeps report-level copy without a bulk-copy action", () => {
+    expect(source).not.toContain("Copy all reports");
+    expect(source).not.toContain("copySelectedRepositoryReports");
     expect(source).toContain("prepareCurrentDashboardDetailForCopy");
-    expect(source).not.toContain("preparedBulkCopy");
-    expect(source).not.toContain("Promise.all(selectedReports.map");
-    expect(source).toContain("disabled={copyableSelectedReports.length === 0 || bulkCopyState === \"copying\"}");
-    expect(source).toMatch(/setSelectedRepositoryId\(repository\.repositoryId\); setDetail\(null\); setBulkCopyCount\(0\); setBulkCopyState\("idle"\);/);
+    expect(source).toContain("Copy report");
+    expect(source).toContain("Copy JSON");
   });
 
   it("renders only the agreed sanitized detail categories", () => {
@@ -110,17 +102,6 @@ describe("PublicGitHubDashboard saved reports", () => {
     expect(source).toContain("writeDeferredTextWithBrowserFallback");
     expect(source).toContain("prepareCurrentDashboardDetailForCopy");
     expect(source).not.toContain("copyRevalidatedDashboardDetail");
-  });
-
-  it("reserves the browser clipboard gesture before preparing a bulk report bundle", () => {
-    const bulkCopy = source.slice(
-      source.indexOf("async function copySelectedRepositoryReports"),
-      source.indexOf("async function updateRepositorySetting")
-    );
-
-    expect(bulkCopy).toContain("writeDeferredTextWithBrowserFallback");
-    expect(bulkCopy).toContain("loadText: async () =>");
-    expect(bulkCopy).not.toContain("await writeTextWithBrowserFallback(markdown)");
   });
 
   it("renders the evidence workspace without inventing issue grouping", () => {

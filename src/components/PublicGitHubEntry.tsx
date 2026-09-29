@@ -47,21 +47,16 @@ export function PublicGitHubEntry({ previewDemoAvailable = false }: { previewDem
           onClick={() => { void continueWithGitHub(); }}
           disabled={pending}
           aria-busy={pending}
-          aria-describedby="github-sign-in-access"
         >
           <Github size={19} aria-hidden="true" />
           {pending ? "Connecting GitHub…" : "Continue with GitHub"}
         </button>
-        <p id="github-sign-in-access" className="github-entry-access">You’ll choose repository access next.</p>
         {message ? <p className="github-entry-error" role="status">{message} Please try again.</p> : null}
         <div className="github-entry-alternatives">
           <a className="github-entry-secondary-link" href="/analyze">Analyze a public PR <ArrowRight size={15} aria-hidden="true" /></a>
           {previewDemoAvailable ? <Link className="github-entry-secondary-link github-entry-demo-link" href="/dashboard?demo=1">Preview dashboard</Link> : null}
         </div>
       </div>
-      <p className="dashboard-boundary github-entry-boundary">
-        AgentProof organizes evidence. It does not establish correctness, safety, requirement satisfaction, or merge readiness.
-      </p>
     </section>
   </main>;
 }

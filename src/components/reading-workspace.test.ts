@@ -39,7 +39,8 @@ describe("reading workspace", () => {
     expect(html).toContain("Sign in to AgentProof");
     expect(html).toContain("Continue with GitHub");
     expect(html).toContain('aria-busy="false"');
-    expect(html).toContain("requirement satisfaction, or merge readiness");
+    expect(html).not.toContain("requirement satisfaction, or merge readiness");
+    expect(html).not.toContain("You’ll choose repository access next.");
     expect(html).not.toContain("Preview dashboard");
     expect(html).not.toContain("Code candidate");
     expect(html).not.toContain("github-entry-aside");
@@ -53,6 +54,13 @@ describe("reading workspace", () => {
   it("shows the sample-data warning once in the preview dashboard", () => {
     const html = renderToStaticMarkup(createElement(PublicGitHubDashboard, { previewDemoEnabled: true }));
     expect(html.match(/Preview demo/g)).toHaveLength(1);
+    expect(html).not.toContain("Copy all reports");
+  });
+
+  it("shows a neutral session check before deciding whether another sign-in is needed", () => {
+    const html = renderToStaticMarkup(createElement(PublicGitHubDashboard));
+    expect(html).toContain("Opening your workspace");
+    expect(html).not.toContain("Continue with GitHub");
   });
 
   it("keeps the evidence gap and next actions ahead of snapshot fields in reading order", () => {
