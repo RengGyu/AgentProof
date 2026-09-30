@@ -81,6 +81,19 @@ describe("personal deletion API boundary", () => {
       expect(JSON.stringify(warn.mock.calls)).not.toContain("legacy-key");
     } finally { warn.mockRestore(); }
   });
+  it("reports a legacy-store HTTP failure without logging its credentials", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, {status: 401})));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await handlePersonalAccountDeletion(new Request("https://app.invalid/api/account/deletion", {headers:{Cookie:`agentproof_tenant_auth_session=${"a".repeat(43)}`}}), "web", {
+        ...env,
+        AGENTPROOF_GITHUB_INSTALLATION_CLAIMS_SUPABASE_URL:"https://legacy.invalid",
+        AGENTPROOF_GITHUB_INSTALLATION_CLAIMS_SUPABASE_SERVICE_ROLE_KEY:"legacy-key"
+      });
+      expect(warn).toHaveBeenCalledWith("Account deletion legacy claim count:", "http_401");
+      expect(JSON.stringify(warn.mock.calls)).not.toContain("legacy-key");
+    } finally { warn.mockRestore(); }
+  });
 });
 
 describe("accepted deletion continuation", () => {
