@@ -109,6 +109,14 @@ export async function findGitHubOwnerTenant(
     if (rows.length === 0) return null;
     const owner = normalizeGitHubOwnerTenant(rows[0]);
     if (!owner || owner.memberId !== `github:${githubUserId}`) throw new Error();
+    if (env.AGENTPROOF_SELF_SERVICE_DELETION_ENABLED === "true") {
+      // Read only the needed boolean through the existing RPC in the same
+      // account database, rather than reading deletion-state rows directly.
+      const states = await personalDeletionRpc({url: config.url, key: config.serviceRoleKey, requiredTables: []},
+        "agentproof_tenant_deletion_state_active", {p_tenant_id: owner.tenantId});
+      if (!Array.isArray(states) || states.length !== 1 || typeof states[0]?.active !== "boolean") throw new Error();
+      return { ...owner, deletionPending: states[0].active };
+    }
     return { ...owner, deletionPending: await isTenantDeletionActiveAsync({tenantId: owner.tenantId}, env) };
   } catch { throw new TenantAccountStoreError("GitHub identity lookup is unavailable."); }
 }
@@ -128,6 +136,15 @@ export async function ensureGitHubOwnerTenant(
   }
 
   if (env.AGENTPROOF_SELF_SERVICE_DELETION_ENABLED === "true") {
+    // Returning owners need identity and deletion-state verification, not a
+    // new workspace. Keep the full purge-store gate on provisioning only.
+    const existing = await findGitHubOwnerTenant({ githubUserId }, env);
+    if (existing) {
+      if (existing.deletionPending && !input.allowDeletionResume) {
+        throw new TenantAccountStoreError("GitHub account is unavailable during deletion.");
+      }
+      return existing;
+    }
     const store = personalDeletionStore(env);
     if (!store) throw new TenantAccountStoreError("Account lifecycle storage is unavailable.");
     try {

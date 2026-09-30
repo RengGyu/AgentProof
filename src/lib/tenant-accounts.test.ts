@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { personalDeletionStore } from "./personal-deletion-store";
 import {
   ensureGitHubOwnerTenant,
   findGitHubOwnerTenant,
@@ -17,9 +18,42 @@ describe("tenant account metadata boundary", () => {
 
   it("uses atomic fresh signup and allows only explicit deletion-resume login for a pending account", async () => {
     const env = { NODE_ENV:"test", AGENTPROOF_SELF_SERVICE_DELETION_ENABLED:"true", AGENTPROOF_USAGE_SUPABASE_URL:"https://store.invalid",AGENTPROOF_USAGE_SUPABASE_SERVICE_ROLE_KEY:"key",AGENTPROOF_BILLING_SUBSCRIPTIONS_SUPABASE_URL:"https://store.invalid",AGENTPROOF_BILLING_SUBSCRIPTIONS_SUPABASE_SERVICE_ROLE_KEY:"key",AGENTPROOF_BILLING_WEBHOOK_SUPABASE_URL:"https://store.invalid",AGENTPROOF_BILLING_WEBHOOK_SUPABASE_SERVICE_ROLE_KEY:"key",SUPABASE_URL:"https://store.invalid", SUPABASE_SERVICE_ROLE_KEY:"key", CRON_SECRET:"cron" } as NodeJS.ProcessEnv;
-    vi.stubGlobal("fetch", vi.fn(async () => Response.json([{ tenant_id:"acct_123", member_id:"github:123", deletion_pending:true }])));
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => url.includes("/agentproof_github_identities?") ? Response.json([]) : Response.json([{ tenant_id:"acct_123", member_id:"github:123", deletion_pending:true }])));
     await expect(ensureGitHubOwnerTenant({githubUserId:"123"},env)).rejects.toBeInstanceOf(TenantAccountStoreError);
     await expect(ensureGitHubOwnerTenant({githubUserId:"123",allowDeletionResume:true},env)).resolves.toEqual({tenantId:"acct_123",memberId:"github:123",deletionPending:true});
+  });
+
+  it("lets an existing owner sign in when an unrelated claim-store mismatch blocks deletion setup", async () => {
+    const env = { NODE_ENV:"test", AGENTPROOF_SELF_SERVICE_DELETION_ENABLED:"true", SUPABASE_URL:"https://primary.invalid", SUPABASE_SERVICE_ROLE_KEY:"primary-key", CRON_SECRET:"cron", AGENTPROOF_GITHUB_INSTALLATION_CLAIMS_SUPABASE_URL:"https://legacy.invalid", AGENTPROOF_GITHUB_INSTALLATION_CLAIMS_SUPABASE_SERVICE_ROLE_KEY:"legacy-key" } as NodeJS.ProcessEnv;
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes("/agentproof_github_identities?")) return Response.json([{tenant_id:"acct_existing",member_id:"github:123"}]);
+      if (url.endsWith("/rpc/agentproof_tenant_deletion_state_active")) return Response.json([{active:false}]);
+      throw new Error("Unexpected request");
+    });
+    vi.stubGlobal("fetch",fetchMock);
+    expect(personalDeletionStore(env)).toBeNull();
+    await expect(ensureGitHubOwnerTenant({githubUserId:"123",allowDeletionResume:true},env)).resolves.toEqual({tenantId:"acct_existing",memberId:"github:123",deletionPending:false});
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.every(([url])=>url.startsWith("https://primary.invalid/"))).toBe(true);
+    expect(fetchMock.mock.calls.some(([url])=>url.includes("agentproof_github_personal_account"))).toBe(false);
+  });
+
+  it("still requires explicit deletion resume for an existing pending owner", async () => {
+    const env = { NODE_ENV:"test", AGENTPROOF_SELF_SERVICE_DELETION_ENABLED:"true", SUPABASE_URL:"https://primary.invalid", SUPABASE_SERVICE_ROLE_KEY:"primary-key" } as NodeJS.ProcessEnv;
+    vi.stubGlobal("fetch",vi.fn(async(url:string)=>url.includes("/agentproof_github_identities?")
+      ? Response.json([{tenant_id:"acct_existing",member_id:"github:123"}]) : Response.json([{active:true}])));
+    await expect(ensureGitHubOwnerTenant({githubUserId:"123"},env)).rejects.toBeInstanceOf(TenantAccountStoreError);
+    await expect(ensureGitHubOwnerTenant({githubUserId:"123",allowDeletionResume:true},env)).resolves.toEqual({tenantId:"acct_existing",memberId:"github:123",deletionPending:true});
+  });
+
+  it("does not provision a missing identity or ignore deletion-state failures under a claim mismatch", async () => {
+    const env = { NODE_ENV:"test", AGENTPROOF_SELF_SERVICE_DELETION_ENABLED:"true", SUPABASE_URL:"https://primary.invalid", SUPABASE_SERVICE_ROLE_KEY:"primary-key", CRON_SECRET:"cron", AGENTPROOF_GITHUB_INSTALLATION_CLAIMS_SUPABASE_URL:"https://legacy.invalid" } as NodeJS.ProcessEnv;
+    const fetchMock=vi.fn().mockResolvedValueOnce(Response.json([]));vi.stubGlobal("fetch",fetchMock);
+    await expect(ensureGitHubOwnerTenant({githubUserId:"123",allowDeletionResume:true},env)).rejects.toBeInstanceOf(TenantAccountStoreError);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    fetchMock.mockResolvedValueOnce(Response.json([{tenant_id:"acct_existing",member_id:"github:123"}])).mockResolvedValueOnce(new Response(null,{status:503}));
+    await expect(ensureGitHubOwnerTenant({githubUserId:"123",allowDeletionResume:true},env)).rejects.toBeInstanceOf(TenantAccountStoreError);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it("does not create an account for a deletion-status login with no identity", async () => {
