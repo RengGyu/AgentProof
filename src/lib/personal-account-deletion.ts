@@ -22,8 +22,14 @@ export async function handlePersonalAccountDeletion(request: Request, source: "w
       if (body?.confirmation !== "DELETE" || Object.keys(body).length !== 1) throw new Error();
     } catch { return noStoreJson({ status: "confirmation_required" }, { status: 400 }); }
   }
-  const config = personalDeletionStore(env, name => console.warn("Account deletion storage setup required:", name));
-  if (!config) return noStoreJson({ status: "unavailable", reason: "storage_setup_required" }, { status: 503 });
+  let setupIssue = "";
+  const config = personalDeletionStore(env, name => { setupIssue = name; console.warn("Account deletion storage setup required:", name); });
+  if (!config) {
+    if (request.method === "GET" && setupIssue === "AGENTPROOF_GITHUB_INSTALLATION_CLAIMS_SUPABASE_URL:different_url") {
+      await reportLegacyClaimCount(env);
+    }
+    return noStoreJson({ status: "unavailable", reason: "storage_setup_required" }, { status: 503 });
+  }
   try {
     const result = await personalDeletionRpc(config, "agentproof_delete_personal_account", { p_token_hash: createHash("sha256").update(token).digest("hex"), p_source: source === "mobile" ? "mobile" : "github", p_action: request.method === "POST" ? "delete" : "status", p_required_tables: config.requiredTables }) as { status?: unknown; reason?: unknown };
     const status = result?.status;
@@ -35,4 +41,19 @@ export async function handlePersonalAccountDeletion(request: Request, source: "w
     }
     return noStoreJson({ status, ...(result.reason === "work_draining" || result.reason === "retry_required" ? { reason: result.reason } : {}) }, { status: code, headers });
   } catch { return noStoreJson({ status: "unavailable" }, { status: 503 }); }
+}
+
+async function reportLegacyClaimCount(env: NodeJS.ProcessEnv) {
+  const url = env.AGENTPROOF_GITHUB_INSTALLATION_CLAIMS_SUPABASE_URL;
+  const key = env.AGENTPROOF_GITHUB_INSTALLATION_CLAIMS_SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) { console.warn("Account deletion legacy claim count:", "unavailable"); return; }
+  try {
+    const table = env.AGENTPROOF_GITHUB_INSTALLATION_CLAIMS_TABLE || "agentproof_github_installation_claims";
+    const response = await fetch(`${url.replace(/\/+$/, "")}/rest/v1/${encodeURIComponent(table)}?select=id&limit=1`, {
+      method: "GET", cache: "no-store", signal: AbortSignal.timeout(5_000),
+      headers: { apikey: key, Authorization: `Bearer ${key}`, Prefer: "count=exact" }
+    });
+    const count = response.headers.get("content-range")?.match(/\/(\d+)$/)?.[1];
+    console.warn("Account deletion legacy claim count:", response.ok && count ? Number(count) : "unavailable");
+  } catch { console.warn("Account deletion legacy claim count:", "unavailable"); }
 }
