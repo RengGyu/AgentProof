@@ -60,8 +60,11 @@ describe("personal deletion API boundary", () => {
   it("identifies only the blocking setting name without exposing its value", () => {
     const issue = vi.fn();
     expect(personalDeletionStore({...env, AGENTPROOF_REPORTS_SUPABASE_URL:"https://other.invalid"}, issue)).toBeNull();
-    expect(issue).toHaveBeenCalledWith("AGENTPROOF_REPORTS_SUPABASE_URL");
+    expect(issue).toHaveBeenCalledWith("AGENTPROOF_REPORTS_SUPABASE_URL:different_url");
     expect(JSON.stringify(issue.mock.calls)).not.toContain("other.invalid");
+    issue.mockClear();
+    expect(personalDeletionStore({...env, AGENTPROOF_REPORTS_SUPABASE_URL:" https://store.invalid "}, issue)).toBeNull();
+    expect(issue).toHaveBeenCalledWith("AGENTPROOF_REPORTS_SUPABASE_URL:whitespace");
   });
 });
 

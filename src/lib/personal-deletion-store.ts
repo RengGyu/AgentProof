@@ -30,7 +30,10 @@ function configuredPersonalDeletionStore(env: NodeJS.ProcessEnv, onIssue?: (name
   for (const [name, value] of Object.entries(env)) {
     if (!value) continue;
     if (name.startsWith("AGENTPROOF_") && name.endsWith("_ALLOW_MEMORY") && /^(true|1|yes|on)$/i.test(value)) { onIssue?.(name); return null; }
-    if ((name === "SUPABASE_URL" || name.endsWith("_SUPABASE_URL")) && value.replace(/\/+$/, "") !== url) { onIssue?.(name); return null; }
+    if ((name === "SUPABASE_URL" || name.endsWith("_SUPABASE_URL")) && value.replace(/\/+$/, "") !== url) {
+      onIssue?.(`${name}:${value.trim().replace(/\/+$/, "") === url.trim() ? "whitespace" : "different_url"}`);
+      return null;
+    }
     if (name.startsWith("AGENTPROOF_") && name.endsWith("_TABLE") && !tables.has(value)) { onIssue?.(name); return null; }
   }
   for (const name of ["AGENTPROOF_TENANT_ACCOUNTS", "AGENTPROOF_BETA_INVITES", "AGENTPROOF_TENANT_DELETION_TOMBSTONES", "AGENTPROOF_TENANT_AUTH_BOOTSTRAPS", "AGENTPROOF_TENANT_REPOSITORY_GRANTS", "AGENTPROOF_BILLING_BETA_SUBSCRIPTIONS"]) {
