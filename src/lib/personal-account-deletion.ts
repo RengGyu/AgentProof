@@ -22,7 +22,7 @@ export async function handlePersonalAccountDeletion(request: Request, source: "w
       if (body?.confirmation !== "DELETE" || Object.keys(body).length !== 1) throw new Error();
     } catch { return noStoreJson({ status: "confirmation_required" }, { status: 400 }); }
   }
-  const config = personalDeletionStore(env);
+  const config = personalDeletionStore(env, name => console.warn("Account deletion storage setup required:", name));
   if (!config) return noStoreJson({ status: "unavailable", reason: "storage_setup_required" }, { status: 503 });
   try {
     const result = await personalDeletionRpc(config, "agentproof_delete_personal_account", { p_token_hash: createHash("sha256").update(token).digest("hex"), p_source: source === "mobile" ? "mobile" : "github", p_action: request.method === "POST" ? "delete" : "status", p_required_tables: config.requiredTables }) as { status?: unknown; reason?: unknown };

@@ -2,30 +2,39 @@ import { getControlPlaneSupabaseEnv } from "./control-plane-supabase";
 
 const tables = new Set(["agentproof_tenants", "agentproof_tenant_members", "agentproof_github_identities", "agentproof_tenant_auth_sessions", "agentproof_tenant_deletion_state", "agentproof_saved_reports", "agentproof_analysis_jobs", "agentproof_tenant_repository_grants", "agentproof_github_installations", "agentproof_github_installation_claims", "agentproof_github_onboarding_states", "agentproof_github_webhook_deliveries", "agentproof_usage_records", "agentproof_audit_events", "agentproof_billing_subscriptions", "agentproof_billing_webhook_events", "agentproof_concierge_analysis_runs", "agentproof_concierge_feedback"]);
 export type PersonalDeletionStore = { url: string; key: string; requiredTables: string[] };
-export function personalDeletionStore(env = process.env): PersonalDeletionStore | null {
-  if (env.AGENTPROOF_SELF_SERVICE_DELETION_ENABLED !== "true") return null;
-  return configuredPersonalDeletionStore(env);
+export function personalDeletionStore(env = process.env, onIssue?: (name: string) => void): PersonalDeletionStore | null {
+  if (env.AGENTPROOF_SELF_SERVICE_DELETION_ENABLED !== "true") {
+    onIssue?.("AGENTPROOF_SELF_SERVICE_DELETION_ENABLED");
+    return null;
+  }
+  return configuredPersonalDeletionStore(env, onIssue);
 }
 
-function configuredPersonalDeletionStore(env: NodeJS.ProcessEnv): PersonalDeletionStore | null {
+function configuredPersonalDeletionStore(env: NodeJS.ProcessEnv, onIssue?: (name: string) => void): PersonalDeletionStore | null {
   const shared = getControlPlaneSupabaseEnv(env);
   const url = shared.url.replace(/\/+$/, "");
-  if (!url || !shared.serviceRoleKey || !(env.CRON_SECRET?.trim() || env.AGENTPROOF_CRON_TOKEN?.trim())) return null;
+  if (!url || !shared.serviceRoleKey || !(env.CRON_SECRET?.trim() || env.AGENTPROOF_CRON_TOKEN?.trim())) {
+    onIssue?.("control_plane_or_cron_configuration");
+    return null;
+  }
   // These stores otherwise use process memory, which a database transaction
   // cannot purge across running instances. Require durable storage up front.
   if ((/^(true|1|yes|on)$/i.test(env.AGENTPROOF_USAGE_QUOTA_ENFORCEMENT_ENABLED ?? "")
     || env.AGENTPROOF_USAGE_SUPABASE_URL || env.AGENTPROOF_USAGE_SUPABASE_SERVICE_ROLE_KEY)
-    && (!env.AGENTPROOF_USAGE_SUPABASE_URL || !env.AGENTPROOF_USAGE_SUPABASE_SERVICE_ROLE_KEY)) return null;
+    && (!env.AGENTPROOF_USAGE_SUPABASE_URL || !env.AGENTPROOF_USAGE_SUPABASE_SERVICE_ROLE_KEY)) {
+    onIssue?.("usage_store_configuration");
+    return null;
+  }
   // One transactional purge cannot silently omit another configured database
   // or environment-backed identity/grant/billing data.
   for (const [name, value] of Object.entries(env)) {
     if (!value) continue;
-    if (name.startsWith("AGENTPROOF_") && name.endsWith("_ALLOW_MEMORY") && /^(true|1|yes|on)$/i.test(value)) return null;
-    if ((name === "SUPABASE_URL" || name.endsWith("_SUPABASE_URL")) && value.replace(/\/+$/, "") !== url) return null;
-    if (name.startsWith("AGENTPROOF_") && name.endsWith("_TABLE") && !tables.has(value)) return null;
+    if (name.startsWith("AGENTPROOF_") && name.endsWith("_ALLOW_MEMORY") && /^(true|1|yes|on)$/i.test(value)) { onIssue?.(name); return null; }
+    if ((name === "SUPABASE_URL" || name.endsWith("_SUPABASE_URL")) && value.replace(/\/+$/, "") !== url) { onIssue?.(name); return null; }
+    if (name.startsWith("AGENTPROOF_") && name.endsWith("_TABLE") && !tables.has(value)) { onIssue?.(name); return null; }
   }
   for (const name of ["AGENTPROOF_TENANT_ACCOUNTS", "AGENTPROOF_BETA_INVITES", "AGENTPROOF_TENANT_DELETION_TOMBSTONES", "AGENTPROOF_TENANT_AUTH_BOOTSTRAPS", "AGENTPROOF_TENANT_REPOSITORY_GRANTS", "AGENTPROOF_BILLING_BETA_SUBSCRIPTIONS"]) {
-    if (env[name]?.trim() && env[name]?.trim() !== "[]") return null;
+    if (env[name]?.trim() && env[name]?.trim() !== "[]") { onIssue?.(name); return null; }
   }
   const requiredTables = [...tables].filter(table => !table.startsWith("agentproof_billing_"));
   if (env.AGENTPROOF_BILLING_SUBSCRIPTIONS_SUPABASE_URL) requiredTables.push("agentproof_billing_subscriptions");

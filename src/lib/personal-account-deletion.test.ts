@@ -57,6 +57,12 @@ describe("personal deletion API boundary", () => {
     };
     expect(personalDeletionStore(productionLike)).toMatchObject({url:"https://store.invalid",key:"test-key"});
   });
+  it("identifies only the blocking setting name without exposing its value", () => {
+    const issue = vi.fn();
+    expect(personalDeletionStore({...env, AGENTPROOF_REPORTS_SUPABASE_URL:"https://other.invalid"}, issue)).toBeNull();
+    expect(issue).toHaveBeenCalledWith("AGENTPROOF_REPORTS_SUPABASE_URL");
+    expect(JSON.stringify(issue.mock.calls)).not.toContain("other.invalid");
+  });
 });
 
 describe("accepted deletion continuation", () => {
