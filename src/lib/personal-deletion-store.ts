@@ -13,8 +13,9 @@ function configuredPersonalDeletionStore(env: NodeJS.ProcessEnv): PersonalDeleti
   if (!url || !shared.serviceRoleKey || !(env.CRON_SECRET?.trim() || env.AGENTPROOF_CRON_TOKEN?.trim())) return null;
   // These stores otherwise use process memory, which a database transaction
   // cannot purge across running instances. Require durable storage up front.
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) return null;
-  if (!env.AGENTPROOF_USAGE_SUPABASE_URL || !env.AGENTPROOF_USAGE_SUPABASE_SERVICE_ROLE_KEY) return null;
+  if ((/^(true|1|yes|on)$/i.test(env.AGENTPROOF_USAGE_QUOTA_ENFORCEMENT_ENABLED ?? "")
+    || env.AGENTPROOF_USAGE_SUPABASE_URL || env.AGENTPROOF_USAGE_SUPABASE_SERVICE_ROLE_KEY)
+    && (!env.AGENTPROOF_USAGE_SUPABASE_URL || !env.AGENTPROOF_USAGE_SUPABASE_SERVICE_ROLE_KEY)) return null;
   // One transactional purge cannot silently omit another configured database
   // or environment-backed identity/grant/billing data.
   for (const [name, value] of Object.entries(env)) {

@@ -39,11 +39,23 @@ describe("personal deletion API boundary", () => {
   it("fails closed for a split/custom store or static grants instead of silently skipping it", () => {
     expect(personalDeletionStore(env)).not.toBeNull();
     expect(personalDeletionStore({...env,CRON_SECRET:"   "})).toBeNull();
-    expect(personalDeletionStore({...env,AGENTPROOF_USAGE_SUPABASE_URL:""})).toBeNull();
+    expect(personalDeletionStore({...env,AGENTPROOF_USAGE_SUPABASE_URL:"",AGENTPROOF_USAGE_QUOTA_ENFORCEMENT_ENABLED:"true"})).toBeNull();
+    expect(personalDeletionStore({...env,AGENTPROOF_USAGE_SUPABASE_URL:"",AGENTPROOF_USAGE_SUPABASE_SERVICE_ROLE_KEY:"",AGENTPROOF_USAGE_QUOTA_ENFORCEMENT_ENABLED:"on"})).toBeNull();
     expect(personalDeletionStore({...env,AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY:"on"})).toBeNull();
     expect(personalDeletionStore({...env,AGENTPROOF_REPORTS_SUPABASE_URL:"https://other.invalid"})).toBeNull();
     expect(personalDeletionStore({...env,AGENTPROOF_USAGE_RECORDS_TABLE:"custom_usage"})).toBeNull();
     expect(personalDeletionStore({...env,AGENTPROOF_TENANT_REPOSITORY_GRANTS:"[{\"tenantId\":\"gh_123\"}]"})).toBeNull();
+  });
+  it("uses the durable shared control-plane store when optional usage quota is disabled", () => {
+    const productionLike = { ...env,
+      SUPABASE_URL: "", SUPABASE_SERVICE_ROLE_KEY: "",
+      AGENTPROOF_CONTROL_PLANE_SUPABASE_URL: "https://store.invalid",
+      AGENTPROOF_CONTROL_PLANE_SUPABASE_SERVICE_ROLE_KEY: "test-key",
+      AGENTPROOF_USAGE_SUPABASE_URL: "",
+      AGENTPROOF_USAGE_SUPABASE_SERVICE_ROLE_KEY: "",
+      AGENTPROOF_USAGE_QUOTA_ENFORCEMENT_ENABLED: ""
+    };
+    expect(personalDeletionStore(productionLike)).toMatchObject({url:"https://store.invalid",key:"test-key"});
   });
 });
 
@@ -59,7 +71,7 @@ describe("accepted deletion continuation", () => {
     expect(fetchMock).toHaveBeenCalledWith("https://store.invalid/rest/v1/rpc/agentproof_continue_personal_deletions", expect.objectContaining({method:"POST",body:"{}",cache:"no-store"}));
   });
   it.each([
-    { AGENTPROOF_USAGE_SUPABASE_URL: "" },
+    { AGENTPROOF_USAGE_SUPABASE_URL: "", AGENTPROOF_USAGE_QUOTA_ENFORCEMENT_ENABLED: "true" },
     { AGENTPROOF_REPORTS_SUPABASE_URL: "https://other.invalid" },
     { AGENTPROOF_USAGE_RECORDS_TABLE: "custom_usage" },
     { AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY: "true" },
