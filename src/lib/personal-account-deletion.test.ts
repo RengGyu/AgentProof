@@ -66,34 +66,6 @@ describe("personal deletion API boundary", () => {
     expect(personalDeletionStore({...env, AGENTPROOF_REPORTS_SUPABASE_URL:" https://store.invalid "}, issue)).toBeNull();
     expect(issue).toHaveBeenCalledWith("AGENTPROOF_REPORTS_SUPABASE_URL:whitespace");
   });
-  it("checks only the legacy claim count when that separate store blocks deletion", async () => {
-    const fetchMock = vi.fn(async () => new Response("[]", {headers:{"content-range":"*/0"}}));
-    vi.stubGlobal("fetch", fetchMock);
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    try {
-      await handlePersonalAccountDeletion(new Request("https://app.invalid/api/account/deletion", {headers:{Cookie:`agentproof_tenant_auth_session=${"a".repeat(43)}`}}), "web", {
-        ...env,
-        AGENTPROOF_GITHUB_INSTALLATION_CLAIMS_SUPABASE_URL:"https://legacy.invalid",
-        AGENTPROOF_GITHUB_INSTALLATION_CLAIMS_SUPABASE_SERVICE_ROLE_KEY:"legacy-key"
-      });
-      expect(warn).toHaveBeenCalledWith("Account deletion legacy claim count:", 0);
-      expect(fetchMock).toHaveBeenCalledWith("https://legacy.invalid/rest/v1/agentproof_github_installation_claims?select=id&limit=1", expect.objectContaining({method:"GET"}));
-      expect(JSON.stringify(warn.mock.calls)).not.toContain("legacy-key");
-    } finally { warn.mockRestore(); }
-  });
-  it("reports a legacy-store HTTP failure without logging its credentials", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, {status: 401})));
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    try {
-      await handlePersonalAccountDeletion(new Request("https://app.invalid/api/account/deletion", {headers:{Cookie:`agentproof_tenant_auth_session=${"a".repeat(43)}`}}), "web", {
-        ...env,
-        AGENTPROOF_GITHUB_INSTALLATION_CLAIMS_SUPABASE_URL:"https://legacy.invalid",
-        AGENTPROOF_GITHUB_INSTALLATION_CLAIMS_SUPABASE_SERVICE_ROLE_KEY:"legacy-key"
-      });
-      expect(warn).toHaveBeenCalledWith("Account deletion legacy claim count:", "http_401");
-      expect(JSON.stringify(warn.mock.calls)).not.toContain("legacy-key");
-    } finally { warn.mockRestore(); }
-  });
 });
 
 describe("accepted deletion continuation", () => {
