@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ensureGitHubOwnerTenant,
+  findGitHubOwnerTenant,
   TenantAccountLifecycleError,
   TenantAccountStoreError,
   readTenantAccountSeeds,
@@ -12,6 +13,28 @@ describe("tenant account metadata boundary", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
+  });
+
+  it("uses atomic fresh signup and allows only explicit deletion-resume login for a pending account", async () => {
+    const env = { NODE_ENV:"test", AGENTPROOF_SELF_SERVICE_DELETION_ENABLED:"true", AGENTPROOF_USAGE_SUPABASE_URL:"https://store.invalid",AGENTPROOF_USAGE_SUPABASE_SERVICE_ROLE_KEY:"key",AGENTPROOF_BILLING_SUBSCRIPTIONS_SUPABASE_URL:"https://store.invalid",AGENTPROOF_BILLING_SUBSCRIPTIONS_SUPABASE_SERVICE_ROLE_KEY:"key",AGENTPROOF_BILLING_WEBHOOK_SUPABASE_URL:"https://store.invalid",AGENTPROOF_BILLING_WEBHOOK_SUPABASE_SERVICE_ROLE_KEY:"key",SUPABASE_URL:"https://store.invalid", SUPABASE_SERVICE_ROLE_KEY:"key", CRON_SECRET:"cron" } as NodeJS.ProcessEnv;
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json([{ tenant_id:"acct_123", member_id:"github:123", deletion_pending:true }])));
+    await expect(ensureGitHubOwnerTenant({githubUserId:"123"},env)).rejects.toBeInstanceOf(TenantAccountStoreError);
+    await expect(ensureGitHubOwnerTenant({githubUserId:"123",allowDeletionResume:true},env)).resolves.toEqual({tenantId:"acct_123",memberId:"github:123",deletionPending:true});
+  });
+
+  it("does not create an account for a deletion-status login with no identity", async () => {
+    stubSupabaseAccountEnv();
+    const fetchMock = vi.fn(async () => Response.json([]));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(findGitHubOwnerTenant({githubUserId: "12345"})).resolves.toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]).toEqual([expect.any(String), expect.objectContaining({method: "GET"})]);
+  });
+
+  it("rejects malformed existing identity data rather than treating it as a missing account", async () => {
+    stubSupabaseAccountEnv();
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json([{tenant_id:"gh_12345",member_id:"github:other"}])));
+    await expect(findGitHubOwnerTenant({githubUserId:"12345"})).rejects.toBeInstanceOf(TenantAccountStoreError);
   });
 
   it("returns session-derived fallback metadata when no account store is configured", async () => {
@@ -77,6 +100,32 @@ describe("tenant account metadata boundary", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(init.method).toBe("GET");
+  });
+
+  it.each([false, true])("refuses login or recreation after deletion starts (identity exists: %s)", async (exists) => {
+    stubSupabaseAccountEnv();
+    vi.stubEnv("AGENTPROOF_TENANT_DELETION_STATE_SUPABASE_URL", "https://deletion.invalid");
+    vi.stubEnv("AGENTPROOF_TENANT_DELETION_STATE_SUPABASE_SERVICE_ROLE_KEY", "test-key");
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === "HEAD") return new Response(null, { headers: { "content-range": "0-0/1" } });
+      return Response.json(exists ? [{ tenant_id: "gh_12345", member_id: "github:12345" }] : []);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(ensureGitHubOwnerTenant({ githubUserId: "12345" })).rejects.toBeInstanceOf(TenantAccountStoreError);
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
+  });
+
+  it("does not recreate an identity when deletion state cannot be checked", async () => {
+    stubSupabaseAccountEnv();
+    vi.stubEnv("AGENTPROOF_TENANT_DELETION_STATE_SUPABASE_URL", "https://deletion.invalid");
+    vi.stubEnv("AGENTPROOF_TENANT_DELETION_STATE_SUPABASE_SERVICE_ROLE_KEY", "test-key");
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => init?.method === "HEAD"
+      ? new Response(null, { status: 503 }) : Response.json([]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(ensureGitHubOwnerTenant({ githubUserId: "12345" })).rejects.toBeInstanceOf(TenantAccountStoreError);
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
   });
 
   it("reads env-seeded account members without exposing extra contact or secret fields", async () => {

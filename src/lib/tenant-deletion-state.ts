@@ -129,6 +129,22 @@ export async function markTenantDeletionStartedIfConfiguredAsync(
     return markTenantDeletionStartedIfConfigured({ tenantId }, env);
   }
 
+  if (config.table === DEFAULT_TENANT_DELETION_STATE_TABLE) {
+    // The checked-in migration grants EXECUTE, not table INSERT/UPDATE.
+    // Its INSERT ON CONFLICT DO NOTHING preserves the original start time.
+    const response = await fetch(`${config.url}/rest/v1/rpc/agentproof_mark_tenant_deletion_active`, {
+      method: "POST",
+      cache: "no-store",
+      headers: { apikey: config.serviceRoleKey, Authorization: `Bearer ${config.serviceRoleKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ p_tenant_id: tenantId })
+    });
+    if (!response.ok) throw new TenantDeletionStateError("Tenant deletion start is unavailable.");
+    const rows: unknown = await response.json().catch(() => null);
+    const outcome = Array.isArray(rows) && rows.length === 1 ? rows[0]?.outcome : null;
+    if (outcome !== "created" && outcome !== "existing") throw new TenantDeletionStateError("Tenant deletion start was not confirmed.");
+    return { privacy: "tenant-deletion-state-metadata-only", active: true, created: outcome === "created" };
+  }
+
   const existingCount = await countSupabaseActiveTenantDeletionState(config, tenantId);
   await upsertSupabaseTenantDeletionState(config, tenantId);
 

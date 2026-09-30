@@ -1,5 +1,5 @@
-import { ensureGitHubOwnerTenant, TenantAccountStoreError } from "@/lib/tenant-accounts";
-import { createTenantAuthSessionForMember, revokeTenantAuthSession, saveGitHubUserCredentials, TenantAuthError, TenantAuthStoreError } from "@/lib/tenant-auth";
+import { ensureGitHubOwnerTenant, findGitHubOwnerTenant, TenantAccountStoreError } from "@/lib/tenant-accounts";
+import { clearTenantAuthSessionCookie, createTenantAuthSessionForMember, revokeTenantAuthSession, saveGitHubUserCredentials, TenantAuthError, TenantAuthStoreError } from "@/lib/tenant-auth";
 import { bindGitHubInstallationAuthorization, clearGitHubOAuthInstallCookie, clearGitHubOAuthStateCookie, finishGitHubOAuth, getGitHubOAuthConfig, GitHubOAuthError } from "@/lib/public-github-auth";
 import { noStoreJson } from "@/lib/http";
 
@@ -14,7 +14,21 @@ export async function GET(request: Request) {
     stage = "oauth";
     const provisional = await finishGitHubOAuth({ code: url.searchParams.get("code"), state: url.searchParams.get("state"), cookieHeader: request.headers.get("cookie"), tenantId: "pending" }, config);
     stage = "tenant";
-    const owner = await ensureGitHubOwnerTenant({ githubUserId: provisional.githubUserId });
+    const deletionLogin = provisional.returnTo === "/account/delete";
+    const owner = deletionLogin
+      ? await findGitHubOwnerTenant({ githubUserId: provisional.githubUserId })
+      : await ensureGitHubOwnerTenant({ githubUserId: provisional.githubUserId, allowDeletionResume: true });
+    if (!owner) {
+      const headers = privateHeadersWithCookies(clearGitHubOAuthStateCookie(), clearGitHubOAuthInstallCookie(), clearTenantAuthSessionCookie());
+      if (!isDocumentNavigation(request)) return noStoreJson({ ok: true, next: "account_not_found" }, { headers });
+      headers.set("Content-Type", "text/html; charset=utf-8");
+      return new Response('<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Account status</title></head><body><h1>No AgentProof account found</h1><p>No account is linked to the GitHub identity you just verified. No new account was created.</p><a href="/">Return to AgentProof</a></body></html>', { headers });
+    }
+    if (owner.deletionPending || deletionLogin) {
+      const session = await createTenantAuthSessionForMember(owner);
+      const headers = privateHeadersWithCookies(clearGitHubOAuthStateCookie(), clearGitHubOAuthInstallCookie(), session.sessionCookie);
+      return isDocumentNavigation(request) ? dashboardNavigationResponse(headers, "/account/delete") : noStoreJson({ ok: true, next: "/account/delete" }, { headers });
+    }
     stage = "installation";
     const installCookie = bindGitHubInstallationAuthorization({ cookieHeader: provisional.installCookie, tenantId: owner.tenantId }, config);
     if (!installCookie) throw new GitHubOAuthError("GitHub install authorization could not be bound.");
@@ -46,7 +60,7 @@ function isDocumentNavigation(request: Request) {
     || request.headers.get("sec-fetch-dest") === "document";
 }
 
-function dashboardNavigationResponse(headers: Headers, returnTo: "/analyze" | "/dashboard") {
+function dashboardNavigationResponse(headers: Headers, returnTo: "/analyze" | "/dashboard" | "/account/delete") {
   headers.set("Content-Type", "text/html; charset=utf-8");
   return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=${returnTo}"><title>Continuing to AgentProof</title></head><body><p>Continuing to <a href="${returnTo}">AgentProof</a>…</p></body></html>`, { headers });
 }

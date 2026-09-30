@@ -1,5 +1,7 @@
 import { redactSecrets } from "./redact";
 import { getControlPlaneSupabaseEnv } from "./control-plane-supabase";
+import { assertTenantDeletionNotActiveAsync, isTenantDeletionActiveAsync } from "./tenant-deletion-state";
+import { personalDeletionRpc, personalDeletionStore } from "./personal-deletion-store";
 
 export const DEFAULT_TENANTS_TABLE = "agentproof_tenants";
 export const DEFAULT_TENANT_MEMBERS_TABLE = "agentproof_tenant_members";
@@ -87,6 +89,28 @@ export class TenantAccountStoreError extends Error {
 export interface GitHubOwnerTenant {
   tenantId: string;
   memberId: string;
+  deletionPending?: boolean;
+}
+
+/** Read-only lookup for deletion-status login: never sign a deleted user up. */
+export async function findGitHubOwnerTenant(
+  input: { githubUserId?: unknown },
+  env = process.env
+): Promise<GitHubOwnerTenant | null> {
+  const githubUserId = normalizeGitHubUserId(input.githubUserId);
+  const config = getTenantAccountStoreConfig(env);
+  if (!githubUserId || !config) throw new TenantAccountStoreError("GitHub identity storage is unavailable.");
+  try {
+    const table = env.AGENTPROOF_GITHUB_IDENTITIES_TABLE || DEFAULT_GITHUB_IDENTITIES_TABLE;
+    const response = await tenantAccountFetch(config, table, `?github_user_id=eq.${encodeURIComponent(githubUserId)}&select=tenant_id,member_id&limit=1`, { method: "GET" });
+    if (!response.ok) throw new Error();
+    const rows: unknown = await response.json();
+    if (!Array.isArray(rows)) throw new Error();
+    if (rows.length === 0) return null;
+    const owner = normalizeGitHubOwnerTenant(rows[0]);
+    if (!owner || owner.memberId !== `github:${githubUserId}`) throw new Error();
+    return { ...owner, deletionPending: await isTenantDeletionActiveAsync({tenantId: owner.tenantId}, env) };
+  } catch { throw new TenantAccountStoreError("GitHub identity lookup is unavailable."); }
 }
 
 /**
@@ -94,7 +118,7 @@ export interface GitHubOwnerTenant {
  * Only opaque ids are retained; login names and OAuth credentials are not.
  */
 export async function ensureGitHubOwnerTenant(
-  input: { githubUserId?: unknown },
+  input: { githubUserId?: unknown; allowDeletionResume?: boolean },
   env = process.env
 ): Promise<GitHubOwnerTenant> {
   const githubUserId = normalizeGitHubUserId(input.githubUserId);
@@ -103,11 +127,31 @@ export async function ensureGitHubOwnerTenant(
     throw new TenantAccountStoreError("GitHub public signup requires durable tenant account storage.");
   }
 
+  if (env.AGENTPROOF_SELF_SERVICE_DELETION_ENABLED === "true") {
+    const store = personalDeletionStore(env);
+    if (!store) throw new TenantAccountStoreError("Account lifecycle storage is unavailable.");
+    try {
+      const rows = await personalDeletionRpc(store, "agentproof_github_personal_account", { p_github_id: githubUserId });
+      const row = Array.isArray(rows) && rows.length === 1 ? rows[0] : null;
+      const owner = normalizeGitHubOwnerTenant(row);
+      if (!owner || owner.memberId !== `github:${githubUserId}` || typeof row.deletion_pending !== "boolean") throw new Error();
+      if (row.deletion_pending && !input.allowDeletionResume) throw new Error();
+      return { ...owner, deletionPending: row.deletion_pending };
+    } catch { throw new TenantAccountStoreError("GitHub account lifecycle is unavailable."); }
+  }
+
   const identitiesTable = env.AGENTPROOF_GITHUB_IDENTITIES_TABLE || DEFAULT_GITHUB_IDENTITIES_TABLE;
   const existingResponse = await tenantAccountFetch(config, identitiesTable, `?github_user_id=eq.${encodeURIComponent(githubUserId)}&select=tenant_id,member_id&limit=1`, { method: "GET" });
   if (!existingResponse.ok) throw new TenantAccountStoreError(`GitHub identity lookup failed with HTTP ${existingResponse.status}.`);
   const existingRows = await existingResponse.json().catch(() => []) as unknown;
   const existing = Array.isArray(existingRows) ? normalizeGitHubOwnerTenant(existingRows[0]) : null;
+  // A partially deleted identity must not cause signup to reactivate its
+  // deterministic workspace. Check the actual binding for returning users.
+  try {
+    await assertTenantDeletionNotActiveAsync({ tenantId: existing?.tenantId ?? `gh_${githubUserId}` }, env);
+  } catch {
+    throw new TenantAccountStoreError("GitHub account is unavailable during deletion or deletion-state verification.");
+  }
   if (existing) return existing;
 
   // Deterministic ids make concurrent first logins idempotent without storing

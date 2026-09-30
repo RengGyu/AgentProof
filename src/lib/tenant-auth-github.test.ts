@@ -31,6 +31,18 @@ async function save(sessionCookie: string, expiresAt = start + 8 * 60 * 60 * 100
 afterEach(() => { clearTenantAuthSessionsForTests(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe("session-bound GitHub user credentials", () => {
+  it("allows deletion-resume login but denies ordinary access and credentials for the suspended account", async () => {
+    stubEnv();
+    const original = await session();
+    vi.stubEnv("AGENTPROOF_TENANT_ACCOUNTS", JSON.stringify([{ tenantId:"gh_123", name:"Personal", status:"suspended", plan:"beta", members:[{memberId:"github:123",role:"owner",status:"active"}] }]));
+    vi.stubEnv("AGENTPROOF_TENANT_DELETION_TOMBSTONES", '["gh_123"]');
+    expect(await resolveTenantAuthAccess({cookieHeader:original.sessionCookie},process.env,start)).toEqual({authorized:false});
+    await expect(session()).rejects.toThrow();
+    const resume = await createTenantAuthSessionForMember({tenantId:"gh_123",memberId:"github:123",deletionPending:true},process.env,start);
+    expect(await resolveTenantAuthAccess({cookieHeader:resume.sessionCookie},process.env,start)).toEqual({authorized:false});
+    expect(await getGitHubUserCredentialForSession({cookieHeader:resume.sessionCookie,tenantId:"gh_123",memberId:"github:123"},process.env,start)).toEqual({status:"reauth"});
+  });
+
   it("clears encrypted credentials only after the GitHub login expires", async () => {
     stubEnv();
     const expired = await session();

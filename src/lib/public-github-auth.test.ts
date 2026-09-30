@@ -147,10 +147,10 @@ describe("public GitHub OAuth cookies", () => {
   });
 });
 
-it.each(['/analyze', '/dashboard', 'https://attacker.example', '//attacker.example', '/analyze?secret=value'])("allowlists signed OAuth return path %s", async destination => {
+it.each(['/analyze', '/dashboard', '/account/delete', 'https://attacker.example', '//attacker.example', '/analyze?secret=value'])("allowlists signed OAuth return path %s", async destination => {
   const now = Date.now();
   const started = beginGitHubOAuth(config, now, destination);
   const fetchMock = vi.fn().mockResolvedValueOnce(Response.json({ access_token: 'test-token' })).mockResolvedValueOnce(Response.json({ id: 123 }));
   const result = await finishGitHubOAuth({ code: 'code', state: new URL(started.authorizationUrl).searchParams.get('state'), cookieHeader: started.stateCookie, tenantId: 'pending' }, config, fetchMock, now);
-  expect(result.returnTo).toBe(destination === '/analyze' ? '/analyze' : '/dashboard');
+  expect(result.returnTo).toBe(destination === '/account/delete' ? '/account/delete' : destination === '/analyze' ? '/analyze' : '/dashboard');
 });

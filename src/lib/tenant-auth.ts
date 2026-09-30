@@ -3,6 +3,7 @@ import { noStoreJson } from "./http";
 import { redactSecrets } from "./redact";
 import { getControlPlaneSupabaseEnv } from "./control-plane-supabase";
 import { readTenantAccountSummary, type TenantMemberRole } from "./tenant-accounts";
+import { isTenantDeletionActiveAsync } from "./tenant-deletion-state";
 
 export const TENANT_AUTH_SESSION_COOKIE = "agentproof_tenant_auth_session";
 export const MOBILE_AUTH_SESSION_COOKIE = "agentproof_mobile_session";
@@ -160,7 +161,7 @@ export async function createTenantAuthSession(
  * after this session is created and remain encrypted and session-bound.
  */
 export async function createTenantAuthSessionForMember(
-  input: { tenantId?: unknown; memberId?: unknown },
+  input: { tenantId?: unknown; memberId?: unknown; deletionPending?: boolean },
   env = process.env,
   now = Date.now()
 ): Promise<TenantAuthSession> {
@@ -170,7 +171,7 @@ export async function createTenantAuthSessionForMember(
     throw new TenantAuthError("Tenant auth session request is invalid.");
   }
 
-  const member = await readActiveTenantMember({ tenantId, memberId }, env);
+  const member = await readActiveTenantMember({ tenantId, memberId, allowDeletionResume: input.deletionPending === true }, env);
   if (!member) {
     throw new TenantAuthError("Tenant auth member is not active.");
   }
@@ -209,7 +210,7 @@ export async function createTenantAuthSessionForMobileMember(
   const tenantId = normalizeTenantId(input.tenantId);
   const memberId = normalizeMemberId(input.memberId);
   if (!tenantId || !memberId) throw new TenantAuthError("Mobile session request is invalid.");
-  const member = await readActiveTenantMember({ tenantId, memberId }, env);
+  const member = await readActiveTenantMember({ tenantId, memberId, allowDeletionResume: true }, env);
   if (!member) throw new TenantAuthError("Mobile session member is not active.");
   const token = randomToken();
   const expiresAt = new Date(now + TENANT_AUTH_SESSION_TTL_MS).toISOString();
@@ -590,11 +591,14 @@ function normalizeGitHubUserId(value: unknown): string | null {
 }
 
 async function readActiveTenantMember(
-  input: { tenantId: string; memberId: string },
+  input: { tenantId: string; memberId: string; allowDeletionResume?: boolean },
   env = process.env
 ): Promise<{ role: TenantMemberRole } | null> {
   const summary = await readTenantAccountSummary({ tenantId: input.tenantId }, env);
-  if (summary.account.status !== "active" && summary.account.status !== "trialing") return null;
+  if (summary.account.status !== "active" && summary.account.status !== "trialing") {
+    if (!input.allowDeletionResume || summary.account.status !== "suspended"
+      || !await isTenantDeletionActiveAsync({ tenantId: input.tenantId }, env)) return null;
+  }
 
   const member = summary.members.find((item) => item.memberId === input.memberId);
   if (!member || member.status !== "active") return null;

@@ -12,7 +12,7 @@ const OAUTH_CALLBACK_PATH = "/api/auth/github/callback";
 const INSTALL_CALLBACK_PATH = "/api";
 
 interface OAuthState {
-  returnTo?: "/analyze" | "/dashboard";
+  returnTo?: "/analyze" | "/dashboard" | "/account/delete";
   state: string;
   verifier: string;
   expiresAt: number;
@@ -38,7 +38,7 @@ export interface GitHubOAuthStart {
 }
 
 export interface GitHubOAuthIdentity {
-  returnTo: "/analyze" | "/dashboard";
+  returnTo: "/analyze" | "/dashboard" | "/account/delete";
   githubUserId: string;
   installCookie: string;
   credentials: {
@@ -83,7 +83,7 @@ export function getGitHubOAuthConfig(env = process.env): GitHubOAuthConfig | nul
 
 export function beginGitHubOAuth(config: GitHubOAuthConfig, now = Date.now(), returnTo?: unknown, chooseAccount = false): GitHubOAuthStart {
   const state: OAuthState = {
-    returnTo: returnTo === "/analyze" ? "/analyze" : "/dashboard",
+    returnTo: returnTo === "/account/delete" ? "/account/delete" : returnTo === "/analyze" ? "/analyze" : "/dashboard",
     state: randomBytes(32).toString("base64url"),
     verifier: randomBytes(48).toString("base64url"),
     expiresAt: now + OAUTH_TTL_MS
@@ -151,7 +151,7 @@ export async function finishGitHubOAuth(
   const expiresAt = now + OAUTH_TTL_MS;
   return {
     githubUserId,
-    returnTo: saved.returnTo === "/analyze" ? "/analyze" : "/dashboard",
+    returnTo: saved.returnTo === "/account/delete" ? "/account/delete" : saved.returnTo === "/analyze" ? "/analyze" : "/dashboard",
     installCookie: sealCookie(GITHUB_OAUTH_INSTALL_COOKIE, { accessToken, githubUserId, tenantId: input.tenantId, expiresAt }, config.secret, expiresAt, now, INSTALL_CALLBACK_PATH),
     credentials: {
       accessToken,

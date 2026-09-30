@@ -30,7 +30,7 @@ export async function GET(request: Request) {
     const identity = await identityResponse.json().catch(() => null) as { id?: unknown } | null;
     if (!identityResponse.ok || !/^\d{1,20}$/.test(String(identity?.id ?? ""))) return failure(headers);
     const githubUserId = String(identity!.id);
-    const owner = await ensureGitHubOwnerTenant({ githubUserId });
+    const owner = await ensureGitHubOwnerTenant({ githubUserId, allowDeletionResume: true });
     const handoff = await createMobileHandoff({ verifierChallenge: saved.challenge, tenantId: owner.tenantId, memberId: owner.memberId });
     return navigation(headers, `${DEEP_LINK}?code=${encodeURIComponent(handoff)}`);
   } catch (error) {

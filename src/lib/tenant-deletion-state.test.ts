@@ -10,6 +10,28 @@ import {
 describe("tenant deletion state", () => {
   afterEach(() => {
     clearTenantDeletionStateForTests();
+    vi.unstubAllGlobals();
+  });
+
+  it.each(["created", "existing"])("uses the migration's atomic RPC for the default store (%s)", async (outcome) => {
+    const fetchMock = vi.fn(async (url: RequestInfo | URL) => String(url).endsWith("/rpc/agentproof_mark_tenant_deletion_active")
+      ? Response.json([{ outcome }]) : new Response(null, { status: 403 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const env = { SUPABASE_URL: "https://deletion.invalid", SUPABASE_SERVICE_ROLE_KEY: "test-key", NODE_ENV: "test" } as NodeJS.ProcessEnv;
+
+    await expect(markTenantDeletionStartedIfConfiguredAsync({ tenantId: "tenant_a" }, env)).resolves.toEqual({
+      privacy: "tenant-deletion-state-metadata-only", active: true, created: outcome === "created"
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const init = (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1];
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({ p_tenant_id: "tenant_a" });
+  });
+
+  it.each([{ body: [] }, { body: [{ outcome: "unknown" }] }, { body: [{ outcome: "created" }, { outcome: "existing" }] }])("rejects unconfirmed deletion-start responses: $body", async ({ body }) => {
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json(body)));
+    const env = { SUPABASE_URL: "https://deletion.invalid", SUPABASE_SERVICE_ROLE_KEY: "test-key", NODE_ENV: "test" } as NodeJS.ProcessEnv;
+    await expect(markTenantDeletionStartedIfConfiguredAsync({ tenantId: "tenant_a" }, env)).rejects.toThrow();
   });
 
   it("reads static deletion tombstones without exposing the configured tenant ids", () => {

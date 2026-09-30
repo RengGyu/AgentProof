@@ -71,6 +71,7 @@ describe("GET /api/auth/github/callback", () => {
     let identityReads = 0;
     let sessionRow: Record<string, unknown> | null = null;
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.includes("/agentproof_tenant_deletion_state") && init?.method === "HEAD") return new Response(null, { headers: { "content-range": "*/0" } });
       if (url === "https://github.com/login/oauth/access_token") {
         return Response.json({ access_token: "temporary-oauth-token", expires_in: 28_800, refresh_token: "temporary-refresh-token", refresh_token_expires_in: 15_897_600 });
       }
@@ -134,6 +135,7 @@ describe("GET /api/auth/github/callback", () => {
     let identityReads = 0;
     let sessionRow: Record<string, unknown> | null = null;
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.includes("/agentproof_tenant_deletion_state") && init?.method === "HEAD") return new Response(null, { headers: { "content-range": "*/0" } });
       if (url === "https://github.com/login/oauth/access_token") return Response.json({ access_token: "temporary-oauth-token" });
       if (url === "https://api.github.com/user") return Response.json({ id: 12345, login: "private-login" });
       if (url.includes("/agentproof_github_identities") && init?.method === "GET") {

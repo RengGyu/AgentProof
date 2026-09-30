@@ -734,7 +734,7 @@ function SettingsPanel({ repositories, repository, onSelectRepository, pending, 
       <SettingToggle label="Summary comments" detail={repository.commentEnabled ? "Comments are enabled for this repository." : "Comments are off by default. Enable only with repository-level consent."} checked={repository.commentEnabled} pending={pending === "commentEnabled"} onChange={(value) => { void onUpdate("commentEnabled", value); }} />
       {repository.repositoryPrivate === true && repository.llmAnalysisMode === "enhanced" ? <SettingToggle label="Private enhanced planning consent" detail="Allow bounded redacted private Issue and PR source spans for enhanced planning." checked={repository.hybridPlannerConsentVersion === "2026-08-12.v1"} pending={pending === "hybridPlannerConsent"} onChange={(value) => { void onUpdate("hybridPlannerConsent", value); }} /> : null}
     </> : <p className="dashboard-empty">Connect and select a repository before changing repository settings.</p>}
-    <div className="dashboard-section-heading dashboard-account-settings"><h3>Account</h3><button className="dashboard-secondary-action" disabled={logoutPending} onClick={() => { void onLogout(); }}>{logoutPending ? "Signing out…" : "Log out"}</button></div>
+    <div className="dashboard-section-heading dashboard-account-settings"><h3>Account</h3><a href="/account/delete">Delete account</a><button className="dashboard-secondary-action" disabled={logoutPending} onClick={() => { void onLogout(); }}>{logoutPending ? "Signing out…" : "Log out"}</button></div>
   </section>;
 }
 
