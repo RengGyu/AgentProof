@@ -33,3 +33,51 @@ const checks: Array<[string, () => Promise<void>]> = [
 ];
 
 for (const [name, check] of checks) it(name, check);
+
+it('finds executable camel-case freshness checks beyond an incomplete import prefix',async()=>{
+ const source=["import type { publicMetadata } from './public';",...Array(95).fill('// padding'),
+  'async function invoke() {',...Array(90).fill('  const unused = 0;'),
+  '  const beforeCall = await readCurrentPublicSubject();',
+  '  await provider.observe();',
+  '  const afterCall = await readCurrentPublicSubject();',
+  '  return beforeCall === afterCall;',
+  '}'].join('\n');
+ const r=await extractReviewSnippets([{path:'src/callback.ts',headSha:head,content:source}],[{id:'goal_1',terms:['before','after','public','provider'],anchors:[]}]);
+ assert(r.snippets.some(s=>s.content.includes('const beforeCall = await readCurrentPublicSubject();')),'before freshness check must reach the bounded context');
+ assert(r.snippets.some(s=>s.content.includes('const afterCall = await readCurrentPublicSubject();')),'after freshness check must reach the bounded context');
+ for(const s of r.snippets)assert.equal(s.content,source.split('\n').slice(s.startLine-1,s.endLine).join('\n'));
+});
+
+it('keeps specific runtime checks across files instead of filling context with a repeated metadata word',async()=>{
+ const source=['interface Metadata {',...Array.from({length:60},(_,n)=>`  providerField${n}: "provider";`),'}',
+  'async function invoke() {',...Array(90).fill('  const unused = 0;'),
+  '  const beforeCall = await readCurrentPublicSubject();',
+  '  await provider.observe();',
+  '  const afterCall = await readCurrentPublicSubject();',
+  '  return beforeCall === afterCall;','}'].join('\n');
+ const files=Array.from({length:8},(_,n)=>({path:`src/callback-${n}.ts`,headSha:head,content:source}));
+ const r=await extractReviewSnippets(files,[{id:'goal_1',terms:['before','after','public','provider'],anchors:[]}]);
+ for(const file of files)assert(r.snippets.some(s=>s.path===file.path&&s.content.includes('readCurrentPublicSubject();')),`${file.path}: runtime freshness must survive the shared context bound`);
+ assert(r.snippets.length<=16);
+});
+
+it('retains rare behavioral matches after a dense prefix exhausts early keyword hits',async()=>{
+ const body='async function invoke(provider) {\n  const beforeCall = await readCurrentPublicSubject();\n  await provider.observe();\n  const afterCall = await readCurrentPublicSubject();\n  return beforeCall === afterCall;\n}';
+ const source=Array.from({length:300},(_,n)=>`const providerMetadata${n} = "provider";`).join('\n')+'\n'+body;
+ const r=await extractReviewSnippets([{path:'src/callback.ts',headSha:head,content:source}],[{id:'goal_1',terms:['before','after','public','provider'],anchors:[]}]);
+ assert(r.snippets.some(s=>s.content.includes('const beforeCall = await readCurrentPublicSubject();')&&s.content.includes('const afterCall = await readCurrentPublicSubject();')),'late freshness checks must survive the retained-match bound');
+ assert(r.limitations.includes('retrieval_scan_budget_exceeded'));
+});
+
+it('prefers a directly named behavior test over broad fixture vocabulary',async()=>{
+ const source=[...Array.from({length:20},(_,i)=>`it('handles fixture ${i}', () => {\n const fixture = { deterministic: true, report: true, public: true, schema: true, outcome: true };\n expect(fixture.report).toBe(true);\n});`),`it('preserves deterministic report identity', () => {\n const result = execute({ mode: 'disabled' });\n expect(result.report).toBe(report);\n});`].join('\n');
+ const result=await extractReviewSnippets([{path:'src/assessment.test.ts',headSha:'a'.repeat(40),content:source}],[{id:'goal_1',terms:['preserves','deterministic','report','public','schema','outcome'],anchors:[]}]);
+ assert(result.snippets.some(s=>s.content.includes("execute({ mode: 'disabled' })")),'direct behavior test must survive broad fixture vocabulary');
+});
+
+it('keeps the bounded function body when its leading comment supplies the requirement wording',async()=>{
+ const body=['export function execute(options) {',...Array.from({length:30},(_,i)=>` const value${i} = ${i};`),' return options.mode === "disabled" ? options.report : inspect(options);','}'].join('\n');
+ const source='/** Private shadow pipeline is default-off. */\n'+body;
+ const result=await extractReviewSnippets([{path:'src/assessment.ts',headSha:head,content:source}],[{id:'goal_1',terms:['private','shadow','pipeline','default'],anchors:[]}]);
+ assert(result.snippets.some(s=>s.content.includes('return options.mode === "disabled"')),'a matching leading comment must not leave only the function signature');
+});

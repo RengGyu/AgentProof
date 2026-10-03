@@ -3,6 +3,26 @@ import { describe, expect, it } from "vitest";
 import { PrEvidenceReview } from "./PrEvidenceReview";
 
 describe("PrEvidenceReview", () => {
+  it("opens only the first objective while keeping other objectives available as disclosures", () => {
+    const review = { mode: "objectives" as const, source: null, changes: [], nextInspection: "Inspect evidence.", objectives: ["First goal", "Second goal"].map((text, i) => ({ id: `goal-${i}`, text, code: [], tests: [], execution: [], nextInspection: "Review evidence." })) };
+    const before = JSON.stringify(review);
+    const html = renderToStaticMarkup(<PrEvidenceReview review={review} />);
+    expect(html.match(/<details class="pr-evidence-objective"/g)).toHaveLength(2);
+    expect(html.match(/<details class="pr-evidence-objective" open=""/g)).toHaveLength(1);
+    expect(html).toContain("Second goal");
+    expect(JSON.stringify(review)).toBe(before);
+  });
+  it("omits internal goal provenance without changing the review model or its uncertainty", () => {
+    const review = {
+      mode: "objectives" as const, source: { kind: "pr_author_claim" as const, label: "PR author claim", authority: "author_claim" as const }, changes: [], nextInspection: "Inspect code.",
+      objectives: [{ id: "goal", text: "Handle expired links.", goalContext: ["internal claim context"], sourceRefs: [{ start: 11, end: 25, hash: "a".repeat(64) }], facets: [{ kind: "test_claim", sourceRef: { start: 11, end: 25, hash: "a".repeat(64) } }], code: [{ evidenceId: "code", kind: "code" as const, label: "src/reset.ts", relation: "candidate" as const, uncertainty: "Execution has not been checked." }], tests: [], execution: [], nextInspection: "Inspect code." }]
+    };
+    const before = JSON.stringify(review);
+    const html = renderToStaticMarkup(<PrEvidenceReview review={review} />);
+    expect(html).not.toMatch(/Goal details|Source offsets|Source:|internal claim context|test claim/);
+    expect(html).toContain("Execution has not been checked.");
+    expect(JSON.stringify(review)).toBe(before);
+  });
   it("renders objective evidence without satisfaction or coverage verdicts", () => {
     const html = renderToStaticMarkup(<PrEvidenceReview review={{
       mode: "objectives",
@@ -20,7 +40,7 @@ describe("PrEvidenceReview", () => {
     }} />);
 
     expect(html).toContain("PR-to-Evidence Review");
-    expect(html).toContain("Linked issue requirement source");
+    expect(html).not.toContain("Linked issue requirement source");
     expect(html).toContain("Observed evidence");
     expect(html).toContain("Candidate link");
     expect(html).toContain("individual test execution is not established");
@@ -75,7 +95,7 @@ describe("PrEvidenceReview", () => {
           whyInspect: "The expiry branch changed.", reviewQuestion: "Does this reject expired links?", uncertainty: "Execution not checked." } }],
     }} />);
     expect(html).toContain('<details class="muted small"><summary>Reviewer question</summary><p>Does this reject expired links?</p></details>');
-    expect(html).not.toMatch(/<details[^>]*open/);
+    expect(html).not.toMatch(/<details class="muted small"[^>]*open/);
     expect(html).toContain('<p>The expiry branch changed.</p>');
     expect(html).toContain('src/reset.ts#L12');
     expect(html).toContain('Execution not checked.');

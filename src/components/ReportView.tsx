@@ -20,6 +20,7 @@ import {
   TestTube2
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { presentEvidenceLimitation, presentEvidenceText } from "@/lib/tenant-report-language";
 import { getExecutionEvidenceItems } from "@/lib/execution-evidence";
 import { presentGeneralPrAssessmentSummary } from "@/lib/general-pr-assessment-presentation";
 import { presentOrdinaryDocumentationSummary } from "@/lib/general-pr-documentation-presentation";
@@ -30,6 +31,7 @@ import { buildPrEvidenceReview, usesPrEvidenceReview } from "@/lib/pr-evidence-r
 import type { CheckStatus, PriorityLevel, RequirementStatus, VerificationReport } from "@/lib/types";
 import { deriveRequirementPresentationV2, isVerificationReportV2 } from "@/lib/requirement-presentation-v2";
 import { PrEvidenceReview } from "@/components/PrEvidenceReview";
+import { ReportTopSummary } from "@/components/ReportTopSummary";
 
 interface ReportViewProps {
   report: VerificationReport;
@@ -110,9 +112,9 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
   );
   const uncertaintyLine = useMemo(() => getUncertaintyLine(report, isSummaryMode), [isSummaryMode, report]);
   const visibleLimitations = useMemo(
-    () => ordinaryPrReview?.mode === "change_summary"
+    () => [...new Set((ordinaryPrReview?.mode === "change_summary"
       ? report.limitations.filter((item) => !isPurposeOnlyLimitation(item))
-      : report.limitations,
+      : report.limitations).map(presentEvidenceLimitation))],
     [ordinaryPrReview?.mode, report.limitations]
   );
 
@@ -205,6 +207,7 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
           <PriorityChip priority={report.summary.priority} />
         </div>
 
+        <ReportTopSummary report={report} review={ordinaryPrReview ?? undefined} />
         {isSummaryMode ? (
           <div className="notice summary-mode-notice">
             <AlertCircle size={15} />
@@ -453,7 +456,7 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
                     <span className="evidence-label">
                       {item.id} - {item.kind} - {item.locator ?? item.label} - {Math.round(item.confidence * 100)}%
                     </span>
-                    {item.summary}
+                    {presentEvidenceText(item.summary)}
                   </li>
                 ))}
               </ul>
@@ -566,7 +569,7 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
                   </a>
                 ) : null}
               </div>
-              <pre className="comment-preview">{githubComment}</pre>
+              <pre className="comment-preview">{presentEvidenceText(githubComment)}</pre>
               <div className="field compact-field">
                 <label htmlFor="commentToken">Write token</label>
                 <input
@@ -600,7 +603,7 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
                   {copiedAction === "reprompt" ? "Copied" : "Copy"}
                 </button>
               </div>
-              <pre className="reprompt">{report.reprompt.prompt}</pre>
+              <pre className="reprompt">{presentEvidenceText(report.reprompt.prompt)}</pre>
             </div>
           ) : null}
 
@@ -730,7 +733,7 @@ function EvidenceRefs({
                   ? ` - ${evidence.kind} - ${evidence.locator ?? evidence.label} - ${Math.round(evidence.confidence * 100)}%`
                   : ""}
               </span>
-              {evidence?.summary ?? "Evidence item was not found in this report."}
+              {evidence ? presentEvidenceText(evidence.summary) : "Evidence item was not found in this report."}
             </li>
           );
         })}
@@ -883,7 +886,7 @@ function getUncertaintyLine(report: VerificationReport, isSummaryMode: boolean):
   );
 
   if (firstLimitation) {
-    return `Limit: ${firstLimitation}`;
+    return presentEvidenceLimitation(`Limit: ${firstLimitation}`);
   }
 
   if (isSummaryMode) {

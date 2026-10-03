@@ -1,5 +1,6 @@
 "use client";
 
+import { presentEvidenceLimitation } from "@/lib/tenant-report-language";
 import {
   AlertTriangle,
   Activity,
@@ -1267,7 +1268,7 @@ export function TenantSetupPanel() {
                             <span>{changedFilesReadinessLabel(repoHealth.firstReport.changedFiles)}</span>
                             <span>{checksAvailabilityLabel(repoHealth.firstReport.checksAvailability)}</span>
                           </div>
-                          <p className="tenant-next-action">{repoHealth.firstReport.nextAction}</p>
+                          <p className="tenant-next-action">{presentEvidenceLimitation(repoHealth.firstReport.nextAction)}</p>
                         </div>
                       ) : null}
                       {typeof repo.repositoryId === "number" ? (
@@ -1586,7 +1587,7 @@ function firstReportStatusLabel(status: string): string {
   if (status === "pull-request-inaccessible") return "PR access";
   if (status === "pull-request-rate-limited") return "Rate limited";
   if (status === "pull-request-unavailable") return "PR unavailable";
-  if (status === "large-pr-capped") return "Large PR";
+  if (status === "large-pr-capped") return "Evidence needs inspection";
   if (status === "checks-missing") return "Checks missing";
   if (status === "checks-rate-limited") return "Checks limited";
   if (status === "checks-unavailable") return "Checks unavailable";
@@ -1596,10 +1597,10 @@ function firstReportStatusLabel(status: string): string {
 
 function changedFilesReadinessLabel(changedFiles: FirstReportDiagnostics["changedFiles"]): string {
   if (typeof changedFiles.count === "number") {
-    return `Files ${changedFiles.count}/${changedFiles.maxFiles}`;
+    return `Files ${changedFiles.count}`;
   }
 
-  return `Files ${changedFiles.status.replace(/-/g, " ")}`;
+  return "File evidence unverified";
 }
 
 function checksAvailabilityLabel(checks: FirstReportDiagnostics["checksAvailability"]): string {

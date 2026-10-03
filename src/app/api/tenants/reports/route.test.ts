@@ -218,7 +218,7 @@ describe("GET /api/tenants/reports", () => {
     expect(json.count).toBe(1);
     expect(json.filterBasis).toBe("tenant_recent_summary_sample");
     expect(String(url)).toContain("tenant_id=eq.tenant_a");
-    expect(String(url)).toContain("expires_at=gt.");
+    expect(new URL(String(url)).searchParams.get("or")).toMatch(/^\(expires_at\.is\.null,expires_at\.gt\..+\)$/);
     expect(String(url)).toContain("select=id%2Ccreated_at%2Cexpires_at%2Creport%2Ctenant_id");
     expect(String(url)).toContain("limit=101");
     expect(String(url)).not.toContain("service-role-secret");

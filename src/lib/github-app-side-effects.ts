@@ -16,7 +16,7 @@ export interface GitHubAppPullRequestTarget {
 export interface AutomationSavedReportResult {
   id: string;
   url: string;
-  expiresAt: string;
+  expiresAt: string | null;
   privacy: "summary-only";
   durability: string;
 }
@@ -44,6 +44,10 @@ export async function createAutomationSavedReport(
 
   const status = getSavedReportStoreStatus();
   const saved = await createVerifiedSavedReport(report, {
+    // Durable connected-PR reports use the same retained version history as
+    // manual workspace generation. Unbound demo/share paths retain their TTL.
+    ...(status.durable && options.tenantId && options.installationId && options.repositoryId && options.pullRequestNumber && options.headSha
+      ? { retention: "until-deletion" as const } : {}),
     tenantId: options.tenantId,
     installationId: options.installationId,
     repositoryId: options.repositoryId,

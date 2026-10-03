@@ -1084,24 +1084,25 @@ describe("buildPullRequestInput", () => {
     expect(input.limitations?.join(" ")).not.toContain("GitHub check-run evidence was capped at 60 checks.");
   });
 
-  it("keeps changed-file pagination offsets stable while capping collected evidence", async () => {
-    const allFiles = Array.from({ length: 150 }, (_, index) => ({
+  it("collects the complete 135-file inventory despite absent and compacted patches", async () => {
+    const allFiles = Array.from({ length: 135 }, (_, index) => ({
       filename: `src/generated/file-${index + 1}.ts`,
       additions: 1,
       deletions: 0,
       status: "modified",
-      patch: "+ export const value = true"
+      patch: index === 134 ? undefined : "@@ -1 +1 @@\n+" + "x".repeat(1500)
     }));
     const fetchMock = vi.fn((url: string) => {
       if (url.endsWith("/pulls/12")) {
         return Promise.resolve(
           Response.json({
-            title: "Bounded file page PR",
+            title: "File inventory PR",
+            changed_files: 135,
             body: "Adds generated files.",
             url: "https://api.github.com/repos/acme/repo/pulls/12",
             user: { login: "ai-agent" },
-            base: { ref: "main", sha: "def456" },
-            head: { ref: "agent/generated", sha: "abc123" }
+            base: { ref: "main", sha: "b".repeat(40) },
+            head: { ref: "agent/generated", sha: "a".repeat(40) }
           })
         );
       }
@@ -1136,13 +1137,16 @@ describe("buildPullRequestInput", () => {
       "https://api.github.com/repos/acme/repo/pulls/12/files?per_page=100&page=1",
       "https://api.github.com/repos/acme/repo/pulls/12/files?per_page=100&page=2"
     ]);
-    expect(input.changedFiles).toHaveLength(120);
-    expect(new Set(input.changedFiles.map((file) => file.path)).size).toBe(120);
+    expect(input.changedFiles).toHaveLength(135);
+    expect(new Set(input.changedFiles.map((file) => file.path)).size).toBe(135);
     expect(input.changedFiles.at(99)?.path).toBe("src/generated/file-100.ts");
     expect(input.changedFiles.at(100)?.path).toBe("src/generated/file-101.ts");
     expect(input.changedFiles.at(119)?.path).toBe("src/generated/file-120.ts");
-    expect(input.limitations?.join(" ")).toContain("GitHub changed-file evidence was capped at 120 files.");
-    expect(input.sourceProvenance?.changedFileInventory?.completeness).toBe("incomplete");
+    expect(input.changedFiles.at(134)?.path).toBe("src/generated/file-135.ts");
+    expect(input.changedFiles[0].patch!.length).toBeLessThanOrEqual(1000);
+    expect(input.limitations?.join(" ")).not.toContain("was capped");
+    expect(input.limitations?.join(" ")).toContain("patch text for 1 changed file");
+    expect(input.sourceProvenance?.changedFileInventory?.completeness).toBe("complete");
   });
 
   it("keeps legacy commit statuses when execution check-run evidence is available", async () => {
@@ -2987,7 +2991,7 @@ describe("buildPullRequestInput", () => {
   });
 
   it("records capped file evidence and missing patch limitations", async () => {
-    const filePage = Array.from({ length: 100 }, (_, index) => ({
+    const filePage = Array.from({ length: 350 }, (_, index) => ({
       filename: `src/file-${index}.ts`,
       additions: 1,
       deletions: 0,
@@ -2997,18 +3001,20 @@ describe("buildPullRequestInput", () => {
       if (url.endsWith("/pulls/12")) {
         return Promise.resolve(
           Response.json({
-            title: "Large PR",
+            title: "Bounded overflow PR",
+            changed_files: 350,
             body: "Touches many files.",
             url: "https://api.github.com/repos/acme/repo/pulls/12",
             user: { login: "ai-agent" },
-            base: { ref: "main", sha: "def456" },
-            head: { ref: "agent/large", sha: "abc123" }
+            base: { ref: "main", sha: "b".repeat(40) },
+            head: { ref: "agent/large", sha: "a".repeat(40) }
           })
         );
       }
 
       if (url.includes("/files?")) {
-        return Promise.resolve(Response.json(filePage));
+        const page = Number(new URL(url).searchParams.get("page"));
+        return Promise.resolve(Response.json(filePage.slice((page-1)*100,page*100)));
       }
 
       if (url.includes("/commits/") && url.includes("/check-runs")) {
@@ -3026,9 +3032,12 @@ describe("buildPullRequestInput", () => {
     const input = await buildPullRequestInput({ prUrl: "https://github.com/acme/repo/pull/12" });
     const limitations = input.limitations?.join(" ");
 
-    expect(input.changedFiles).toHaveLength(120);
-    expect(limitations).toContain("capped at 120 files");
-    expect(limitations).toContain("did not return patch text for 120 changed file");
+    expect(input.changedFiles).toHaveLength(300);
+    expect(limitations).toContain("capped at 300 files");
+    expect(limitations).toContain("did not return patch text for 300 changed file");
+    expect(new Set(input.changedFiles.map(f=>f.path)).size).toBe(300);
+    expect(input.sourceProvenance?.changedFileInventory?.completeness).toBe("incomplete");
+    expect(fetchMock.mock.calls.filter(([url])=>url.includes("/files?")).length).toBe(3);
   });
 
   it("classifies subfetch permission and secondary rate-limit failures", async () => {
@@ -3288,4 +3297,38 @@ describe("buildPullRequestInput", () => {
       }));
     }
   );
+});
+
+it.each(['http','timeout','invalid_json','mismatched_count','duplicate'])('preserves the collected inventory without claiming completion on page-two %s', async failure => {
+ const files=Array.from({length:100},(_,n)=>({filename:`src/file-${n}.ts`,status:'modified',additions:1,deletions:0}));
+ vi.stubGlobal('fetch',vi.fn(async(url:string)=>{
+  if(url.endsWith('/pulls/12'))return Response.json({title:'Keep known evidence',body:'Implement queue retention.',changed_files:135,url:'https://api.github.com/repos/acme/repo/pulls/12',base:{ref:'main',sha:'b'.repeat(40)},head:{ref:'change',sha:'a'.repeat(40)}});
+  if(url.includes('/files?')){
+   if(url.endsWith('page=1'))return Response.json(files);
+   if(failure==='http')return new Response('unavailable',{status:503});
+   if(failure==='timeout')throw new DOMException('Aborted','TimeoutError');
+   if(failure==='invalid_json')return new Response('{');
+   return Response.json(failure==='duplicate'?files:[]);
+  }
+  if(url.includes('/check-runs'))return Response.json({total_count:0,check_runs:[]});
+  if(url.endsWith('/status'))return Response.json({statuses:[]});
+  return new Response('unavailable',{status:404});
+ }));
+ const input=await buildPullRequestInput({prUrl:'https://github.com/acme/repo/pull/12'});
+ expect(input.changedFiles).toHaveLength(100);
+ expect(input.sourceProvenance?.changedFileInventory?.completeness).toBe('incomplete');
+ expect(input.limitations?.join(' ')).toMatch(/incomplete|unavailable/);
+});
+it('reconciles an exactly full last metadata page against the pinned PR file count',async()=>{
+ vi.stubGlobal('fetch',vi.fn(async(url:string)=>{
+  if(url.endsWith('/pulls/12'))return Response.json({title:'Known inventory',body:'Implement queue retention.',changed_files:300,url:'https://api.github.com/repos/acme/repo/pulls/12',base:{ref:'main',sha:'b'.repeat(40)},head:{ref:'change',sha:'a'.repeat(40)}});
+  if(url.includes('/files?')){const page=Number(new URL(url).searchParams.get('page'));return Response.json(Array.from({length:100},(_,n)=>({filename:`src/file-${(page-1)*100+n}.ts`,status:'modified',additions:1,deletions:0})));}
+  if(url.includes('/check-runs'))return Response.json({total_count:0,check_runs:[]});
+  if(url.endsWith('/status'))return Response.json({statuses:[]});
+  return new Response('unavailable',{status:404});
+ }));
+ const input=await buildPullRequestInput({prUrl:'https://github.com/acme/repo/pull/12'});
+ expect(input.changedFiles).toHaveLength(300);
+ expect(input.sourceProvenance?.changedFileInventory?.completeness).toBe('complete');
+ expect(input.limitations?.join(' ')).not.toContain('was capped');
 });

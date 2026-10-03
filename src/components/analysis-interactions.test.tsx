@@ -26,15 +26,28 @@ function button(tree:ReactNode,name:string):{onClick:()=>unknown} {
   };
   const found=find(tree);if(!found)throw Error(`Button unavailable: ${name}`);return found;
 }
+function visibleText(node:ReactNode):string {
+  return typeof node==='string'?node:Array.isArray(node)?node.map(visibleText).join(' '):node&&typeof node==='object'&&'props' in node?visibleText((node as ReactElement<{children?:ReactNode}>).props.children):'';
+}
 const report=generateVerificationReport(demoScenarios.clean);
+const launchNonce='11111111-1111-4111-8111-111111111111';
+const selectedPrUrl='https://github.com/owner/repo/pull/12';
+const selectedHead='a'.repeat(40);
 beforeEach(()=>{
  hooks.updates=[];hooks.effects=[];hooks.stateIndex=0;hooks.states=[];
- vi.stubGlobal('window',{location:{origin:'http://localhost:3100'},localStorage:{getItem:()=>null,setItem:()=>{},removeItem:()=>{}},setTimeout:()=>0});
+ vi.stubGlobal('window',{location:{origin:'http://localhost:3100'},localStorage:{getItem:()=>null,setItem:()=>{},removeItem:()=>{}},sessionStorage:{getItem:()=>JSON.stringify({nonce:launchNonce,prUrl:selectedPrUrl,listedHeadSha:selectedHead}),removeItem:vi.fn()},setTimeout:()=>0});
  vi.stubGlobal('fetch',vi.fn(async()=>Response.json({report})));
 });
 afterEach(()=>vi.unstubAllGlobals());
 
 describe('analysis and share failure states',()=>{
+ it('shows when a browser-local summary was saved in Recent',()=>{
+  hooks.states[6]=[{id:'local-report',savedAt:'2026-09-30T01:00:00.000Z',title:'PR 12',priority:'medium',evidenceCoverage:50,report}];
+  const copy=visibleText(AnalyzeWorkspace({}));
+  expect(copy).toContain('PR 12');
+  expect(copy).toContain('Saved');
+  expect(copy).toContain('2026');
+ });
  it('retains a successful report and reports a history-only warning when storage is full',async()=>{
   window.localStorage.setItem=()=>{throw new DOMException('QUOTA_PRIVATE_DETAIL','QuotaExceededError');};
   await button(AnalyzeWorkspace({}), 'Generate report').onClick();
@@ -95,4 +108,75 @@ describe('analysis login handlers',()=>{
   expect(fetch).toHaveBeenCalledWith('/api/github/onboarding/start',expect.objectContaining({body:'{}',headers:expect.objectContaining({'x-agentproof-csrf':'same-origin'})}));
   expect(assign).toHaveBeenCalledWith('https://github.com/apps/agentproof/installations/new?state=test');
  });
+});
+
+describe('selected PR analysis handoff',()=>{
+ const prUrl=selectedPrUrl;
+ const listedHead=selectedHead;
+ const capturedHead='b'.repeat(40);
+ it('automatically submits the selected PR URL once through the existing analysis endpoint',async()=>{
+  const matched={...report,source:{...report.source,url:prUrl,provenance:{...report.source.provenance!,origin:'github_snapshot' as const,headSha:capturedHead}}};
+  vi.stubGlobal('fetch',vi.fn(async()=>Response.json({report:matched})));
+  AnalyzeWorkspace({launchNonce});
+  for(const effect of hooks.effects) await effect();
+  for(const effect of hooks.effects) await effect();
+  await new Promise(resolve=>setTimeout(resolve,0));
+  const calls=vi.mocked(fetch).mock.calls.filter(([url])=>url==='/api/analyze');
+  expect(calls).toHaveLength(1);
+  expect(window.sessionStorage.removeItem).toHaveBeenCalledWith('agentproof.pendingAnalysis.v1');
+  expect(JSON.parse(String(calls[0]![1]?.body))).toEqual({prUrl,taskText:'',prDescription:'',changedFiles:'',checks:'',logs:''});
+  expect(hooks.updates).toContainEqual(matched);
+ });
+ it('rejects a returned report for a different PR or without GitHub head provenance',async()=>{
+  vi.stubGlobal('fetch',vi.fn(async()=>Response.json({report})));
+  AnalyzeWorkspace({launchNonce});
+  for(const effect of hooks.effects) await effect();
+  await new Promise(resolve=>setTimeout(resolve,0));
+  expect(hooks.updates).toContainEqual(expect.objectContaining({message:'Analysis response did not match the selected PR.'}));
+  expect(hooks.updates).not.toContainEqual(report);
+ });
+ it('shows the captured head separately when the PR advanced after the list was read',()=>{
+  const matched={...report,source:{...report.source,url:prUrl,provenance:{...report.source.provenance!,origin:'github_snapshot' as const,headSha:capturedHead}}};
+  hooks.states[10]={prUrl,listedHeadSha:listedHead};
+  const text=visibleText(AnalyzeWorkspace({initialReport:matched}));
+  expect(text).toContain(listedHead);
+  expect(text).toContain(capturedHead);
+  expect(text).toContain('PR head changed since the list was loaded');
+ });
+ it.each([
+  [409,'Private repository analysis is off until its code-analysis notice is accepted.','github_private_consent_required'],
+  [401,'Sign in with GitHub to analyze a PR URL.','github_login_required'],
+  [429,'Too many requests. Please wait before retrying.','paid_budget_exhausted'],
+ ])('keeps the existing %i analysis error on screen',async(status,message,code)=>{
+  vi.stubGlobal('fetch',vi.fn(async()=>Response.json({error:message,code},{status})));
+  AnalyzeWorkspace({launchNonce});
+  for(const effect of hooks.effects) await effect();
+  await new Promise(resolve=>setTimeout(resolve,0));
+  expect(hooks.updates).toContainEqual(expect.objectContaining({message}));
+  expect(hooks.updates).not.toContainEqual(report);
+ });
+ it('does not start analysis when a link has no matching one-time browser handoff',async()=>{
+  window.sessionStorage.getItem=()=>null;
+  AnalyzeWorkspace({launchNonce});
+  for(const effect of hooks.effects) await effect();
+  await new Promise(resolve=>setTimeout(resolve,0));
+  expect(fetch).not.toHaveBeenCalled();
+  expect(hooks.updates).toContainEqual(expect.objectContaining({message:'Selected PR analysis could not be started.'}));
+ });
+});
+
+it('submits the selected native PR through its session transport and saves only to supplied memory',async()=>{
+ const writes = new Map<string,string>();
+ const memory: Storage = {get length(){return writes.size;},clear:()=>writes.clear(),key:(index:number)=>[...writes.keys()][index]??null,getItem:(key:string)=>writes.get(key)??null,setItem:(key:string,value:string)=>{writes.set(key,value);},removeItem:(key:string)=>{writes.delete(key);}};
+ memory.setItem('agentproof.pendingAnalysis.v1',JSON.stringify({nonce:launchNonce,prUrl:selectedPrUrl,listedHeadSha:selectedHead}));
+ const matched={...report,source:{...report.source,url:selectedPrUrl,provenance:{...report.source.provenance!,version:1 as const,origin:'github_snapshot' as const,headSha:selectedHead,evidenceCapturedAt:'2026-09-30T00:00:00Z',inputFingerprint:{version:1 as const,algorithm:'sha256' as const,value:'d'.repeat(64),coverage:'github_metadata' as const}}}};
+ const requests: Array<{path:string, body:unknown}> = [];
+ const runtime = {storage:memory,launchStorage:memory,navigate:()=>{},request:async(path:string,init?:RequestInit)=>{requests.push({path,body:JSON.parse(String(init?.body))});return Response.json({report:matched});}};
+ AnalyzeWorkspace({launchNonce, runtime} as any);
+ hooks.effects.forEach(work=>work());
+ await new Promise(resolve=>setTimeout(resolve,0));
+ expect(requests).toEqual([{path:'/api/analyze',body:expect.objectContaining({prUrl:selectedPrUrl})}]);
+ expect(memory.getItem('agentproof.pendingAnalysis.v1')).toBeNull();
+ expect(memory.getItem('agentproof.recentReports.v1')).toContain(report.analysisId);
+ expect(fetch).not.toHaveBeenCalled();
 });
