@@ -46,6 +46,16 @@ describe("source-bound ordinary requirement outcomes", () => {
     expect(report.requirements.map(row => row.evidenceStatus)).toEqual(baseline.requirements.map(row => row.evidenceStatus));
     expect(report.proofGraph.nodes.map(row => row.status)).toEqual(baseline.proofGraph.nodes.map(row => row.status));
   });
+  it("retains a confirmed exact-head item beside unrelated unavailable patches and an unresolved requirement", async () => {
+    const input=source();
+    input.sourceProvenance!.changedFileInventory={version:1,completeness:"complete",headSha};
+    input.changedFiles=Array.from({length:135},(_,n)=>({path:`src/unrelated-${n}.ts`,status:"modified"}));
+    input.limitations=["GitHub did not return patch text for 135 changed files; diff evidence is unavailable for those files."];
+    const report=await run(input,"ready now");
+    expect(report.requirements.map(row=>row.status)).toEqual(["met","unclear"]);
+    expect(validateRuntimeReportBoundary({boundary:"generated_private_full",input,report}).valid).toBe(true);
+    expect(report.limitations.join(" ")).toContain("patch text for 135");
+  });
   it("rejects changed source/head, forged positives and inbound imported authority", async () => {
     const input = source();
     const report = await run(input, "ready now");

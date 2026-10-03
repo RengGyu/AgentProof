@@ -54,7 +54,7 @@ interface PrEvidenceReviewContext {
 }
 
 const SAFE_REPOSITORY = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
-const SAFE_PATH = /^[A-Za-z0-9_.@+:/#-]+(?:\/[A-Za-z0-9_.@+:#-]+)*$/;
+const SAFE_PATH = /^[A-Za-z0-9_.@+/#:()\[\]-]+$/;
 const EXACT_SHA = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/;
 
 export function buildExactGitHubFileUrl(input: {
@@ -182,6 +182,15 @@ export function buildDashboardPrEvidenceReview(detail: DashboardReportDetail & {
   const linkedEvidenceIds = new Set(objectives.flatMap((objective) => [...(objective.firstInspection?[objective.firstInspection]:[]), ...objective.code, ...(objective.moreContext ?? []), ...objective.tests, ...objective.execution].map((item) => item.evidenceId)));
   const analysisContext = detail.analysisContext ?? (report as { analysisContext?: VerificationReport["analysisContext"] }).analysisContext;
   return { mode: "objectives", source: sourceForDisplayedRequirements(report.requirements ?? [], analysisContext), objectives, ...(graph ? { retrievalNote: retrievalNote(graph) } : {}), changes: changes.filter((item) => !linkedEvidenceIds.has(item.evidenceId)), nextInspection: objectives[0]?.nextInspection ?? "Link unconfirmed; inspect collected changes separately." };
+}
+
+/** Exact references for the contract reader; no requirement verdict is changed. */
+export function buildDashboardCodeItems(detail: DashboardReportDetail & { repositoryFullName?: string }): PrEvidenceReviewItem[] {
+  return (detail.report?.evidenceIndex ?? []).flatMap(item => {
+    if (!item.kind || !["diff", "changed_file", "artifact", "test"].includes(item.kind)) return [];
+    const projected = reviewItem({ ...item, kind: item.kind, label: item.locator ?? item.id, confidence: 0, summary: "Recorded evidence reference." }, "collected", detail.repositoryFullName, detail.headSha, undefined);
+    return projected.url ? [projected] : [];
+  });
 }
 
 function objectiveFor(
@@ -373,7 +382,7 @@ function repositoryFromPullUrl(value: string | undefined): string | undefined {
 
 function safePath(value: string): boolean {
   const segments = value.split("/");
-  return value.length <= 240 && SAFE_PATH.test(value) && !value.startsWith("/") && !segments.includes("..") && !segments.includes(".");
+  return value.length <= 240 && SAFE_PATH.test(value) && !value.startsWith("/") && !segments.some(segment => !segment || segment === ".." || segment === ".");
 }
 
 function safeRepository(value: string): boolean {
@@ -460,7 +469,7 @@ function projectReviewIntents(graph: ReviewIntentGraphV1, objectives: PrEvidence
 }
 
 function retrievalNote(graph:ReviewIntentGraphV1):string {
-  return `Search: changed diffs and ${graph.capabilities.snapshotChunks} supplied exact-head snapshot chunks. Whole-repository search, embeddings and symbol resolution unavailable. Existing semantic links are candidates only.${graph.capabilities.truncated?" Retrieval input or results truncated.":""}${graph.capabilities.rejectedSnapshots?` ${graph.capabilities.rejectedSnapshots} stale, unsafe or conflicting snapshots excluded.`:""}`;
+  return `Search: changed diffs and ${graph.capabilities.snapshotChunks} supplied exact-head snapshot chunks. Whole-repository search, embeddings and symbol resolution unavailable. Existing semantic links are candidates only.${graph.capabilities.truncated?" Inspect unresolved requirements against the linked source and code.":""}${graph.capabilities.rejectedSnapshots?` ${graph.capabilities.rejectedSnapshots} stale, unsafe or conflicting snapshots excluded.`:""}`;
 }
 
 /** Captured before receipt-stripping; used only by authenticated tenant projections. */
@@ -486,5 +495,5 @@ function projectNavigation(nav:import("./review-intent").ReviewNavigation,change
   const authorities=[...new Set(nav.sources.map(s=>s.authority))];
   const authority=authorities.length>1?'mixed_sources':authorities[0]??'provided_source';
   const kind=authority==='issue_source'?'linked_issue':authority==='pr_author_claim'?'pr_author_claim':authority==='mixed_sources'?'mixed':'provided_requirement';
-  return {mode:objectives.length?'objectives':'change_summary',sourceLinks:nav.sources.filter((s,index,all)=>all.findIndex(other=>other.url===s.url)===index).flatMap(s=>s.url?[{label:s.authority.replaceAll('_',' '),url:s.url}]:[]),source:nav.sources.length?{kind,authority:authority==='pr_author_claim'?'author_claim':authority,label:authority.replaceAll('_',' ')}:null,objectives,changes:bound?changes:changes.map(({url:_,...item})=>item),nextInspection:objectives[0]?.nextInspection??(nav.limitations.includes('no_interpreted_goal')&&!nav.failures?.some(f=>f.stage==='intent')?'No review goal was identified; inspect the source and collected changes.':'Goal interpretation unavailable; source and unranked collected changes remain available.'),retrievalNote:`Bounded supplied-artifact search; whole repository not searched.${nav.limitations.includes('freshness_unavailable')?' Current GitHub PR state was not reconfirmed; code links remain pinned to the analyzed commit.':''}`};
+  return {mode:objectives.length?'objectives':'change_summary',sourceLinks:nav.sources.filter((s,index,all)=>all.findIndex(other=>other.url===s.url)===index).flatMap(s=>s.url?[{label:s.authority.replaceAll('_',' '),url:s.url}]:[]),source:nav.sources.length?{kind,authority:authority==='pr_author_claim'?'author_claim':authority,label:authority.replaceAll('_',' ')}:null,objectives,changes:bound?changes:changes.map(({url:_,...item})=>item),nextInspection:objectives[0]?.nextInspection??(nav.limitations.includes('no_interpreted_goal')&&!nav.failures?.some(f=>f.stage==='intent')?'No review goal was identified; inspect the source and collected changes.':'Goal interpretation unavailable; source and unranked collected changes remain available.'),retrievalNote:`Inspection uses linked evidence at the analyzed commit; whole repository not searched.${nav.limitations.includes('freshness_unavailable')?' Current GitHub PR state was not reconfirmed; code links remain pinned to the analyzed commit.':''}`};
 }

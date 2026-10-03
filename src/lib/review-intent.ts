@@ -31,6 +31,70 @@ function facet(s: string): ReviewFacetKind | undefined {
 }
 const clean = (s: string) => s.replace(/^\s*(?:#{1,6}\s+|[-*+]\s+(?:\[[ x]\]\s*)?|\d+[.)]\s+)?/, "").replace(/^\*\*|\*\*:?$/g, "").trim();
 
+// Path relevance is a retrieval rank only, never proof. Generic directory names carry no intent.
+const GENERIC_PATH_TERMS = new Set("src lib libs app apps internal pkg packages crates index main mod source sources".split(" "));
+const DOC_PATH = /\.(?:md|mdx|rst|txt|adoc)$|(?:^|\/)(?:docs?|plans?|changelog)(?:\/|$)/i;
+const FIXTURE_PATH = /(?:^|\/)(?:fixtures?|testdata|baselines?|snapshots?|__snapshots__|mdtest|evals?|examples?|generated)(?:\/|$)|\.snap$|[._-]generated\.|\.lock$|(?:^|\/)[^/]*-lock\.(?:json|ya?ml)$/i;
+const TEST_PATH = /(?:^|\/)(?:tests?|__tests__|spec)(?:\/|$)|[._-](?:test|spec)\.[^/]+$|(?:^|\/)test_[^/]+$/i;
+/** 0 code, 1 tests, 2 fixtures/generated/baselines, 3 documentation. */
+function reviewPathTier(path: string): number { return DOC_PATH.test(path) ? 3 : FIXTURE_PATH.test(path) ? 2 : TEST_PATH.test(path) ? 1 : 0; }
+const splitWords = (s: string) => s.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2");
+const pathTerms = (path: string) => [...new Set(splitWords(path).toLowerCase().split(/[^a-z0-9]+/).filter(t => t.length >= 4 && /^[a-z]/.test(t) && !COMMON.has(t) && !GENERIC_PATH_TERMS.has(t)))];
+const textTerms = (text: string) => [...new Set([...allTerms(text), ...allTerms(splitWords(text)).flatMap(t => t.split("_"))].filter(t => t.length >= 4))];
+const stemMatch = (a: string, b: string) => {
+  if (a === b || a.startsWith(b) || b.startsWith(a)) return true;
+  let n = 0; while (n < a.length && n < b.length && a[n] === b[n]) n++;
+  return n >= 6;
+};
+/** Path terms shared with the stated intent; `rareOnly` ignores terms most changed paths share. */
+function relevantPathTerms(path: string, terms: string[], frequency: Map<string, number>, paths: number, rareOnly: boolean): string[] {
+  return pathTerms(path).filter(t => terms.some(q => stemMatch(t, q)) && (!rareOnly || (frequency.get(t) ?? 0) <= Math.max(2, Math.ceil(paths / 2))));
+}
+function pathTermFrequency(paths: string[]): Map<string, number> {
+  const frequency = new Map<string, number>();
+  for (const path of new Set(paths)) for (const t of pathTerms(path)) frequency.set(t, (frequency.get(t) ?? 0) + 1);
+  return frequency;
+}
+
+/** Orders changed files for bounded review context: paths named by the source first, then files whose
+ * names share rare terms with it, code before tests, fixtures/generated output and documentation. */
+export function rankReviewFiles<T extends { path: string; additions?: number; deletions?: number }>(files: readonly T[], text: string): T[] {
+  const terms = textTerms(text), frequency = pathTermFrequency(files.map(f => f.path)), count = new Set(files.map(f => f.path)).size;
+  const keyed = files.map(file => {
+    const hits = relevantPathTerms(file.path, terms, frequency, count, false);
+    const weight = hits.reduce((n, t) => n + Math.round(10 * Math.log(1 + count / (frequency.get(t) ?? 1))), 0);
+    return { file, mentioned: text.includes(file.path), weight, tier: reviewPathTier(file.path), size: (file.additions ?? 0) + (file.deletions ?? 0) };
+  });
+  keyed.sort((a, b) => Number(b.mentioned) - Number(a.mentioned) || Number(b.weight > 0) - Number(a.weight > 0) || a.tier - b.tier || b.weight - a.weight || b.size - a.size || a.file.path.localeCompare(b.file.path));
+  // Within one relevance tier, alternate directories so a single folder cannot fill a bounded budget.
+  const band = (k: typeof keyed[number]) => k.mentioned ? "mentioned" : k.weight > 0 ? `tier${k.tier}` : "unrelated";
+  const ordered: T[] = [];
+  for (let start = 0; start < keyed.length;) {
+    let end = start; while (end < keyed.length && band(keyed[end]!) === band(keyed[start]!)) end++;
+    const group = keyed.slice(start, end);
+    if (!band(group[0]!).startsWith("tier")) ordered.push(...group.map(k => k.file));
+    else {
+      const byDirectory = new Map<string, T[]>();
+      for (const k of group) { const dir = k.file.path.slice(0, Math.max(0, k.file.path.lastIndexOf("/"))); byDirectory.set(dir, [...(byDirectory.get(dir) ?? []), k.file]); }
+      const queues = [...byDirectory.values()];
+      while (queues.some(q => q.length)) for (const q of queues) if (q.length) ordered.push(q.shift()!);
+    }
+    start = end;
+  }
+  return ordered;
+}
+
+/** A behavior goal's bounded candidates keep changed code and tests ahead of documentation and
+ * fixtures that merely repeat its words; a documentation goal keeps its score order. Scores are unchanged. */
+function boundedGoalEdges<E extends { chunkId: string; score: number }>(ranked: E[], query: string, chunks: ReadonlyArray<{ id: string; path: string }>): E[] {
+  if (/\b(?:docs?|documentation|readme|guides?|changelog|translat\w*|typos?)\b/i.test(query)) return ranked.slice(0, 12);
+  const paths = new Map(chunks.map(c => [c.id, c.path]));
+  const tier = (edge: E) => reviewPathTier(paths.get(edge.chunkId) ?? "");
+  const reserved = ranked.filter(edge => tier(edge) <= 1).slice(0, 8);
+  const rest = ranked.filter(edge => !reserved.includes(edge)).slice(0, 12 - reserved.length);
+  return [...reserved, ...rest].sort((a, b) => tier(a) - tier(b) || b.score - a.score || a.chunkId.localeCompare(b.chunkId));
+}
+
 export function isTestFocusedReviewGoal(text: string): boolean {
   return /^(?:test\b|(?:add|write|extend|update|improve|implement)\s+(?:(?!with\b|and\b|for\b|to\b)[a-z-]+\s+){0,3}(?:tests?|test coverage)\b)/i.test(clean(text));
 }
@@ -101,7 +165,8 @@ export function buildReviewIntentGraph(input: PullRequestInput, requirements: Re
       graph.chunks.push({id,pool,path,revision,side,startLine:pool==="snapshot"?i+1:positions[0]?.line??1,endLine:pool==="snapshot"?Math.min(i+80,lines.length):positions.at(-1)?.line??1,hash,evidenceId});bodies.set(id,text);
     }
   };
-  for(const file of [...input.changedFiles].sort((a,b)=>a.path.localeCompare(b.path))) {
+  // The chunk budget keeps the files most related to the stated intent, not the alphabetically first.
+  for(const file of rankReviewFiles(input.changedFiles,source)) {
     if(!safePath(file.path))continue;
     const item=evidence.find(e=>e.locator===file.path && ["diff","changed_file","test"].includes(e.kind));
     if(!item)continue;
@@ -120,23 +185,26 @@ export function buildReviewIntentGraph(input: PullRequestInput, requirements: Re
     features.set(chunk.id,words.slice(0,256));
     for(const t of words.slice(0,256))frequencies.set(t,(frequencies.get(t)??0)+1);
   }
+  const chunkPathFrequency=pathTermFrequency(graph.chunks.map(c=>c.path)), chunkPathCount=new Set(graph.chunks.map(c=>c.path)).size;
   for(const goal of graph.goals) {
     const wholeQuery=[...goal.sourceRefs,...goal.facets.map(f=>f.sourceRef)].map(s=>source.slice(s.start,s.end)).join("\n");
     const query=wholeQuery.slice(0,8000);
     if(wholeQuery.length>query.length)graph.capabilities.truncated=true;
     const words=allTerms(query), identifiers=allIdentifiers(query);
     if(words.length>256 || identifiers.length>64)graph.capabilities.truncated=true;
-    const queryTerms=words.slice(0,256), ids=identifiers.slice(0,64);
+    const queryTerms=words.slice(0,256), ids=identifiers.slice(0,64), queryPathTerms=textTerms(query).slice(0,512);
     const candidates=graph.chunks.flatMap(chunk=>{
       const body=bodies.get(chunk.id)!, tokens=features.get(chunk.id)!, matches=queryTerms.filter(t=>tokens.includes(t));
       const identifiersHit=ids.some(id=>new RegExp(`\\b${id}\\b`,"i").test(body));
       const path=query.split(/[\s`"'()<>]+/).includes(chunk.path);
-      const lexical=matches.length>=2 && matches.some(t=>t.length>=6&&(frequencies.get(t)??0)<=Math.max(1,Math.ceil(graph.chunks.length/2)));
+      const pathHits=relevantPathTerms(chunk.path,queryPathTerms,chunkPathFrequency,chunkPathCount,true);
+      // A file named for the stated behavior is reviewable even when its visible patch is absent or compacted.
+      const lexical=matches.length>=2 && matches.some(t=>t.length>=6&&(frequencies.get(t)??0)<=Math.max(1,Math.ceil(graph.chunks.length/2))) || pathHits.length>=2;
       if(!path&&!identifiersHit&&!lexical)return [];
       const declaration=chunk.pool==="changed" && ids.some(id=>new RegExp(`(?:function|class|def|const|let)\\s+${id}\\b`,"i").test(body));
       const basis:ReviewIntentGraphV1["edges"][number]["basis"]=[];
       if(path)basis.push("source_path");if(identifiersHit)basis.push("identifier");if(lexical)basis.push("lexical");if(declaration)basis.push("changed_declaration");
-      const score=Math.min(1000,(path?400:0)+(identifiersHit?80:0)+(declaration?30:0)+matches.reduce((n,t)=>n+Math.round(10*Math.log(1+graph.chunks.length/(frequencies.get(t)??1))),0)+(chunk.pool==="changed"?5:0));
+      const score=Math.min(1000,(path?400:0)+(identifiersHit?80:0)+(declaration?30:0)+Math.min(pathHits.length,4)*15+matches.reduce((n,t)=>n+Math.round(10*Math.log(1+graph.chunks.length/(frequencies.get(t)??1))),0)+(chunk.pool==="changed"?5:0));
       const lineMatches=(locations.get(chunk.id)??[]).map(row=>{
         const terms=allTerms(row.text), identifiers=allIdentifiers(row.text);
         const hits=queryTerms.filter(t=>terms.includes(t)).length+ids.filter(id=>identifiers.includes(id)).length*4;
@@ -150,7 +218,7 @@ export function buildReviewIntentGraph(input: PullRequestInput, requirements: Re
       return [{goalId:goal.id,chunkId:chunk.id,relation:"candidate" as const,basis,score,...(matchedLine?{line:matchedLine.line,...(matchedLine.testBody?{lineBasis:"test_body_match" as const}:{})}:{})}];
     }).sort((a,b)=>b.score-a.score||a.chunkId.localeCompare(b.chunkId));
     if(candidates.length>12)graph.capabilities.truncated=true;
-    graph.edges.push(...candidates.slice(0,12));
+    graph.edges.push(...boundedGoalEdges(candidates,query,graph.chunks));
   }
   return graph;
 }
@@ -296,12 +364,18 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
     if(full.slice(processedLength).trim())navigation.unprocessed.push(`${id}:${processedLength}-${full.length}`);
   }
   navigation.sources=sources.map(({spans:_,...source})=>source);
+  // Prioritize source-linked paths before applying the independent code-context budget.
+  const prioritizePaths=(paths:string[],text:string)=>rankReviewFiles(paths.map(path=>input.changedFiles.find(f=>f.path===path)??{path}),text).map(f=>f.path);
+  const sourceText=sources.flatMap(s=>s.spans.map(p=>p.text)).join(' ');
+  const orderedFiles=prioritizePaths(input.changedFiles.map(f=>f.path),sourceText).map(path=>input.changedFiles.find(f=>f.path===path)!);
+  let artifactLimit=64; // Reserve context slots for selected exact-revision reads.
   const artifacts:ReviewNavigationRequest['artifacts']=[];
   const incompletePaths=new Set<string>();
   const preferredSnapshotIds=new Set<string>(),artifactGoals=new Map<string,Set<string>>();
+  const snapshotScores=new Map<string,Record<string,number>>();
   const suppliedSnapshots:Array<{path:string;headSha:string;content:string}>=[];
   const add=(path:string,revision:string,side:'head'|'base',start:number,content:string,origin:'diff'|'snapshot')=>{
-    if(artifacts.length>=96){navigation.limitations.push('artifact_context_truncated');return;}
+    if(artifacts.length>=artifactLimit){navigation.limitations.push('artifact_context_truncated');return;}
     if(!safePath(path)||!exact(revision)||start<1){navigation.limitations.push('invalid_reference');return;}
     if(!content.trim())return;
     const lines=redactSecretsPreservingLines(content).split('\n');
@@ -311,7 +385,7 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
     return id;
   };
   if(repository&&input.sourceProvenance?.origin==='github_snapshot'){
-    for(const file of input.changedFiles){
+    for(const file of orderedFiles){
       const side=file.status==='removed'?'base':'head',revision=side==='base'?navigation.baseSha:navigation.headSha;if(!revision)continue;
       let patch=file.patch??'';
       const marker=patch.indexOf('\n...[truncated for privacy and token control]');
@@ -345,6 +419,7 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
       suppliedSnapshots.push({...b,headSha:b.headSha});
     }
   }
+  artifactLimit=96;
   const traces:ReviewNavigationDiagnostics[]=[];
   const lifecycle:NavigationLifecycleEvent[]=[];
   const returned=new Set<string>(),aliases=new Map<string,string>();
@@ -363,6 +438,14 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
   };
   if(!options.provider||!sources.length||(input.repositoryPrivate!==false&&!(input.repositoryPrivate===true&&options.authorizePrivate))){navigation.limitations.push(input.repositoryPrivate!==false?'private_or_unknown_access':'semantic_unavailable');lifecycle.push({kind:'stop',reason:'guard'});return finish();}
   const privateAllowed=async()=>input.repositoryPrivate!==true||Boolean(await options.authorizePrivate?.().catch(()=>false));
+  // Interpreted concerns may share a paragraph; its other goals and verification commands
+  // are provenance, not additional keywords for every concern.
+  const goalText=(g:ReviewNavigation['goals'][number])=>{
+    const refs=[...g.sourceRefs,...g.facets.flatMap(f=>f.sourceRefs)];
+    const uniqueSource=refs.filter(ref=>navigation.goals.filter(other=>[...other.sourceRefs,...other.facets.flatMap(f=>f.sourceRefs)].some(r=>r.sourceId===ref.sourceId&&r.start===ref.start&&r.end===ref.end)).length===1)
+      .map(ref=>sources.find(s=>s.id===ref.sourceId)?.spans.find(s=>s.start===ref.start&&s.end===ref.end)?.text??'');
+    return [g.summary,...g.facets.map(f=>f.summary),...uniqueSource].join(' ');
+  };
   const phaseAllowed=async()=>{
     if(!await privateAllowed())return false;
     if(!options.readRepositoryPrivate)return true;
@@ -372,10 +455,10 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
     const safe=blobs.filter(b=>safePath(b.path)&&b.headSha===navigation.headSha);
     if(safe.length<blobs.length)navigation.limitations.push('invalid_reference');
     if(safe.length>8)navigation.limitations.push('retrieval_file_budget_exceeded');
-    const hints=navigation.goals.map(g=>({id:g.id,terms:allTerms([g.summary,...g.facets.map(f=>f.summary),...[...g.sourceRefs,...g.facets.flatMap(f=>f.sourceRefs)].map(r=>sources.find(s=>s.id===r.sourceId)?.spans.find(p=>p.start===r.start)?.text??'')].join(' ')).sort().slice(0,1024),anchors:artifacts.filter(a=>a.side==='head'&&(a.origin==='diff'&&(incompletePaths.has(a.path)||artifactGoals.get(a.id)?.has(g.id))||a.id===g.firstInspection||g.candidates.some(c=>c.artifactId===a.id))).map(a=>({path:a.path,startLine:a.startLine,endLine:a.endLine}))}));
+    const hints=navigation.goals.map(g=>({id:g.id,terms:textTerms(goalText(g)).sort().slice(0,1024),anchors:artifacts.filter(a=>a.side==='head'&&(a.origin==='diff'&&(incompletePaths.has(a.path)||artifactGoals.get(a.id)?.has(g.id))||a.id===g.firstInspection||g.candidates.some(c=>c.artifactId===a.id))).map(a=>({path:a.path,startLine:a.startLine,endLine:a.endLine,weak:a.origin==='diff'&&incompletePaths.has(a.path)}))}));
     const selected=await extractReviewSnippets(safe.slice(0,8),hints);
     navigation.limitations.push(...selected.limitations);
-    for(const snippet of selected.snippets){const id=add(snippet.path,snippet.headSha,'head',snippet.startLine,snippet.content,'snapshot');if(id){if(snippet.matched)preferredSnapshotIds.add(id);artifactGoals.set(id,new Set([...(artifactGoals.get(id)??[]),...snippet.goalIds]));}}
+    for(const snippet of selected.snippets){const id=add(snippet.path,snippet.headSha,'head',snippet.startLine,snippet.content,'snapshot');if(id){if(snippet.matched)preferredSnapshotIds.add(id);snapshotScores.set(id,snippet.goalScores);artifactGoals.set(id,new Set([...(artifactGoals.get(id)??[]),...snippet.goalIds]));}}
   };
   const returnedArtifacts=()=>{
     const associations=new Map(artifacts.map(a=>[a.id,new Set(artifactGoals.get(a.id)??[])]));
@@ -393,6 +476,7 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
       const id=add(a.path,a.revision,a.side,start,content,a.origin==='snapshot'||b.origin==='snapshot'?'snapshot':'diff');if(!id)continue;
       const goals=new Set([...(associations.get(a.id)??[]),...(associations.get(b.id)??[])]);
       associations.set(id,goals);artifactGoals.set(id,goals);
+      const scores={...(snapshotScores.get(a.id)??{})};for(const [goal,score] of Object.entries(snapshotScores.get(b.id)??{}))scores[goal]=Math.max(scores[goal]??0,score);snapshotScores.set(id,scores);
       if(preferredSnapshotIds.has(a.id)||preferredSnapshotIds.has(b.id))preferredSnapshotIds.add(id);
       if(a.id!==id)aliases.set(a.id,id);if(b.id!==id)aliases.set(b.id,id);
       pool[i]=artifacts.find(c=>c.id===id)!;pool.splice(j,1);j=i;
@@ -416,6 +500,10 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
     for(let slot=0;slot<REVIEW_PAYLOAD_SNIPPETS;slot++)for(const g of reservation){
       const id=g.ids[slot];if(id&&!include(id,[g.goal]))navigation.limitations.push('retrieval_budget_exceeded');
     }
+    // Preserve the chosen snippets for each concern through the smaller shared packet;
+    // alphabetical file order is not a relevance score within an exact-revision read.
+    const goalSnapshots=navigation.goals.map(g=>({goal:g.id,ids:['code','test'].flatMap(kind=>pool.filter(a=>a.kind===kind&&preferredSnapshotIds.has(a.id)&&(snapshotScores.get(a.id)?.[g.id]??0)>0).sort((a,b)=>(snapshotScores.get(b.id)?.[g.id]??0)-(snapshotScores.get(a.id)?.[g.id]??0)||a.path.localeCompare(b.path)||a.startLine-b.startLine).slice(0,kind==='test'?1:2).map(a=>a.id))}));
+    for(let slot=0;slot<3;slot++)for(const g of goalSnapshots){const id=g.ids[slot];if(id&&!include(id,[...(associations.get(id)??[])]))navigation.limitations.push('retrieval_budget_exceeded');}
     const ranked=pool.sort((a,b)=>Number(preferredSnapshotIds.has(b.id))-Number(preferredSnapshotIds.has(a.id))||a.path.localeCompare(b.path)||a.startLine-b.startLine);
     const firstPaths=new Set<string>();const leading=ranked.filter(a=>{if(firstPaths.has(a.path))return false;firstPaths.add(a.path);return true;});
     const ordered=[...leading,...ranked.filter(a=>!leading.includes(a))];
@@ -434,7 +522,7 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
   };
   const request=(stage:'intent'|'ranking'):ReviewNavigationRequest=>{
     const packet=stage==='ranking'?returnedArtifacts():[];
-    return {stage,model:options.model,sources:stage==='intent'?sources:[],goals:navigation.goals.map(g=>({...g,firstInspection:null,candidates:[],uncertainty:[]})),artifacts:packet,inventory:stage==='ranking'?input.changedFiles.filter(f=>safePath(f.path)).slice(0,128).map(f=>({path:f.path,status:f.status??'modified'})):[],capabilities:{readPaths:!!options.readArtifacts,searchScope:'supplied_artifacts',wholeRepository:false}};
+    return {stage,model:options.model,sources:stage==='intent'?sources:[],goals:navigation.goals.map(g=>({...g,firstInspection:null,candidates:[],uncertainty:[]})),artifacts:packet,inventory:stage==='ranking'?prioritizePaths(input.changedFiles.filter(f=>safePath(f.path)).map(f=>f.path),navigation.goals.map(g=>g.summary).join(' ')+' '+sourceText).slice(0,128).map(path=>input.changedFiles.find(f=>f.path===path)!).map(f=>({path:f.path,status:f.status??'modified'})):[],capabilities:{readPaths:!!options.readArtifacts,searchScope:'supplied_artifacts',wholeRepository:false}};
   };
   const invoke=async(packet:ReviewNavigationRequest,stage:ReviewNavigationDiagnostics['stage'])=>{
     if(!await phaseAllowed())throw new Error('Repository access changed.');
@@ -538,13 +626,54 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
     navigation.state='partial';
     // Associate changed evidence by each goal's own source and wording, not every goal's anchors.
     for(const g of navigation.goals){
-      const text=[g.summary,...g.facets.map(f=>f.summary),...[...g.sourceRefs,...g.facets.flatMap(f=>f.sourceRefs)].map(r=>sources.find(s=>s.id===r.sourceId)?.spans.find(p=>p.start===r.start)?.text??'')].join(' '),terms=allTerms(text).sort().slice(0,1024);
+      const text=goalText(g),terms=textTerms(text).sort().slice(0,1024);
       const matching=artifacts.filter(a=>text.includes(a.path)||allTerms(a.content+' '+a.path).some(t=>terms.some(term=>t.startsWith(term)||term.startsWith(t))));
       for(const a of artifacts.filter(a=>matching.some(m=>m.path===a.path))){const ids=artifactGoals.get(a.id)??new Set<string>();ids.add(g.id);artifactGoals.set(a.id,ids);}
     }
     await addSnapshots(suppliedSnapshots);
     if(!repository||!navigation.headSha){navigation.limitations.push('exact_snapshot_unavailable');lifecycle.push({kind:'stop',reason:'no_snapshot'});return finish();}
-    const missing=[...incompletePaths].filter(path=>!suppliedSnapshots.some(b=>b.path===path)).sort();
+    const eligible=[...incompletePaths].filter(path=>!suppliedSnapshots.some(b=>b.path===path));
+    const stem=(path:string)=>path.replace(/(?:[._-](?:test|spec))?\.[^.\/]+$/,'').replace(/(?:^|\/)(?:tests?|__tests__)\//,'/').replace(/(?:^|\/)test_/,'/');
+    // A short diff often contains only imports. Use those changed-module links as
+    // discovery hints for owners and callees, not as proof of their behavior.
+    const imports=new Map(input.changedFiles.map(file=>{
+      const patch=(file.patch??'').split('\n').filter(line=>!line.startsWith('-')).map(line=>line.startsWith('+')?line.slice(1):line).join('\n');
+      const links:Array<{path:string;text:string}>=[];
+      for(const match of patch.matchAll(/\bimport\s+(?!type\b)([\s\S]{0,1000}?)\s+from\s+["'](\.{1,2}\/[^"']+)["']/g)){
+        const parts=[...file.path.split('/').slice(0,-1),...match[2]!.split('/')],resolved:string[]=[];
+        for(const part of parts){if(part==='..')resolved.pop();else if(part!=='.')resolved.push(part);}
+        const base=resolved.join('/').replace(/\.[cm]?[jt]sx?$/,'');
+        const target=input.changedFiles.find(f=>f.path.replace(/\.[cm]?[jt]sx?$/,'')===base);
+        if(target&&safePath(target.path)&&!links.some(link=>link.path===target.path))links.push({path:target.path,text:match[1]+' '+target.path});
+      }
+      return [file.path,links] as const;
+    }));
+    const importFrequency=new Map([...imports].map(([path,links])=>[path,pathTermFrequency(links.map(link=>link.path))]));
+    const corpusFrequency=pathTermFrequency(input.changedFiles.map(file=>file.path));
+    const queues=navigation.goals.map(g=>{
+      const text=goalText(g),terms=textTerms(text);
+      const paths=prioritizePaths(eligible,text);
+      const named=allIdentifiers(text);
+      const linkTerms=(path:string,link:{path:string;text:string})=>{
+        const links=imports.get(path)!,frequency=importFrequency.get(path)!;
+        // A namespace shared by most of an owner's imports does not identify
+        // which dependency a concern needs.
+        return textTerms(link.text).filter(t=>terms.some(q=>stemMatch(t,q))&&((frequency.get(t)??0)<=Math.max(1,Math.ceil(links.length/2))||named.includes(t)));
+      };
+      const matchingLinks=(path:string)=>(imports.get(path)??[]).filter(link=>linkTerms(path,link).length);
+      const weight=(words:string[])=>[...new Set(words)].reduce((n,t)=>n+Math.log(1+input.changedFiles.length/(corpusFrequency.get(t)??1)),0);
+      const ownerScore=(path:string)=>weight(matchingLinks(path).flatMap(link=>linkTerms(path,link)));
+      const code=paths.filter(path=>reviewPathTier(path)===0).sort((a,b)=>Number(text.includes(b))-Number(text.includes(a))||ownerScore(b)-ownerScore(a))[0];
+      const paired=code?paths.find(path=>TEST_PATH.test(path)&&stem(path)===stem(code)):undefined;
+      const callees=code?matchingLinks(code).filter(link=>eligible.includes(link.path)).sort((a,b)=>{
+        const score=(link:typeof a)=>weight(linkTerms(code,link));
+        return score(b)-score(a);
+      }).map(link=>link.path):[];
+      const linked=callees.flatMap(path=>[path,...paths.filter(other=>TEST_PATH.test(other)&&stem(other)===stem(path))]);
+      return [...new Set([...(code?[code]:[]),...(paired?[paired]:[]),...linked,...paths])];
+    });
+    const missing:string[]=[];
+    for(let slot=0;slot<eligible.length;slot++)for(const queue of queues){const path=queue[slot];if(path&&!missing.includes(path))missing.push(path);}
     if(missing.length)await readSnapshots(missing,'automatic');
     for(let round=0;round<2;round++){
       stage=round===0?'ranking':'refinement';

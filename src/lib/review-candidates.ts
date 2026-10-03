@@ -26,7 +26,8 @@ export function buildReviewCandidates(input: PullRequestInput, requirements: Req
       const candidate={evidenceId:chunk.evidenceId,basis:edge.basis.includes("source_path")?"source_path" as const:edge.basis.includes("identifier")?"source_identifier" as const:"changed_tokens" as const,score:edge.score,evidenceHash:chunk.hash};
       if((candidates.get(chunk.evidenceId)?.score??-1)<edge.score)candidates.set(chunk.evidenceId,candidate);
     }
-    return {requirementId:requirement.requirementId,sourceHash:createHash("sha256").update(JSON.stringify(goals.map(goal=>[goal.sourceRefs,goal.facets]))).digest("hex"),candidates:[...candidates.values()].sort((a,b)=>b.score-a.score||(evidence.find(e=>e.id===a.evidenceId)?.locator??"").localeCompare(evidence.find(e=>e.id===b.evidenceId)?.locator??"")).slice(0,8)};
+    // Keep the goal edges' bounded order (code and tests before repeated prose) rather than re-sorting by raw score.
+    return {requirementId:requirement.requirementId,sourceHash:createHash("sha256").update(JSON.stringify(goals.map(goal=>[goal.sourceRefs,goal.facets]))).digest("hex"),candidates:[...candidates.values()].slice(0,8)};
   })};
 }
 

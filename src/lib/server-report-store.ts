@@ -33,14 +33,14 @@ export const DEFAULT_SUPABASE_REPORTS_TABLE = "agentproof_saved_reports";
 
 const SUPABASE_DURABILITY = "summary-only-supabase";
 const SUPABASE_DURABILITY_WARNING =
-  "Saved reports are summary-only and short-lived by TTL. Durable Supabase storage is configured; raw evidence, claims, and re-prompt text are omitted.";
+  "Durable Supabase storage is configured for sanitized reports; raw evidence, claims, and re-prompt text are omitted. Retention follows each report’s expiry policy.";
 const PARTIAL_SUPABASE_WARNING =
   "Supabase saved-report env is incomplete; using short-lived in-memory storage until both URL and service-role key are configured.";
 
 export interface StoredServerReport {
   id: string;
   createdAt: string;
-  expiresAt: string;
+  expiresAt: string | null;
   report: VerificationReport;
   tenantId?: string;
   accessToken?: string;
@@ -60,6 +60,8 @@ export interface SavedReportAccessContext {
 }
 
 export interface CreateSavedReportOptions {
+  /** Only verified, durably stored tenant PR versions can opt in. */
+  retention?: "until-deletion";
   ttlMs?: number;
   tenantId?: string;
   installationId?: number;
@@ -71,6 +73,7 @@ export interface CreateSavedReportOptions {
 }
 
 interface NormalizedCreateSavedReportOptions {
+  retention?: "until-deletion";
   ttlMs: number;
   tenantId?: string;
   installationId?: number;
@@ -93,7 +96,7 @@ export interface SavedReportStoreStatus {
 export interface TenantSavedReportSummary {
   id: string;
   createdAt: string;
-  expiresAt: string;
+  expiresAt: string | null;
   repositoryId?: number;
   pullRequestNumber?: number;
   headSha?: string;
@@ -167,7 +170,7 @@ interface SupabaseReportStoreConfig {
 interface SupabaseReportRow {
   id: string;
   created_at: string;
-  expires_at: string;
+  expires_at: string | null;
   report: VerificationReport | TenantPersistedReport;
   tenant_id?: string | null;
   access_token_hash?: string | null;
@@ -192,6 +195,7 @@ export async function createSavedReport(
   const config = getSupabaseReportStoreConfig();
   const options = normalizeCreateOptions(optionsOrTtlMs);
 
+  if (options.retention) throw new SavedReportStoreError("Until-deletion retention requires a server-verified tenant PR report.");
   if (config) return createSupabaseSavedReport(config, report, options, "imported_unverified");
 
   return createMemorySavedReport(report, options, "imported_unverified");
@@ -208,6 +212,7 @@ export async function createVerifiedSavedReport(
 ): Promise<StoredServerReport> {
   const config = getSupabaseReportStoreConfig();
   const options = normalizeCreateOptions(optionsOrTtlMs);
+  if (options.retention && !config) throw new SavedReportStoreError("Until-deletion retention requires durable report storage.");
   requireReportSigningSecret();
   let admittedReport = report;
   if (requiresGeneratedPrivateContext(report)) {
@@ -245,7 +250,7 @@ export async function getSavedReport(
 }
 
 export async function listTenantSavedReports(
-  input: { tenantId?: unknown; limit?: number }
+  input: { tenantId?: unknown; repositoryId?: number; pullRequestNumber?: number; offset?: number; limit?: number }
 ): Promise<TenantSavedReportSummary[]> {
   const tenantId = typeof input.tenantId === "string" ? normalizeTenantId(input.tenantId) : undefined;
   if (!tenantId) {
@@ -254,9 +259,17 @@ export async function listTenantSavedReports(
 
   const limit = normalizeSavedReportListLimit(input.limit);
   const config = getSupabaseReportStoreConfig();
+  const filters = {
+    ...(input.repositoryId !== undefined ? { repositoryId: normalizePositiveInteger(input.repositoryId) } : {}),
+    ...(input.pullRequestNumber !== undefined ? { pullRequestNumber: normalizePositiveInteger(input.pullRequestNumber) } : {}),
+    offset: input.offset ?? 0
+  };
+  if ((input.repositoryId !== undefined && !filters.repositoryId) ||
+      (input.pullRequestNumber !== undefined && !filters.pullRequestNumber) ||
+      !Number.isSafeInteger(filters.offset) || filters.offset < 0) throw new SavedReportStoreError("Saved report history selection is invalid.");
   const rows = config
-    ? await listSupabaseTenantSavedReports(config, tenantId, limit)
-    : listMemoryTenantSavedReports(tenantId, limit);
+    ? await listSupabaseTenantSavedReports(config, tenantId, limit, filters)
+    : listMemoryTenantSavedReports(tenantId, limit, filters);
 
   return rows
     .map(toTenantSavedReportSummary)
@@ -401,7 +414,7 @@ export function cleanupExpiredReports(now = Date.now()): number {
   let deleted = 0;
 
   for (const [id, saved] of reportStore()) {
-    if (Date.parse(saved.expiresAt) <= now) {
+    if (saved.expiresAt !== null && Date.parse(saved.expiresAt) <= now) {
       reportStore().delete(id);
       deleted += 1;
     }
@@ -475,7 +488,7 @@ function createMemorySavedReport(
   const saved: StoredServerReport = {
     id: existingSameHeadId ?? createSavedReportId(options.tenantId),
     createdAt: createdAtDate.toISOString(),
-    expiresAt: new Date(createdAtDate.getTime() + options.ttlMs).toISOString(),
+    expiresAt: options.retention === "until-deletion" ? null : new Date(createdAtDate.getTime() + options.ttlMs).toISOString(),
     report: options.tenantId && trust === "verified_agentproof" ? prepareTenantDetailReportForStorage(report, trust) : prepareSummaryReportForStorage(report, trust),
     ...(options.installationId ? { installationId: options.installationId } : {}),
     ...(options.repositoryId ? { repositoryId: options.repositoryId } : {}),
@@ -510,7 +523,7 @@ function getMemorySavedReport(id: string, access: SavedReportAccessContext): Sto
   const saved = reportStore().get(id);
 
   if (!saved) return null;
-  if (Date.parse(saved.expiresAt) <= Date.now()) {
+  if (saved.expiresAt !== null && Date.parse(saved.expiresAt) <= Date.now()) {
     reportStore().delete(id);
     return null;
   }
@@ -523,18 +536,19 @@ function getMemorySavedReport(id: string, access: SavedReportAccessContext): Sto
 function listMemoryTenantSavedReports(
   tenantId: string,
   limit: number,
-  filters: { repositoryId?: number; currentOnly?: boolean } = {}
+  filters: { repositoryId?: number; pullRequestNumber?: number; offset?: number; currentOnly?: boolean } = {}
 ): StoredServerReport[] {
   cleanupExpiredReports();
 
   return [...reportStore().values()]
     .filter((saved) => saved.tenantId === tenantId)
     .filter((saved) => filters.repositoryId === undefined || saved.repositoryId === filters.repositoryId)
+    .filter((saved) => filters.pullRequestNumber === undefined || saved.pullRequestNumber === filters.pullRequestNumber)
     .filter((saved) => filters.currentOnly !== true || !saved.staleAt)
     .map(sanitizeStoredReport)
     .filter((saved): saved is StoredServerReport => Boolean(saved))
     .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
-    .slice(0, limit);
+    .slice(filters.offset ?? 0, (filters.offset ?? 0) + limit);
 }
 
 function countMemoryTenantSavedReports(tenantId: string): number {
@@ -564,7 +578,7 @@ async function createSupabaseSavedReport(
   const saved: StoredServerReport = {
     id: createSavedReportId(options.tenantId),
     createdAt: createdAtDate.toISOString(),
-    expiresAt: new Date(createdAtDate.getTime() + options.ttlMs).toISOString(),
+    expiresAt: options.retention === "until-deletion" ? null : new Date(createdAtDate.getTime() + options.ttlMs).toISOString(),
     report: options.tenantId && trust === "verified_agentproof" ? prepareTenantDetailReportForStorage(report, trust) : prepareSummaryReportForStorage(report, trust),
     ...(options.installationId ? { installationId: options.installationId } : {}),
     ...(options.repositoryId ? { repositoryId: options.repositoryId } : {}),
@@ -603,6 +617,12 @@ async function createSupabaseSavedReport(
   }
 
   const stored = rowToStoredReport((await parseSupabaseArray(response))[0]);
+  if (options.retention && (!stored || stored.id !== saved.id || stored.expiresAt !== null ||
+      stored.tenantId !== saved.tenantId || stored.repositoryId !== saved.repositoryId ||
+      stored.installationId !== saved.installationId || stored.pullRequestNumber !== saved.pullRequestNumber ||
+      stored.headSha !== saved.headSha || stored.availability === "unavailable")) {
+    throw new SavedReportStoreError("Retained report write was not acknowledged.");
+  }
 
   return stored
     ? {
@@ -634,7 +654,7 @@ async function getSupabaseSavedReport(
   const saved = rowToStoredReport((await parseSupabaseArray(response))[0]);
 
   if (!saved) return null;
-  if (Date.parse(saved.expiresAt) <= Date.now()) {
+  if (saved.expiresAt !== null && Date.parse(saved.expiresAt) <= Date.now()) {
     await deleteSupabaseSavedReportRow(config, id, access);
     return null;
   }
@@ -646,16 +666,18 @@ async function listSupabaseTenantSavedReports(
   config: SupabaseReportStoreConfig,
   tenantId: string,
   limit: number,
-  filters: { repositoryId?: number; currentOnly?: boolean } = {}
+  filters: { repositoryId?: number; pullRequestNumber?: number; offset?: number; currentOnly?: boolean } = {}
 ): Promise<StoredServerReport[]> {
   const params = new URLSearchParams({
     tenant_id: `eq.${tenantId}`,
-    expires_at: `gt.${new Date().toISOString()}`,
+    or: `(expires_at.is.null,expires_at.gt.${new Date().toISOString()})`,
     select: "id,created_at,expires_at,report,tenant_id,installation_id,repository_id,pull_request_number,head_sha,stale_at",
-    order: "created_at.desc",
+    order: "created_at.desc,id.desc",
     limit: String(limit)
   });
   if (filters.repositoryId !== undefined) params.set("repository_id", `eq.${filters.repositoryId}`);
+  if (filters.pullRequestNumber !== undefined) params.set("pull_request_number", `eq.${filters.pullRequestNumber}`);
+  if (filters.offset !== undefined) params.set("offset", String(filters.offset));
   if (filters.currentOnly === true) params.set("stale_at", "is.null");
   const response = await supabaseFetch(config, `?${params.toString()}`, {
     method: "GET"
@@ -669,6 +691,7 @@ async function listSupabaseTenantSavedReports(
     .map(rowToStoredReport)
     .filter((row): row is StoredServerReport => Boolean(row && row.tenantId === tenantId))
     .filter((row) => filters.repositoryId === undefined || row.repositoryId === filters.repositoryId)
+    .filter((row) => filters.pullRequestNumber === undefined || row.pullRequestNumber === filters.pullRequestNumber)
     .filter((row) => filters.currentOnly !== true || !row.staleAt);
 }
 
@@ -1283,7 +1306,7 @@ function isSupabaseReportRow(value: unknown): value is SupabaseReportRow {
   return (
     typeof row.id === "string" &&
     typeof row.created_at === "string" &&
-    typeof row.expires_at === "string" &&
+    (typeof row.expires_at === "string" || (row.expires_at === null && typeof row.tenant_id === "string" && typeof row.repository_id === "number" && typeof row.pull_request_number === "number" && typeof row.head_sha === "string")) &&
     (row.tenant_id === undefined || row.tenant_id === null || typeof row.tenant_id === "string") &&
     (row.access_token_hash === undefined || row.access_token_hash === null || typeof row.access_token_hash === "string") &&
     (row.installation_id === undefined || row.installation_id === null || typeof row.installation_id === "number") &&
@@ -1346,8 +1369,12 @@ function normalizeCreateOptions(optionsOrTtlMs: CreateSavedReportOptions | numbe
     throw new SavedReportStoreError("Saved report identity metadata must be complete and tenant scoped.");
   }
 
+  if (options.retention && (options.retention !== "until-deletion" || !tenantId || !installationId || !repositoryId || !pullRequestNumber || !headSha || options.ttlMs !== undefined)) {
+    throw new SavedReportStoreError("Until-deletion retention requires complete tenant PR identity and no TTL override.");
+  }
   return {
     ttlMs,
+    retention: options.retention,
     tenantId, installationId, repositoryId, pullRequestNumber, headSha,
     validationInput: options.validationInput
   };

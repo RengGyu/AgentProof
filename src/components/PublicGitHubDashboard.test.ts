@@ -86,14 +86,14 @@ describe("PublicGitHubDashboard saved reports", () => {
 
   it("uses AgentProof analysis language without exposing provider details", () => {
     expect(source).toContain('label="Analysis"');
-    expect(source).toContain("Some supporting details are unavailable. Available evidence is still shown.");
+    expect(source).toContain("Some evidence is unavailable.");
     expect(source).not.toContain("AI explanation");
     expect(source).not.toContain("AI guidance");
     expect(source).not.toContain("provider response must not persist");
   });
 
-  it("labels planner-enabled reports with neutral policy copy only", () => {
-    expect(source).toContain("Enhanced planning policy");
+  it("omits internal planner policy copy from the reading flow", () => {
+    expect(source).not.toContain("Enhanced planning policy");
     expect(source).not.toContain("hybrid_requirement_planner");
     expect(source).not.toContain("gpt-5-mini");
   });
@@ -108,7 +108,7 @@ describe("PublicGitHubDashboard saved reports", () => {
     expect(source).toContain("Repository reports");
     expect(source).toContain("No current saved reports in this list.");
     expect(source).toContain("Quick Summary");
-    expect(source).toContain("View detailed evidence");
+    expect(source).toContain("Evidence & code");
     expect(source).toContain("report_stale");
     expect(source).toContain("Saved analysis reports");
     expect(source).not.toContain("Unlinked PRs");

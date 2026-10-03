@@ -1,4 +1,5 @@
 "use client";
+import { webWorkspaceClient, type WorkspaceClient } from "@/lib/workspace-client";
 
 import {
   AlertTriangle,
@@ -54,7 +55,9 @@ const scenarioOptions: { id: DemoScenarioId; label: string; summary: string; exp
   }
 ];
 
-export function AnalyzeWorkspace({ initialReport = null }: { initialReport?: VerificationReport | null }) {
+type AnalysisLaunch = { prUrl: string; listedHeadSha: string };
+
+export function AnalyzeWorkspace({ initialReport = null, launchNonce, runtime = webWorkspaceClient }: { initialReport?: VerificationReport | null; launchNonce?: string; runtime?: WorkspaceClient }) {
   const [mode, setMode] = useState<"demo" | "manual">("manual");
   const [demoScenario, setDemoScenario] = useState<DemoScenarioId>("scope-creep");
   const [form, setForm] = useState<AnalyzeRequest>({
@@ -72,7 +75,10 @@ export function AnalyzeWorkspace({ initialReport = null }: { initialReport?: Ver
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<{ message: string; hint?: string; guidance?: string[]; loginRequired?: boolean; installRequired?: boolean; connectionRequired?: boolean } | null>(null);
   const [focusReportAfterLoad, setFocusReportAfterLoad] = useState(false);
+  const [launchContext, setLaunchContext] = useState<AnalysisLaunch | null>(null);
   const reportRegionRef = useRef<HTMLDivElement | null>(null);
+  const analysisInFlight = useRef(false);
+  const launchStarted = useRef(false);
 
   const statusLabel = useMemo(() => {
     if (!report) return "No report";
@@ -85,7 +91,7 @@ export function AnalyzeWorkspace({ initialReport = null }: { initialReport?: Ver
 
   useEffect(() => {
     try {
-      setHistory(readReportHistory(window.localStorage));
+      setHistory(readReportHistory(runtime.storage));
     } catch {
       setHistoryWarning("Browser history is unavailable. You can still generate and download a report.");
     }
@@ -99,17 +105,39 @@ export function AnalyzeWorkspace({ initialReport = null }: { initialReport?: Ver
     setFocusReportAfterLoad(false);
   }, [focusReportAfterLoad, report]);
 
+  useEffect(() => {
+    if (!launchNonce || launchStarted.current) return;
+    launchStarted.current = true;
+    try {
+      const raw = runtime.launchStorage.getItem("agentproof.pendingAnalysis.v1");
+      runtime.launchStorage.removeItem("agentproof.pendingAnalysis.v1");
+      const pending: unknown = raw ? JSON.parse(raw) : null;
+      if (!pending || typeof pending !== "object" || !("nonce" in pending) || pending.nonce !== launchNonce
+        || !("prUrl" in pending) || typeof pending.prUrl !== "string"
+        || !/^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/[1-9]\d*$/.test(pending.prUrl)
+        || !("listedHeadSha" in pending) || typeof pending.listedHeadSha !== "string"
+        || !/^[a-f0-9]{40}$/i.test(pending.listedHeadSha)) throw new Error("invalid launch");
+      const selected = { prUrl: pending.prUrl, listedHeadSha: pending.listedHeadSha };
+      setForm(current => ({ ...current, prUrl: selected.prUrl }));
+      setLaunchContext(selected);
+      void runAnalysis(selected.prUrl);
+    } catch {
+      setError({ message: "Selected PR analysis could not be started.", hint: "Return to the PR list and select Analyze current PR head again." });
+    }
+  }, [launchNonce]);
+
   async function signInForAnalysis() {
+    if (runtime.signIn) { await runtime.signIn(); return; }
     setLoading(true);
     try {
-      const response = await fetch("/api/auth/github/start", {
+      const response = await runtime.request("/api/auth/github/start", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-agentproof-csrf": "same-origin" },
         body: JSON.stringify({ returnTo: "/analyze" })
       });
       const body = await response.json().catch(() => null);
       if (!response.ok || typeof body?.authorizationUrl !== "string") throw new Error("Sign-in unavailable");
-      window.location.assign(body.authorizationUrl);
+      runtime.navigate(body.authorizationUrl);
     } catch {
       setError({ message: "GitHub sign-in is temporarily unavailable.", hint: "Try again from the configured AgentProof address. Demos and pasted evidence remain available.", loginRequired: true });
     } finally {
@@ -118,16 +146,17 @@ export function AnalyzeWorkspace({ initialReport = null }: { initialReport?: Ver
   }
 
   async function installForAnalysis() {
+    if (runtime.connectRepository) { await runtime.connectRepository(); return; }
     setLoading(true);
     try {
-      const response = await fetch("/api/github/onboarding/start", {
+      const response = await runtime.request("/api/github/onboarding/start", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-agentproof-csrf": "same-origin" },
         body: "{}"
       });
       const body = await response.json().catch(() => null);
       if (!response.ok || typeof body?.installUrl !== "string") throw new Error("Installation unavailable");
-      window.location.assign(body.installUrl);
+      runtime.navigate(body.installUrl);
     } catch {
       setError({ message: "GitHub App installation is temporarily unavailable.", hint: "Open the dashboard to connect your repository." });
     } finally {
@@ -135,13 +164,16 @@ export function AnalyzeWorkspace({ initialReport = null }: { initialReport?: Ver
     }
   }
 
-  async function runAnalysis() {
+  async function runAnalysis(launchedPrUrl?: string) {
+    if (analysisInFlight.current) return;
+    analysisInFlight.current = true;
     setLoading(true);
     setError(null);
+    if (!launchedPrUrl) setLaunchContext(null);
 
     try {
-      const payload: AnalyzeRequest = mode === "demo" ? { demoScenario } : form;
-      const response = await fetch("/api/analyze", {
+      const payload: AnalyzeRequest = launchedPrUrl ? { ...form, prUrl: launchedPrUrl } : mode === "demo" ? { demoScenario } : form;
+      const response = await runtime.request("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-agentproof-csrf": "same-origin", "x-agentproof-analysis-key": crypto.randomUUID() },
         body: JSON.stringify(payload)
@@ -157,10 +189,14 @@ export function AnalyzeWorkspace({ initialReport = null }: { initialReport?: Ver
       }
 
       const nextReport = json.report;
+      if (launchedPrUrl && (nextReport.source.url !== launchedPrUrl || nextReport.source.provenance?.origin !== "github_snapshot" || !/^[a-f0-9]{40,64}$/i.test(nextReport.source.provenance.headSha ?? ""))) {
+        setError({ message: "Analysis response did not match the selected PR.", hint: "Refresh the PR list and try again." });
+        return;
+      }
       setReport(nextReport);
       setIsHistoryReport(false);
       try {
-        setHistory(saveReportToHistory(window.localStorage, nextReport));
+        setHistory(saveReportToHistory(runtime.storage, nextReport));
         setHistoryWarning(null);
       } catch {
         setHistoryWarning("Report generated, but browser history could not be saved. Keep this page open or download the report.");
@@ -169,17 +205,19 @@ export function AnalyzeWorkspace({ initialReport = null }: { initialReport?: Ver
     } catch {
       setError({ message: "Could not reach the analysis service.", hint: "Check your connection, then retry. Your PR URL and pasted context remain in the form." });
     } finally {
+      analysisInFlight.current = false;
       setLoading(false);
     }
   }
 
   function updateForm<K extends keyof AnalyzeRequest>(key: K, value: AnalyzeRequest[K]) {
+    if (key === "prUrl") setLaunchContext(null);
     setForm((current) => ({ ...current, [key]: value }));
   }
 
   function clearHistory() {
     try {
-      setHistory(clearReportHistory(window.localStorage));
+      setHistory(clearReportHistory(runtime.storage));
       setHistoryWarning(null);
     } catch {
       setHistoryWarning("Browser history could not be cleared. Check this browser’s storage permissions.");
@@ -293,6 +331,7 @@ export function AnalyzeWorkspace({ initialReport = null }: { initialReport?: Ver
                     id="prUrl"
                     className="input"
                     value={form.prUrl}
+                    disabled={loading}
                     onChange={(event) => updateForm("prUrl", event.target.value)}
                     placeholder="https://github.com/org/repo/pull/123"
                   />
@@ -364,7 +403,7 @@ export function AnalyzeWorkspace({ initialReport = null }: { initialReport?: Ver
           )}
 
           <div className="button-row">
-            <button className="button primary" onClick={runAnalysis} disabled={loading}>
+            <button className="button primary" onClick={() => runAnalysis()} disabled={loading}>
               <Play size={16} />
               {loading ? "Generating" : "Generate report"}
             </button>
@@ -424,6 +463,7 @@ export function AnalyzeWorkspace({ initialReport = null }: { initialReport?: Ver
                     }}>
                       <span>{item.title}</span>
                       <small>{item.priority.toUpperCase()} - {item.evidenceCoverage}%</small>
+                      <small>{Number.isFinite(Date.parse(item.savedAt)) ? `Saved ${new Date(item.savedAt).toLocaleString()}` : "Save time unavailable"}</small>
                     </button>
                   </li>
                 ))}
@@ -437,6 +477,10 @@ export function AnalyzeWorkspace({ initialReport = null }: { initialReport?: Ver
         {report ? (
           <div ref={reportRegionRef} tabIndex={-1} className="report-focus-target">
             <>
+              {!isHistoryReport && launchContext && report.source.url === launchContext.prUrl && report.source.provenance?.origin === "github_snapshot" && report.source.provenance.headSha ? <p className="notice" role="status">
+                {report.source.provenance.headSha === launchContext.listedHeadSha ? "Report captured the current PR head" : "PR head changed since the list was loaded; report captured the newer current head"}: <code>{report.source.provenance.headSha}</code>. Listed head: <code>{launchContext.listedHeadSha}</code>.
+                <span> This report is shown here. Recent keeps a local summary when browser storage is available; this action does not add a repository saved report.</span>
+              </p> : null}
               {isHistoryReport ? <p className="notice" role="status">Reopened local summary. Original code evidence and recommendations are not retained here; generate a new report to inspect them.</p> : null}
               <ReportView key={report.analysisId} report={report} mode={isHistoryReport ? "summary" : "full"} />
             </>

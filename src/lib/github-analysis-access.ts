@@ -84,7 +84,7 @@ export async function resolveGitHubAnalysisCredential(input: {
       if (repository.private === false && selected.repositoryPrivate === true) {
         return failure(409, "github_connection_required", "Repository visibility changed.", "Reconnect this repository from the dashboard.");
       }
-      return { ok: true, token, kind: "installation", ...(selected.repositoryPrivate === true ? { privateAnalysisApproved: true as const, installationId: selected.installationId, repositoryId: selected.repositoryId } : {}) };
+      return { ok: true, token, kind: "installation", installationId: selected.installationId, repositoryId: selected.repositoryId, ...(selected.repositoryPrivate === true ? { privateAnalysisApproved: true as const } : {}) };
     } catch {
       return failure(503, "github_installation_unavailable", "GitHub App access is temporarily unavailable.", "Retry after the installation is available.");
     }

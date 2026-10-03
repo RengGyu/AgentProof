@@ -519,7 +519,7 @@ describe("GET /api/tenants/repositories/health", () => {
       if (href === "https://api.github.com/repositories/100") return Response.json({ id: 100 });
       if (href === "https://api.github.com/repos/RengGyu/AgentProof/pulls/42") {
         return Response.json({
-          changed_files: 121,
+          changed_files: 301,
           title: "private PR title should not leak",
           body: "raw PR body should not leak",
           head: { sha: "abc123def4567890" },
@@ -565,14 +565,14 @@ describe("GET /api/tenants/repositories/health", () => {
           pullRequestAccess: "accessible",
           changedFiles: {
             status: "over-limit",
-            count: 121,
-            maxFiles: 120
+            count: 301,
+            maxFiles: 300
           },
           checksAvailability: {
             status: "missing",
             sources: []
           },
-          nextAction: "This PR exceeds the 120 changed-file evidence cap; split it or expect incomplete file evidence."
+          nextAction: "This PR exceeds the 300 changed-file evidence cap; split it or expect incomplete file evidence."
         }
       })
     ]);
@@ -632,7 +632,7 @@ describe("GET /api/tenants/repositories/health", () => {
       changedFiles: {
         status: "within-limit",
         count: 2,
-        maxFiles: 120
+        maxFiles: 300
       },
       checksAvailability: {
         status: "present",
@@ -738,7 +738,7 @@ describe("GET /api/tenants/repositories/health", () => {
       pullRequestAccess: "rate-limited",
       changedFiles: {
         status: "not-checked",
-        maxFiles: 120
+        maxFiles: 300
       },
       checksAvailability: {
         status: "not-checked",
@@ -792,7 +792,7 @@ describe("GET /api/tenants/repositories/health", () => {
       pullRequestAccess: "inaccessible",
       changedFiles: {
         status: "not-checked",
-        maxFiles: 120
+        maxFiles: 300
       },
       checksAvailability: {
         status: "not-checked",
@@ -894,7 +894,7 @@ describe("GET /api/tenants/repositories/health", () => {
         pullRequestAccess: "not-checked",
         changedFiles: {
           status: "not-checked",
-          maxFiles: 120
+          maxFiles: 300
         },
         checksAvailability: {
           status: "not-checked",

@@ -22,6 +22,10 @@ AgentProof is not a generic AI code review tool. Preserve the product position: 
 
 ## Astra Silver Labeler Modes
 
+These are historical annotation protocols, not an active model route.
+Astra use is prohibited by the user's 2026-10-02 instruction; do not activate
+an Astra labeler, evaluation, planning, implementation, or review call.
+
 The task card activates one mode with `MODE: SILVER_ASTRA_A`,
 `MODE: SILVER_ASTRA_B`, or `MODE: SILVER_ASTRA_C`.
 
@@ -59,46 +63,58 @@ The task card activates one mode with `MODE: SILVER_ASTRA_A`,
   verification, and remaining work. Do not create separate planning or review
   documents unless the user asks.
 
-## Model routing: Sol main, Astra High implementation, Luna utility, Astra diagnosis
+## Model routing: Luna simple implementation, Sol 6.1 complex implementation and bundled review
 
 - The user-facing main task uses `gpt-5.6-sol` with `high` reasoning. It owns
   intent interpretation, work classification, dispatch, and the final
   user-facing report.
-- The implementation task always uses `gpt-6-astra` with `high` reasoning. It
-  owns the complete package: investigation, plan, implementation, focused
-  verification, and its own final diff review.
-- The utility task uses `gpt-6-luna` with `high` reasoning for bounded
-  research, planning, organization, documentation, data preparation, and
-  straightforward implementation. It owns planning, edits, and focused checks
-  for its assigned package when the outcome and acceptance are already clear.
-- The main task routes straightforward packages to Luna and reserves Astra High for
-  implementation that needs more difficult cross-module reasoning or design.
-  Do not give Astra routine work merely because it includes code changes.
-- The diagnostic task "아스트라 노폼" uses `gpt-6-astra` with `high`
-  reasoning only for unclear root causes, difficult error analysis, or a
-  minimal discriminating test. It is read-only and does not implement fixes.
+- The implementation task "구현솔" uses `gpt-6.1-sol` with `high`
+  reasoning for bounded planning/design and complex implementation, including
+  core product flows or meaningful cross-module behavior. It owns its bounded
+  package and focused verification. Basic implementation normally goes
+  to Luna, not Sol merely because it involves code.
+- The review task "검토솔" uses `gpt-6.1-sol` with `xhigh` reasoning.
+  Bundle related changes into one meaningful review package rather than
+  repeatedly reviewing small edits. Review remains requested or required,
+  not an automatic chain for every package. It returns findings and evidence,
+  not implementation, and is read-only by default.
+- The utility task "잡무루나" uses `gpt-6-luna` with `xhigh` reasoning by
+  explicit user preference. Route simple work and basic implementation/fixes
+  to Luna by default, including mechanical edits, small documentation updates,
+  data preparation, and exact checks. Do not send it advanced design decisions
+  or advanced cross-module implementation packages.
+- Astra is prohibited for all project agent work. Do not use it as a fallback
+  or silently raise any assigned model or reasoning effort.
+- The main task owns scope, acceptance criteria, routing, and result review.
+  Prefer direct work for trivial tasks and reuse existing implementations.
+- If a necessary high-performance implementation requires complex design,
+  pause that design decision and ask the user for help with the observed
+  bottleneck, evidence, required outcome, and decision needed. Do not escalate
+  existing, unnecessary, speculative, or ordinary implementation choices into
+  new architecture work. Routine bugs and environment problems do not justify
+  a design escalation or Astra use.
 - Select the assigned model and effort explicitly when sending a task. If the
   requested model is unavailable, report that limitation instead of silently
   substituting another model.
 - Model assignment does not expand task scope or permissions and does not
   change the product's runtime AI model.
 
-## Four-role coordination (updated 2026-09-25)
+## Four-role coordination (updated 2026-10-02)
 
 - Main: `019ffd47-bb30-7dc1-a3ae-2218a50da4dd`; implementation
-  "구현아스트라": `01a0a3be-9ed5-72b2-9a64-3d501484997e`; utility
-  "잡무루나": `01a0a3be-becb-7092-aab0-508d972ca461`; diagnosis
-  "아스트라 노폼": `01a0ae33-31d5-71b0-92e8-f76440b66238`; host `local`.
+  "구현솔": `01a09cf5-028b-78c3-8ff4-0126ba8192b3`; review
+  "검토솔": `01a0a3be-9ed5-72b2-9a64-3d501484997e`; utility
+  "잡무루나": `01a0a3be-becb-7092-aab0-508d972ca461`; host `local`.
   Use these IDs directly instead of repeated task-list searches.
-- Send "아스트라 노폼" only `situation / problem / evidence / question`.
+- Send "검토솔" only the bounded, bundled review/diagnosis question and
+  necessary `situation / problem / evidence / question`.
   Describe the observed problem, not a preferred answer. Omit expected values,
   solution-shaped constraints, full history, and known-case catalogs unless a
   single item is essential to understand the failure. Its default reply is at
   most eight lines; the main task may request only the missing detail when a
   sound decision needs more.
-- "아스트라 노폼" has its own isolated Codex worktree but reads the shared
-  execution directory above as the current source of truth. It must not edit
-  either worktree unless the user explicitly changes its authority.
+- "검토솔" is read-only by default and reads the shared execution
+  directory below as the current source of truth. It does not implement fixes.
 - Shared execution directory:
   `/Users/jeonggyuju/Project_folder/AgentProof/.worktrees/agentproof-recovery-20260913`,
   branch `codex/recover-bounded-target-20260913`. Every project command and
@@ -130,8 +146,10 @@ The task card activates one mode with `MODE: SILVER_ASTRA_A`,
   run concurrently only for read-only work; any edits must be explicitly
   non-overlapping and sequenced by the main task. Do not duplicate test or
   build runs already owned by the active worker.
-- The older "구현솔" task is retired from default routing. Keep its history
-  for evidence, but do not send it new work unless the user explicitly asks.
+- "잡무루나" is the default for utility work and simple implementation;
+  "구현솔" handles complex implementation, and "검토솔" handles bundled
+  review. Preserve historical Astra tasks without sending them new work.
+  The user must explicitly lift the Astra prohibition before any future use.
 - User intervention in any task takes precedence over earlier handoffs. An
   incoming result is evidence to review, not authorization for follow-up work.
 - This setup grants no commit, push, deployment, paid/model-evaluation API
