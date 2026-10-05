@@ -1,3 +1,4 @@
+import { measureReviewAsync, measureReviewSync, type ReviewMeasurementContext } from './review-navigation-diagnostics';
 import { captureReviewRelations } from "./pr-evidence-review";
 import { createHash, randomBytes, timingSafeEqual } from "crypto";
 import { copyOrdinaryDocumentationSummary } from "./general-pr-documentation-presentation";
@@ -208,7 +209,8 @@ export async function createSavedReport(
  */
 export async function createVerifiedSavedReport(
   report: VerificationReport,
-  optionsOrTtlMs: CreateSavedReportOptions | number = SERVER_REPORT_TTL_MS
+  optionsOrTtlMs: CreateSavedReportOptions | number = SERVER_REPORT_TTL_MS,
+  measurements?: ReviewMeasurementContext
 ): Promise<StoredServerReport> {
   const config = getSupabaseReportStoreConfig();
   const options = normalizeCreateOptions(optionsOrTtlMs);
@@ -219,19 +221,19 @@ export async function createVerifiedSavedReport(
     if (!options.validationInput) {
       throw new SavedReportStoreError("Active or receipt-positive v2 report requires generated private validation context before persistence.");
     }
-    const validation = resolveRuntimeReportValidation({
+    const validation = measureReviewSync(measurements, 'storage_validation', () => resolveRuntimeReportValidation({
       boundary: "generated_private_full",
-      input: options.validationInput,
+      input: options.validationInput!,
       report,
       requireV2: true
-    });
+    }));
     if (!validation.valid) {
       throw new SavedReportStoreError(`Generated private report failed persistence validation: ${validation.errors.join("; ")}`);
     }
     admittedReport = validation.report;
   }
 
-  if (config) return createSupabaseSavedReport(config, admittedReport, options, "verified_agentproof");
+  if (config) return createSupabaseSavedReport(config, admittedReport, options, "verified_agentproof", measurements);
 
   return createMemorySavedReport(admittedReport, options, "verified_agentproof");
 }
@@ -571,7 +573,8 @@ async function createSupabaseSavedReport(
   config: SupabaseReportStoreConfig,
   report: VerificationReport,
   options: NormalizedCreateSavedReportOptions,
-  trust: "verified_agentproof" | "imported_unverified"
+  trust: "verified_agentproof" | "imported_unverified",
+  measurements?: ReviewMeasurementContext
 ): Promise<StoredServerReport> {
   const createdAtDate = new Date();
   const access = createTenantAccess(options.tenantId, trust === "verified_agentproof");
@@ -579,7 +582,7 @@ async function createSupabaseSavedReport(
     id: createSavedReportId(options.tenantId),
     createdAt: createdAtDate.toISOString(),
     expiresAt: options.retention === "until-deletion" ? null : new Date(createdAtDate.getTime() + options.ttlMs).toISOString(),
-    report: options.tenantId && trust === "verified_agentproof" ? prepareTenantDetailReportForStorage(report, trust) : prepareSummaryReportForStorage(report, trust),
+    report: measureReviewSync(measurements, 'storage_projection', () => options.tenantId && trust === "verified_agentproof" ? prepareTenantDetailReportForStorage(report, trust) : prepareSummaryReportForStorage(report, trust)),
     ...(options.installationId ? { installationId: options.installationId } : {}),
     ...(options.repositoryId ? { repositoryId: options.repositoryId } : {}),
     ...(options.pullRequestNumber ? { pullRequestNumber: options.pullRequestNumber } : {}),
@@ -600,38 +603,41 @@ async function createSupabaseSavedReport(
       `Verified tenant report storage requires ${DEFAULT_SUPABASE_REPORTS_TABLE} and its atomic STALE migration.`
     );
   }
-  const response = usesAtomicTenantStore
-    ? await supabaseRpcFetch(config, "agentproof_store_tenant_report", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(toSupabaseTenantReportRpc(saved))
-      })
-    : await supabaseFetch(config, "", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Prefer: "return=representation" },
-        body: JSON.stringify(toSupabaseRow(saved))
-      });
+  // Includes response-body decoding and write acknowledgement, not just HTTP headers.
+  return measureReviewAsync(measurements, 'storage_write', async () => {
+    const response = usesAtomicTenantStore
+      ? await supabaseRpcFetch(config, "agentproof_store_tenant_report", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(toSupabaseTenantReportRpc(saved))
+        })
+      : await supabaseFetch(config, "", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Prefer: "return=representation" },
+          body: JSON.stringify(toSupabaseRow(saved))
+        });
 
-  if (!response.ok) {
-    throw new SavedReportStoreError(`Saved report storage failed with status ${response.status}.`);
-  }
+    if (!response.ok) {
+      throw new SavedReportStoreError(`Saved report storage failed with status ${response.status}.`);
+    }
 
-  const stored = rowToStoredReport((await parseSupabaseArray(response))[0]);
-  if (options.retention && (!stored || stored.id !== saved.id || stored.expiresAt !== null ||
-      stored.tenantId !== saved.tenantId || stored.repositoryId !== saved.repositoryId ||
-      stored.installationId !== saved.installationId || stored.pullRequestNumber !== saved.pullRequestNumber ||
-      stored.headSha !== saved.headSha || stored.availability === "unavailable")) {
-    throw new SavedReportStoreError("Retained report write was not acknowledged.");
-  }
+    const stored = rowToStoredReport((await parseSupabaseArray(response))[0]);
+    if (options.retention && (!stored || stored.id !== saved.id || stored.expiresAt !== null ||
+        stored.tenantId !== saved.tenantId || stored.repositoryId !== saved.repositoryId ||
+        stored.installationId !== saved.installationId || stored.pullRequestNumber !== saved.pullRequestNumber ||
+        stored.headSha !== saved.headSha || stored.availability === "unavailable")) {
+      throw new SavedReportStoreError("Retained report write was not acknowledged.");
+    }
 
-  return stored
-    ? {
-        ...stored,
-        tenantId: saved.tenantId,
-        accessToken: saved.accessToken,
-        accessTokenHash: saved.accessTokenHash
-      }
-    : saved;
+    return stored
+      ? {
+          ...stored,
+          tenantId: saved.tenantId,
+          accessToken: saved.accessToken,
+          accessTokenHash: saved.accessTokenHash
+        }
+      : saved;
+  });
 }
 
 async function getSupabaseSavedReport(

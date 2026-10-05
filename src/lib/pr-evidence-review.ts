@@ -2,6 +2,7 @@ import { isTestFocusedReviewGoal } from "./review-intent";
 import type { ReviewIntentGraphV1, ReviewSourceRefV1 } from "./review-intent";
 import type { EvidenceItem, RequirementFinding, VerificationReport, VerificationReportV2 } from "./types";
 import type { DashboardReportDetail } from "./github-dashboard-view-model";
+import type { ReviewEvidenceFields } from './review-navigation-diagnostics';
 
 export type PrEvidenceRelation = "verified" | "observed" | "candidate" | "collected";
 
@@ -48,6 +49,7 @@ export interface PrEvidenceReview {
 }
 
 interface PrEvidenceReviewContext {
+  onNavigationProjection?:(event:ReviewEvidenceFields)=>void;
   repositoryFullName?: string;
   headSha?: string;
   baseSha?: string;
@@ -88,7 +90,7 @@ export function buildPrEvidenceReview(report: VerificationReport, context: PrEvi
     .map(item => reviewItem(item, "collected", repositoryFullName, headSha, baseSha));
 
   const navigation=(report as VerificationReportV2).reviewCandidates?.navigation;
-  if(navigation)return projectNavigation(navigation,changes,context.repositoryFullName ?? repositoryFullName,headSha);
+  if(navigation)return projectNavigation(navigation,changes,context.repositoryFullName ?? repositoryFullName,headSha,context.onNavigationProjection);
 
   if (changeSummaryOnly) {
     return {
@@ -481,11 +483,14 @@ export function captureReviewRelations(report:VerificationReport):NonNullable<No
   });
 }
 
-function projectNavigation(nav:import("./review-intent").ReviewNavigation,changes:PrEvidenceReviewItem[],repository:string|undefined,head:string|undefined):PrEvidenceReview {
+function projectNavigation(nav:import("./review-intent").ReviewNavigation,changes:PrEvidenceReviewItem[],repository:string|undefined,head:string|undefined,onProjection?:PrEvidenceReviewContext['onNavigationProjection']):PrEvidenceReview {
   const bound=(!repository||repository===nav.repository)&&(!head||head===nav.headSha);
+  const event=(artifactId:string,goalId:string,reason:string)=>{try{onProjection?.({artifactId,goalId,reason});}catch{/* Diagnostics cannot change the view. */}};
   const objectives=nav.goals.map(goal=>{
+    if(!bound)for(const edge of goal.candidates)event(edge.artifactId,goal.id,'binding_mismatch');
     const items=bound?goal.candidates.flatMap(edge=>{
-      const a=nav.artifacts.find(a=>a.id===edge.artifactId);if(!a)return [];
+      const a=nav.artifacts.find(a=>a.id===edge.artifactId);if(!a){event(edge.artifactId,goal.id,'missing_artifact');return [];}
+      event(a.id,goal.id,'displayed');
       return [{evidenceId:a.id,kind:a.kind,label:a.path,relation:"candidate" as const,line:a.startLine,...(nav.repository?{url:buildExactGitHubFileUrl({repositoryFullName:nav.repository,revisionSha:a.revision,path:a.path,line:a.startLine})}:{}),whyInspect:edge.whyInspect,reviewQuestion:edge.reviewQuestion,uncertainty:edge.uncertainty}];
     }):[];
     const firstInspection=items.find(i=>i.evidenceId===goal.firstInspection);

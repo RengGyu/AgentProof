@@ -1,4 +1,4 @@
-import { getNavigationTransportDiagnostics, type NavigationTransportDiagnostics } from './review-navigation-diagnostics';
+import { NAVIGATION_FAILURE_REASONS as navigationFailureReasons, getNavigationTransportDiagnostics, getNavigationMeasurements, measureReviewAsync, measureReviewSync, recordReviewEvidence, reviewArtifactId, reviewFileId, setNavigationMeasurements, type ReviewMeasurementContext, type NavigationTransportDiagnostics } from './review-navigation-diagnostics';
 import { extractReviewSnippets, REVIEW_PAYLOAD_SNIPPETS, REVIEW_PAYLOAD_BYTES, REVIEW_FILE_BYTES } from './review-snippets';
 import { createHash } from "crypto";
 import { parseGeneralPrStructureV1 } from "./general-pr-structure";
@@ -265,7 +265,7 @@ export interface ReviewNavigation {
   coverageStatus?: 'complete'|'partial';
   failures?: Array<{stage:'intent'|'ranking'|'refinement'|'read';category:NavigationFailureCategory;reason?:NavigationFailureReason}>;
 }
-const navigationFailureReasons=['provider_incomplete','provider_invalid_json','provider_output_unavailable','provider_invalid_output','provider_response_invalid','provider_timeout','provider_rate_limited','provider_unavailable','local_shape','unknown_source_ref','unsafe_summary','unknown_goal_ref','duplicate_goal_ref','unknown_artifact_ref','first_not_candidate','read_unavailable','unknown'] as const;
+
 type NavigationFailureReason=typeof navigationFailureReasons[number];
 class NavigationValidationError extends SyntaxError {
   constructor(readonly reason:NavigationFailureReason){super('Navigation validation failed.');}
@@ -301,6 +301,11 @@ function rankingStatus(n:ReviewNavigation):NonNullable<ReviewNavigation['ranking
   const required=primary.length?primary:n.goals;
   return required.length&&required.every(g=>g.firstInspection)?'ready':n.goals.some(g=>g.firstInspection)?'partial':'unavailable';
 }
+const navigationLimitationCodes=new Set<string>(["diff_context_incomplete", "artifact_context_truncated", "invalid_reference", "retrieval_file_budget_exceeded", "retrieval_budget_exceeded", "retrieval_unverified_fallback", "requested_path_unread", "retrieval_language_unsupported", "retrieval_no_matching_anchor", "retrieval_parse_failed", "retrieval_python_indentation", "retrieval_scan_budget_exceeded", "retrieval_branch_prefix", "private_or_unknown_access", "semantic_unavailable", "unsafe_summary_omitted", "freshness_unavailable", "stale_snapshot", "freshness_access_changed", "freshness_context_changed", "read_unavailable", "no_interpreted_goal", "exact_snapshot_unavailable", "unknown_limitation", "limitations_overflow"]);
+export function boundNavigationLimitations(values:string[]):string[]{
+ const unique=[...new Set(values.map(v=>navigationLimitationCodes.has(v)?v:'unknown_limitation'))];
+ return unique.length<=12?unique:[...unique.slice(0,11),'limitations_overflow'];
+}
 const coverageStatus=(n:ReviewNavigation):NonNullable<ReviewNavigation['coverageStatus']>=>n.unprocessed.length||n.limitations.length||n.failures?.length?'partial':'complete';
 export interface ReviewNavigationRequest {
   stage:'intent'|'ranking'; model:string; sources:Array<ReviewNavigation['sources'][number] & {spans:Array<{id:string;start:number;end:number;text:string}>}>;
@@ -327,6 +332,7 @@ const navigationDiagnostics=new WeakMap<ReviewNavigation,ReviewNavigationDiagnos
 /** Transient, text-free execution evidence. Callers may explicitly collect it without storing source. */
 export const getReviewNavigationDiagnostics=(navigation:ReviewNavigation)=>structuredClone(navigationDiagnostics.get(navigation)??[]);
 export interface ReviewNavigationOptions {
+  measurements?:ReviewMeasurementContext;
   onDiagnostics?:(event:ReviewNavigationDiagnostics)=>void;
   model:string; provider?:(request:ReviewNavigationRequest)=>Promise<unknown>;
   /** Recheck the repository grant before each private provider/read phase. */
@@ -348,6 +354,9 @@ const navKeys=(v:Record<string,unknown>,keys:string[])=>Object.keys(v).length===
 
 export async function enrichReviewNavigation(input:PullRequestInput,report:import('./types').VerificationReportV2,options:ReviewNavigationOptions):Promise<import('./types').VerificationReportV2> {
   if(report.verificationContract?.state!=='absent'||!report.reviewCandidates)return report;
+  const measurements=options.measurements;
+  let evidenceContext=measurements;
+  const evidence=(stage:Parameters<typeof recordReviewEvidence>[1],fields:Parameters<typeof recordReviewEvidence>[2])=>{if(evidenceContext)recordReviewEvidence(evidenceContext,stage,fields);};
   let repository:string|null=null;
   try {const u=new URL(input.url??'');if(u.origin==='https://github.com'&&/^\/[\w.-]+\/[\w.-]+\/pull\/\d+$/.test(u.pathname))repository=u.pathname.split('/').slice(1,3).join('/');}catch{}
   const navigation:ReviewNavigation={version:1,model:options.model,state:'fallback',repository,headSha:exact(input.sourceProvenance?.headSha)?input.sourceProvenance!.headSha!:null,baseSha:exact(input.sourceProvenance?.baseSha)?input.sourceProvenance!.baseSha!:null,sources:[],goals:[],artifacts:[],unprocessed:[],limitations:[],failures:[]};
@@ -375,12 +384,13 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
   const snapshotScores=new Map<string,Record<string,number>>();
   const suppliedSnapshots:Array<{path:string;headSha:string;content:string}>=[];
   const add=(path:string,revision:string,side:'head'|'base',start:number,content:string,origin:'diff'|'snapshot')=>{
-    if(artifacts.length>=artifactLimit){navigation.limitations.push('artifact_context_truncated');return;}
-    if(!safePath(path)||!exact(revision)||start<1){navigation.limitations.push('invalid_reference');return;}
+    if(artifacts.length>=artifactLimit){evidence('artifact',{fileId:reviewFileId(path,revision),reason:'artifact_budget_exceeded'});navigation.limitations.push('artifact_context_truncated');return;}
+    if(!safePath(path)||!exact(revision)||start<1){evidence('artifact',{fileId:reviewFileId(path,revision),reason:'invalid_reference'});navigation.limitations.push('invalid_reference');return;}
     if(!content.trim())return;
     const lines=redactSecretsPreservingLines(content).split('\n');
     const bounded=lines.slice(0,80).join('\n').slice(0,8000);if(bounded.length<content.length){navigation.limitations.push('artifact_context_truncated');if(side==='head')incompletePaths.add(path);}
-    const endLine=start+bounded.split('\n').length-1,hash=sha(bounded),id=`read_${sha(JSON.stringify([path,revision,start,endLine,hash])).slice(0,24)}`;
+    const endLine=start+bounded.split('\n').length-1,hash=sha(bounded),id=reviewArtifactId({path,revision,startLine:start,endLine,hash});
+    if(measurements)evidence('artifact',{artifactId:id,fileId:reviewFileId(path,revision),hash,pathHash:sha(path),revisionHash:sha(revision),startLine:start,endLine,bytes:Buffer.byteLength(bounded),reason:bounded.length<content.length?'truncated':'included'});
     if(!artifacts.some(a=>a.id===id))artifacts.push({id,path,revision,side,startLine:start,endLine,hash,kind:/(?:^|\/)(?:tests?|__tests__)(?:\/|\.)|[._]test\./i.test(path)?'test':'code',origin,content:bounded});
     return id;
   };
@@ -426,7 +436,9 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
   const canonical=(id:string):string=>aliases.has(id)?canonical(aliases.get(id)!):id;
   const finish=()=>{
     if(!navigation.goals.length)navigation.unprocessed=[...new Set([...navigation.unprocessed,...sources.flatMap(s=>s.spans.map(p=>p.id))])];
-    navigation.artifacts=artifacts.filter(a=>returned.has(a.id)).map(({content:_,...a})=>a);navigation.limitations=[...new Set(navigation.limitations)];
+    navigation.artifacts=artifacts.filter(a=>returned.has(a.id)).map(({content:_,...a})=>a);
+    const limitationCount=new Set(navigation.limitations).size;navigation.limitations=boundNavigationLimitations(navigation.limitations);
+    if(navigation.limitations.includes('limitations_overflow'))evidence('local_validation',{reason:'limitations_overflow',count:Math.max(0,limitationCount-11)});
     navigation.rankingStatus=rankingStatus(navigation);navigation.coverageStatus=coverageStatus(navigation);
     if(!traces.length)traces.push({version:1,stage:'preflight',providerCalled:false,requestHash:inputNavigationHash(input),artifactBytes:0,limits:{artifactBytes:REVIEW_PAYLOAD_BYTES,artifactCount:REVIEW_PAYLOAD_SNIPPETS},resultLimitations:[],artifacts:[],sources:[],goals:[],limitations:[...navigation.limitations],decisions:[]});
     traces.at(-1)!.lifecycle=structuredClone(lifecycle);
@@ -449,14 +461,15 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
   const phaseAllowed=async()=>{
     if(!await privateAllowed())return false;
     if(!options.readRepositoryPrivate)return true;
-    try{return await options.readRepositoryPrivate()===input.repositoryPrivate;}catch{return false;}
+    try{return await measureReviewAsync(measurements,'access_recheck',()=>options.readRepositoryPrivate!())===input.repositoryPrivate;}catch{return false;}
   };
   const addSnapshots=async(blobs:Array<{path:string;headSha:string;content:string}>)=>{
     const safe=blobs.filter(b=>safePath(b.path)&&b.headSha===navigation.headSha);
     if(safe.length<blobs.length)navigation.limitations.push('invalid_reference');
     if(safe.length>8)navigation.limitations.push('retrieval_file_budget_exceeded');
     const hints=navigation.goals.map(g=>({id:g.id,terms:textTerms(goalText(g)).sort().slice(0,1024),anchors:artifacts.filter(a=>a.side==='head'&&(a.origin==='diff'&&(incompletePaths.has(a.path)||artifactGoals.get(a.id)?.has(g.id))||a.id===g.firstInspection||g.candidates.some(c=>c.artifactId===a.id))).map(a=>({path:a.path,startLine:a.startLine,endLine:a.endLine,weak:a.origin==='diff'&&incompletePaths.has(a.path)}))}));
-    const selected=await extractReviewSnippets(safe.slice(0,8),hints);
+    if(measurements)for(const b of blobs)evidence('read',{fileId:reviewFileId(b.path,b.headSha),bytes:Buffer.byteLength(b.content),hash:sha(b.content),reason:!safe.includes(b)?'invalid_reference':safe.indexOf(b)>=8?'file_budget_exceeded':'included'});
+    const selected=await measureReviewAsync(measurements,'snippet_extraction',child=>extractReviewSnippets(safe.slice(0,8),hints,child));
     navigation.limitations.push(...selected.limitations);
     for(const snippet of selected.snippets){const id=add(snippet.path,snippet.headSha,'head',snippet.startLine,snippet.content,'snapshot');if(id){if(snippet.matched)preferredSnapshotIds.add(id);snapshotScores.set(id,snippet.goalScores);artifactGoals.set(id,new Set([...(artifactGoals.get(id)??[]),...snippet.goalIds]));}}
   };
@@ -474,6 +487,7 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
       const content=Array.from({length:end-start+1},(_,offset)=>{const line=start+offset;return line>=a.startLine&&line<=a.endLine?al[line-a.startLine]!:bl[line-b.startLine]!;}).join('\n');
       if(Buffer.byteLength(content)>8000)continue;
       const id=add(a.path,a.revision,a.side,start,content,a.origin==='snapshot'||b.origin==='snapshot'?'snapshot':'diff');if(!id)continue;
+      evidence('artifact',{artifactId:id,parentIds:[a.id,b.id],reason:'merged'});
       const goals=new Set([...(associations.get(a.id)??[]),...(associations.get(b.id)??[])]);
       associations.set(id,goals);artifactGoals.set(id,goals);
       const scores={...(snapshotScores.get(a.id)??{})};for(const [goal,score] of Object.entries(snapshotScores.get(b.id)??{}))scores[goal]=Math.max(scores[goal]??0,score);snapshotScores.set(id,scores);
@@ -484,17 +498,17 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
     const selected=new Map<string,Set<string>>();let bytes=2;
     // A fixed overhead allowance makes grouping labels irrelevant to the source-code budget.
     const budgetGoalIds=Array.from({length:16},(_,n)=>`goal_${n+1}`);
-    const cost=(id:string)=>Buffer.byteLength(JSON.stringify({...artifacts.find(a=>a.id===id)!,goalIds:budgetGoalIds}))+1;
+    const cost=(id:string)=>Buffer.byteLength(JSON.stringify({...artifacts.find(a=>a.id===id)!,goalIds:budgetGoalIds}));
     const include=(artifactId:string,ids:string[])=>{
       if(selected.has(artifactId)){for(const id of ids)selected.get(artifactId)!.add(id);return true;}
-      const size=cost(artifactId);
-      if(selected.size>=REVIEW_PAYLOAD_SNIPPETS||bytes+size>REVIEW_PAYLOAD_BYTES)return false;
+      const size=cost(artifactId)+(selected.size?1:0);
+      if(selected.size>=REVIEW_PAYLOAD_SNIPPETS||bytes+size>REVIEW_PAYLOAD_BYTES){evidence('packet',{artifactId,bytes:size,reason:'packet_budget_exceeded'});return false;}
       bytes+=size;selected.set(artifactId,new Set(ids));return true;
     };
     const required=navigation.goals.map(g=>({goal:g.id,ids:[...new Set([...(g.firstInspection?[g.firstInspection]:[]),...g.candidates.map(c=>c.artifactId)])]}));
     const expanded=required.map(g=>({...g,ids:[...new Set(g.ids.map(canonical))]}));
     const expandedIds=[...new Set(expanded.flatMap(g=>g.ids))];
-    const fits=expandedIds.length<=REVIEW_PAYLOAD_SNIPPETS&&2+expandedIds.reduce((n,id)=>n+cost(id),0)<=REVIEW_PAYLOAD_BYTES;
+    const fits=expandedIds.length<=REVIEW_PAYLOAD_SNIPPETS&&2+Math.max(0,expandedIds.length-1)+expandedIds.reduce((n,id)=>n+cost(id),0)<=REVIEW_PAYLOAD_BYTES;
     const reservation=fits?expanded:required;
     if(!fits)navigation.limitations.push('retrieval_budget_exceeded');
     for(let slot=0;slot<REVIEW_PAYLOAD_SNIPPETS;slot++)for(const g of reservation){
@@ -520,15 +534,22 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
     }
     return [...selected].map(([id,ids])=>{returned.add(id);return {...artifacts.find(a=>a.id===id)!,goalIds:[...ids]};}).sort((a,b)=>a.path.localeCompare(b.path)||a.startLine-b.startLine||a.id.localeCompare(b.id));
   };
-  const request=(stage:'intent'|'ranking'):ReviewNavigationRequest=>{
-    const packet=stage==='ranking'?returnedArtifacts():[];
-    return {stage,model:options.model,sources:stage==='intent'?sources:[],goals:navigation.goals.map(g=>({...g,firstInspection:null,candidates:[],uncertainty:[]})),artifacts:packet,inventory:stage==='ranking'?prioritizePaths(input.changedFiles.filter(f=>safePath(f.path)).map(f=>f.path),navigation.goals.map(g=>g.summary).join(' ')+' '+sourceText).slice(0,128).map(path=>input.changedFiles.find(f=>f.path===path)!).map(f=>({path:f.path,status:f.status??'modified'})):[],capabilities:{readPaths:!!options.readArtifacts,searchScope:'supplied_artifacts',wholeRepository:false}};
-  };
+  const packetHashes=new WeakMap<ReviewNavigationRequest,string>();
+  const packetHash=(packet:ReviewNavigationRequest)=>{let digest=packetHashes.get(packet);if(!digest){digest=sha(JSON.stringify(packet));packetHashes.set(packet,digest);}return digest;};
+  const request=(stage:'intent'|'ranking'):ReviewNavigationRequest=>measureReviewSync(measurements,'packet',child=>{
+    evidenceContext=child;
+    try {
+      const packetArtifacts=stage==='ranking'?returnedArtifacts():[];
+      const packet:ReviewNavigationRequest={stage,model:options.model,sources:stage==='intent'?sources:[],goals:navigation.goals.map(g=>({...g,firstInspection:null,candidates:[],uncertainty:[]})),artifacts:packetArtifacts,inventory:stage==='ranking'?prioritizePaths(input.changedFiles.filter(f=>safePath(f.path)).map(f=>f.path),navigation.goals.map(g=>g.summary).join(' ')+' '+sourceText).slice(0,128).map(path=>input.changedFiles.find(f=>f.path===path)!).map(f=>({path:f.path,status:f.status??'modified'})):[],capabilities:{readPaths:!!options.readArtifacts,searchScope:'supplied_artifacts',wholeRepository:false}};
+      if(measurements){const digest=packetHash(packet);for(const a of packet.artifacts)evidence('packet',{artifactId:a.id,packetHash:digest,reason:'included'});}
+      return packet;
+    }finally{evidenceContext=measurements;}
+  });
   const invoke=async(packet:ReviewNavigationRequest,stage:ReviewNavigationDiagnostics['stage'])=>{
     if(!await phaseAllowed())throw new Error('Repository access changed.');
-    const trace:ReviewNavigationDiagnostics={version:1,stage,providerCalled:true,limits:{artifactBytes:REVIEW_PAYLOAD_BYTES,artifactCount:REVIEW_PAYLOAD_SNIPPETS},resultLimitations:[],requestHash:sha(JSON.stringify(packet)),artifactBytes:Buffer.byteLength(JSON.stringify(packet.artifacts)),artifacts:packet.artifacts.map(({content:_,...a})=>({...a,goalIds:[...(a.goalIds??[])]})),sources:packet.sources.map(s=>({id:s.id,hash:s.hash,spans:s.spans.map(p=>({start:p.start,end:p.end,hash:sha(p.text)}))})),goals:packet.goals.map(g=>({id:g.id,summaryHash:sha(g.summary),sourceRefs:structuredClone(g.sourceRefs),facets:g.facets.map(f=>({summaryHash:sha(f.summary),sourceRefs:structuredClone(f.sourceRefs)}))})),limitations:[...new Set(navigation.limitations)],decisions:[]};
+    const trace:ReviewNavigationDiagnostics={version:1,stage,providerCalled:true,limits:{artifactBytes:REVIEW_PAYLOAD_BYTES,artifactCount:REVIEW_PAYLOAD_SNIPPETS},resultLimitations:[],requestHash:packetHash(packet),artifactBytes:Buffer.byteLength(JSON.stringify(packet.artifacts)),artifacts:packet.artifacts.map(({content:_,...a})=>({...a,goalIds:[...(a.goalIds??[])]})),sources:packet.sources.map(s=>({id:s.id,hash:s.hash,spans:s.spans.map(p=>({start:p.start,end:p.end,hash:sha(p.text)}))})),goals:packet.goals.map(g=>({id:g.id,summaryHash:sha(g.summary),sourceRefs:structuredClone(g.sourceRefs),facets:g.facets.map(f=>({summaryHash:sha(f.summary),sourceRefs:structuredClone(f.sourceRefs)}))})),limitations:[...new Set(navigation.limitations)],decisions:[]};
     traces.push(trace);
-    try{return await options.provider!(packet);}finally{trace.transport=getNavigationTransportDiagnostics(packet);}
+    try{return await measureReviewAsync(measurements,'model',child=>{setNavigationMeasurements(packet,child);return options.provider!(packet);});}finally{trace.transport=getNavigationTransportDiagnostics(packet);}
   };
   const refs=(ids:unknown)=>{
     if(!Array.isArray(ids)||!ids.length||ids.length>24){recordFailure('invalid_json_or_shape','local_shape');return [];}
@@ -550,7 +571,7 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
     let outcome:Extract<NavigationLifecycleEvent,{kind:'freshness'}>['outcome']='not_checked',code:string|undefined;
     if(!await phaseAllowed())outcome='access_changed';
     else if(options.readCurrentInput)try{
-      const current=await options.readCurrentInput();
+      const current=await measureReviewAsync(measurements,'freshness_read',()=>options.readCurrentInput!());
       if(!current)outcome='collection_failed';
       else if(current.repositoryPrivate!==input.repositoryPrivate||current.url!==input.url)outcome='access_changed';
       else if(current.sourceProvenance?.headSha!==input.sourceProvenance?.headSha||current.sourceProvenance?.baseSha!==input.sourceProvenance?.baseSha||current.sourceProvenance?.origin!==input.sourceProvenance?.origin)outcome='snapshot_changed';
@@ -577,6 +598,7 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
   };
   let stage:'intent'|'ranking'|'refinement'='intent';
   const recordFailure=(category:NavigationFailureCategory,reason:NavigationFailureReason,failureStage:NonNullable<ReviewNavigation['failures']>[number]['stage']=stage)=>{
+    evidence(reason.startsWith('provider_')?'provider_failure':failureStage==='read'?'read_failure':reason==='unknown'?'failure':'local_validation',{reason,failureStage});
     const trace=traces.at(-1);if(trace&&trace.decisions.length<512)trace.decisions.push({reason});
     if(navigation.failures!.length<4&&!navigation.failures!.some(f=>f.stage===failureStage&&f.reason===reason))navigation.failures!.push({stage:failureStage,category,reason});
   };
@@ -586,18 +608,21 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
     if(safe.length!==requested.length)navigation.limitations.push('invalid_reference');
     const available=safe.filter(p=>!readPaths.has(p));
     const paths=available.slice(0,Math.max(0,8-readPaths.size));
+    if(measurements)for(const p of requested)evidence('read_candidate',{fileId:reviewFileId(typeof p==='string'?p:'',navigation.headSha??''),reason:typeof p!=='string'||!safePath(p)?'unsafe_path':readPaths.has(p)?'duplicate':!paths.includes(p)?'file_budget_exceeded':'selected'});
     if(paths.length<available.length)navigation.limitations.push('retrieval_file_budget_exceeded');
     const event:Extract<NavigationLifecycleEvent,{kind:'read'}>={kind:'read',trigger,requested:safe.length,accepted:0,outcome:'no_new_context'};
     lifecycle.push(event);
     if(!paths.length){event.outcome=available.length?'budget_exhausted':'no_new_context';return false;}
-    if(!options.readArtifacts){event.outcome='unavailable';navigation.limitations.push('read_unavailable');return false;}
+    if(!options.readArtifacts){for(const p of paths)evidence('read',{fileId:reviewFileId(p,navigation.headSha!),reason:'unavailable'});event.outcome='unavailable';navigation.limitations.push('read_unavailable');return false;}
     if(!await phaseAllowed()){event.outcome='unavailable';navigation.limitations.push('freshness_access_changed');return false;}
     for(const path of paths)readPaths.add(path);
     let blobs:Array<{path:string;headSha:string;content:string}>;
-    try{blobs=await options.readArtifacts(paths,navigation.headSha!);}catch{event.outcome='unavailable';navigation.limitations.push('read_unavailable');recordFailure('read_unavailable','read_unavailable','read');return false;}
+    try{blobs=await measureReviewAsync(measurements,'artifact_read',()=>options.readArtifacts!(paths,navigation.headSha!));}catch{for(const p of paths)evidence('read',{fileId:reviewFileId(p,navigation.headSha!),reason:'unavailable'});event.outcome='unavailable';navigation.limitations.push('read_unavailable');recordFailure('read_unavailable','read_unavailable','read');return false;}
     const valid=blobs.filter(b=>paths.includes(b.path)&&b.headSha===navigation.headSha&&!blobs.some(other=>other.path===b.path&&other.content!==b.content));
     if(valid.length<blobs.length)navigation.limitations.push('invalid_reference');
     event.accepted=new Set(valid.map(b=>b.path)).size;
+    if(measurements)for(const p of paths)if(!valid.some(b=>b.path===p))evidence('read',{fileId:reviewFileId(p,navigation.headSha!),reason:'requested_path_unread'});
+    if(measurements)for(const b of blobs)if(!valid.includes(b))evidence('read',{fileId:reviewFileId(b.path,b.headSha),reason:'invalid_reference'});
     if(paths.some(p=>!valid.some(b=>b.path===p)))navigation.limitations.push('requested_path_unread');
     const before=artifacts.length;await addSnapshots(valid);
     event.outcome=!valid.length?'no_valid_files':artifacts.length>before?'supplied':'no_new_context';
@@ -605,23 +630,29 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
   };
   try {
     if(!await fresh('initial')){lifecycle.push({kind:'stop',reason:'freshness'});return finish();}
-    const result=await invoke(request('intent'),'intent');
-    if(!navRecord(result)||!Array.isArray(result.goals)||result.goals.length>16||!Array.isArray(result.unprocessed))throw new NavigationValidationError('local_shape');
-    navigation.goals=result.goals.flatMap((g,index)=>{
-      if(!navRecord(g)||!['primary','supporting','optional','uncertain'].includes(String(g.emphasis))||!Array.isArray(g.facets)||g.facets.length>12||!Array.isArray(g.openQuestions)||g.openQuestions.length>12){recordFailure('invalid_json_or_shape','local_shape');return [];}
-      const sourceRefs=refs(g.sourceRefs);if(!sourceRefs.length)return [];const authorities=[...new Set(sourceRefs.map(r=>sources.find(s=>s.id===r.sourceId)!.authority))];
-      const summary=safeSummary(g.summary);
-      return [{id:`goal_${index+1}`,summary:summary??'Review source-linked goal',emphasis:g.emphasis as ReviewNavigation['goals'][number]['emphasis'],authority:authorities.length===1?authorities[0]!:'mixed_sources',sourceRefs,facets:g.facets.flatMap(f=>{
-        if(!navRecord(f)||!navigationFacetKinds.includes(String(f.kind))){recordFailure('invalid_json_or_shape','local_shape');return [];}
-        const sourceRefs=refs(f.sourceRefs),summary=safeSummary(f.summary);
-        // A withheld description must not erase the validated condition kind or its source.
-        return !sourceRefs.length?[]:[{kind:String(f.kind),summary:summary??'Summary omitted; inspect the referenced source.',sourceRefs}];
-      }),openQuestions:g.openQuestions.flatMap(text=>safeSummary(text)??[]),firstInspection:null,candidates:[],uncertainty:[]}];
+    const intentResult=await invoke(request('intent'),'intent');
+    measureReviewSync(measurements,'local_validation',child=>{
+    evidenceContext=child;
+    try {
+      const result=intentResult;
+      if(!navRecord(result)||!Array.isArray(result.goals)||result.goals.length>16||!Array.isArray(result.unprocessed))throw new NavigationValidationError('local_shape');
+      navigation.goals=result.goals.flatMap((g,index)=>{
+        if(!navRecord(g)||!['primary','supporting','optional','uncertain'].includes(String(g.emphasis))||!Array.isArray(g.facets)||g.facets.length>12||!Array.isArray(g.openQuestions)||g.openQuestions.length>12){recordFailure('invalid_json_or_shape','local_shape');return [];}
+        const sourceRefs=refs(g.sourceRefs);if(!sourceRefs.length)return [];const authorities=[...new Set(sourceRefs.map(r=>sources.find(s=>s.id===r.sourceId)!.authority))];
+        const summary=safeSummary(g.summary);
+        return [{id:`goal_${index+1}`,summary:summary??'Review source-linked goal',emphasis:g.emphasis as ReviewNavigation['goals'][number]['emphasis'],authority:authorities.length===1?authorities[0]!:'mixed_sources',sourceRefs,facets:g.facets.flatMap(f=>{
+          if(!navRecord(f)||!navigationFacetKinds.includes(String(f.kind))){recordFailure('invalid_json_or_shape','local_shape');return [];}
+          const sourceRefs=refs(f.sourceRefs),summary=safeSummary(f.summary);
+          // A withheld description must not erase the validated condition kind or its source.
+          return !sourceRefs.length?[]:[{kind:String(f.kind),summary:summary??'Summary omitted; inspect the referenced source.',sourceRefs}];
+        }),openQuestions:g.openQuestions.flatMap(text=>safeSummary(text)??[]),firstInspection:null,candidates:[],uncertainty:[]}];
+      });
+      for(const id of result.unprocessed){if(typeof id!=='string'||!sources.some(s=>s.spans.some(p=>p.id===id))){recordFailure('invalid_json_or_shape','unknown_source_ref');continue;}navigation.unprocessed.push(id);}
+      const processed=new Set(navigation.goals.flatMap(g=>[...g.sourceRefs,...g.facets.flatMap(f=>f.sourceRefs)].map(r=>`${r.sourceId}:${r.start}`)));
+      navigation.unprocessed.push(...sources.flatMap(s=>s.spans.filter(p=>!processed.has(p.id)).map(p=>p.id)));
+      navigation.goals.sort((a,b)=>['primary','supporting','optional','uncertain'].indexOf(a.emphasis)-['primary','supporting','optional','uncertain'].indexOf(b.emphasis));
+    }finally{evidenceContext=measurements;}
     });
-    for(const id of result.unprocessed){if(typeof id!=='string'||!sources.some(s=>s.spans.some(p=>p.id===id))){recordFailure('invalid_json_or_shape','unknown_source_ref');continue;}navigation.unprocessed.push(id);}
-    const processed=new Set(navigation.goals.flatMap(g=>[...g.sourceRefs,...g.facets.flatMap(f=>f.sourceRefs)].map(r=>`${r.sourceId}:${r.start}`)));
-    navigation.unprocessed.push(...sources.flatMap(s=>s.spans.filter(p=>!processed.has(p.id)).map(p=>p.id)));
-    navigation.goals.sort((a,b)=>['primary','supporting','optional','uncertain'].indexOf(a.emphasis)-['primary','supporting','optional','uncertain'].indexOf(b.emphasis));
     if(!navigation.goals.length){navigation.limitations.push('no_interpreted_goal');lifecycle.push({kind:'stop',reason:'no_goals'});return finish();}
     navigation.state='partial';
     // Associate changed evidence by each goal's own source and wording, not every goal's anchors.
@@ -679,34 +710,43 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
       stage=round===0?'ranking':'refinement';
       const previouslyReturned=new Set(returned),packet=request('ranking');
       if(round===1&&!packet.artifacts.some(a=>!previouslyReturned.has(a.id))){lifecycle.push({kind:'stop',reason:'no_new_context'});break;}
-      const result:unknown=await invoke(packet,stage);
-      if(!navRecord(result)||!Array.isArray(result.rankings)||result.rankings.length>16||!Array.isArray(result.readPaths))throw new NavigationValidationError('local_shape');
-      // Validate each result locally while retaining previously usable locations.
-      const nextGoals=structuredClone(navigation.goals);
-      const seenGoals=new Set<string>();
-      for(const row of result.rankings){
-        if(!navRecord(row)){recordFailure('invalid_json_or_shape','local_shape');continue;}
-        const goal=nextGoals.find(g=>g.id===row.goalId);
-        if(!Array.isArray(row.candidates)||row.candidates.length>12||!Array.isArray(row.uncertainty)||row.uncertainty.length>12){recordFailure('invalid_json_or_shape','local_shape');continue;}
-        if(!goal||seenGoals.has(goal.id)){recordFailure('invalid_json_or_shape',!goal?'unknown_goal_ref':'duplicate_goal_ref');navigation.limitations.push('invalid_reference');continue;}
-        seenGoals.add(goal.id);
-        const candidates:ReviewNavigation['goals'][number]['candidates']=[];
-        for(const edge of row.candidates){
-          const rawId=navRecord(edge)?String(edge.artifactId):'',id=packet.artifacts.some(a=>a.id===canonical(rawId))?canonical(rawId):rawId;
-          const allowed=returned.has(rawId)&&returned.has(id);
-          traces.at(-1)?.decisions.push({goalId:goal.id,...(allowed?{artifactId:id}:{referenceHash:sha(rawId)}),reason:!allowed?'unknown_artifact_ref':!navRecord(edge)||!['relevant','possible'].includes(String(edge.relevance))?'local_shape':id!==rawId?'remapped':packet.artifacts.find(a=>a.id===id)?.goalIds?.includes(goal.id)?'accepted':'shared_supplied_artifact'});
-          if(!navRecord(edge)||!returned.has(rawId)||!returned.has(id)||!allowed||!['relevant','possible'].includes(String(edge.relevance))){recordFailure('invalid_json_or_shape',!returned.has(rawId)||!returned.has(id)||!allowed?'unknown_artifact_ref':'local_shape');navigation.limitations.push('invalid_reference');continue;}
-          const previous=goal.candidates.find(c=>c.artifactId===id);
-          candidates.push({artifactId:id,relevance:edge.relevance as 'relevant'|'possible',whyInspect:safeSummary(edge.whyInspect)??previous?.whyInspect??'',reviewQuestion:safeSummary(edge.reviewQuestion)??previous?.reviewQuestion??'',uncertainty:safeSummary(edge.uncertainty)??previous?.uncertainty??''});
+      const rawResult:unknown=await invoke(packet,stage);
+      const result=measureReviewSync(measurements,'local_validation',child=>{
+      evidenceContext=child;
+      try {
+        const result=rawResult;
+        if(!navRecord(result)||!Array.isArray(result.rankings)||result.rankings.length>16||!Array.isArray(result.readPaths))throw new NavigationValidationError('local_shape');
+        // Validate each result locally while retaining previously usable locations.
+        const nextGoals=structuredClone(navigation.goals);
+        const seenGoals=new Set<string>();
+        for(const row of result.rankings){
+          if(!navRecord(row)){recordFailure('invalid_json_or_shape','local_shape');continue;}
+          const goal=nextGoals.find(g=>g.id===row.goalId);
+          if(!Array.isArray(row.candidates)||row.candidates.length>12||!Array.isArray(row.uncertainty)||row.uncertainty.length>12){recordFailure('invalid_json_or_shape','local_shape');continue;}
+          if(!goal||seenGoals.has(goal.id)){recordFailure('invalid_json_or_shape',!goal?'unknown_goal_ref':'duplicate_goal_ref');navigation.limitations.push('invalid_reference');continue;}
+          seenGoals.add(goal.id);
+          const candidates:ReviewNavigation['goals'][number]['candidates']=[];
+          for(const edge of row.candidates){
+            const rawId=navRecord(edge)?String(edge.artifactId):'',id=packet.artifacts.some(a=>a.id===canonical(rawId))?canonical(rawId):rawId;
+            const allowed=returned.has(rawId)&&returned.has(id);
+            if(measurements)evidence('model_choice',{artifactId:rawId,goalId:goal.id,reason:'selected',packetHash:packetHash(packet),callSpanId:getNavigationMeasurements(packet)?.parentId??undefined});
+            if(measurements)evidence('local_validation',{artifactId:id,goalId:goal.id,parentIds:id!==rawId?[rawId]:undefined,reason:!allowed?'unknown_artifact_ref':!navRecord(edge)||!['relevant','possible'].includes(String(edge.relevance))?'local_shape':id!==rawId?'remapped':'accepted',packetHash:packetHash(packet),callSpanId:getNavigationMeasurements(packet)?.parentId??undefined});
+            traces.at(-1)?.decisions.push({goalId:goal.id,...(allowed?{artifactId:id}:{referenceHash:sha(rawId)}),reason:!allowed?'unknown_artifact_ref':!navRecord(edge)||!['relevant','possible'].includes(String(edge.relevance))?'local_shape':id!==rawId?'remapped':packet.artifacts.find(a=>a.id===id)?.goalIds?.includes(goal.id)?'accepted':'shared_supplied_artifact'});
+            if(!navRecord(edge)||!returned.has(rawId)||!returned.has(id)||!allowed||!['relevant','possible'].includes(String(edge.relevance))){recordFailure('invalid_json_or_shape',!returned.has(rawId)||!returned.has(id)||!allowed?'unknown_artifact_ref':'local_shape');navigation.limitations.push('invalid_reference');continue;}
+            const previous=goal.candidates.find(c=>c.artifactId===id);
+            candidates.push({artifactId:id,relevance:edge.relevance as 'relevant'|'possible',whyInspect:safeSummary(edge.whyInspect)??previous?.whyInspect??'',reviewQuestion:safeSummary(edge.reviewQuestion)??previous?.reviewQuestion??'',uncertainty:safeSummary(edge.uncertainty)??previous?.uncertainty??''});
+          }
+          const first=typeof row.firstInspection==='string'&&returned.has(row.firstInspection)?candidates.find(e=>e.artifactId===row.firstInspection||e.artifactId===canonical(row.firstInspection as string)):undefined;
+          if(row.firstInspection!==null&&!first){evidence('local_validation',{artifactId:typeof row.firstInspection==='string'?row.firstInspection:'',goalId:goal.id,reason:'first_not_candidate'});recordFailure('invalid_json_or_shape','first_not_candidate');navigation.limitations.push('invalid_reference');}
+          const previousFirst=goal.candidates.find(c=>c.artifactId===goal.firstInspection),ids=new Set<string>();
+          // Omission does not reject a previously validated candidate. Explicit new first choice wins.
+          goal.candidates=[...(first?[first]:previousFirst?[previousFirst]:[]),...candidates,...goal.candidates].filter(e=>{if(ids.has(e.artifactId))return false;ids.add(e.artifactId);return true;}).slice(0,12);
+          goal.firstInspection=first?.artifactId??goal.firstInspection;goal.uncertainty=row.uncertainty.flatMap(text=>safeSummary(text)??[]);
         }
-        const first=typeof row.firstInspection==='string'&&returned.has(row.firstInspection)?candidates.find(e=>e.artifactId===row.firstInspection||e.artifactId===canonical(row.firstInspection as string)):undefined;
-        if(row.firstInspection!==null&&!first){recordFailure('invalid_json_or_shape','first_not_candidate');navigation.limitations.push('invalid_reference');}
-        const previousFirst=goal.candidates.find(c=>c.artifactId===goal.firstInspection),ids=new Set<string>();
-        // Omission does not reject a previously validated candidate. Explicit new first choice wins.
-        goal.candidates=[...(first?[first]:previousFirst?[previousFirst]:[]),...candidates,...goal.candidates].filter(e=>{if(ids.has(e.artifactId))return false;ids.add(e.artifactId);return true;}).slice(0,12);
-        goal.firstInspection=first?.artifactId??goal.firstInspection;goal.uncertainty=row.uncertainty.flatMap(text=>safeSummary(text)??[]);
-      }
-      navigation.goals=nextGoals;
+        navigation.goals=nextGoals;
+        return { readPaths: result.readPaths };
+      }finally{evidenceContext=measurements;}
+      });
       if(round===0&&result.readPaths.length){
         if(await readSnapshots(result.readPaths,'model'))continue;
         lifecycle.push({kind:'stop',reason:'no_new_context'});
@@ -716,7 +756,7 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
     navigation.state=navigation.goals.every(g=>g.firstInspection)&&!navigation.unprocessed.length&&!navigation.limitations.length?'ranked':'partial';
   }catch(error){recordFailure(navigationFailureCategory(error),navigationFailureReason(error));navigation.limitations.push('semantic_unavailable');lifecycle.push({kind:'stop',reason:'provider_failure'});}
   // Retained provisional locations still require final authorization after failure.
-  if(!await fresh('final')){navigation.goals.forEach(g=>{g.firstInspection=null;g.candidates=[];});navigation.state='partial';lifecycle.push({kind:'stop',reason:'freshness'});}
+  if(!await fresh('final')){navigation.goals.forEach(g=>{for(const c of g.candidates)evidence('local_validation',{artifactId:c.artifactId,goalId:g.id,reason:'freshness_rejected'});g.firstInspection=null;g.candidates=[];});navigation.state='partial';lifecycle.push({kind:'stop',reason:'freshness'});}
   return finish();
 }
 

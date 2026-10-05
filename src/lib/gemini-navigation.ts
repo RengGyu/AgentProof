@@ -1,5 +1,5 @@
 import { paidProviderCall, normalizePaidUsage } from './paid-budget';
-import { recordNavigationTransport, type NavigationTransportDiagnostics } from './review-navigation-diagnostics';
+import { getNavigationMeasurements, recordNavigationTransport, type NavigationTransportDiagnostics } from './review-navigation-diagnostics';
 import { GoogleGenAI } from '@google/genai';
 import {
   OpenAISemanticError,
@@ -27,7 +27,7 @@ export async function submitReviewNavigationWithGemini(
   const started=Date.now();
   let response:GeminiResponse;
   try {
-    response=await paidProviderCall({provider:"google",model:directModel(request.model),usage:result=>normalizePaidUsage("google",result.usageMetadata),invoke:signal=>generateContent({
+    response=await paidProviderCall({provider:"google",model:directModel(request.model),measurements:getNavigationMeasurements(request),usage:result=>normalizePaidUsage("google",result.usageMetadata),invoke:signal=>generateContent({
       model:directModel(request.model),
       contents:JSON.stringify(request),
       config:{

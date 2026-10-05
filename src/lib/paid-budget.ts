@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash, randomUUID } from 'node:crypto';
 import { getControlPlaneSupabaseEnv } from './control-plane-supabase';
+import { measureReviewAsync, type ReviewMeasurementContext } from './review-navigation-diagnostics';
 
 export class PaidBudgetError extends Error {
   constructor(public readonly code: string) { super('Paid analysis is paused or its budget could not be verified. Existing reports remain available.'); this.name='PaidBudgetError'; }
@@ -8,7 +9,7 @@ export class PaidBudgetError extends Error {
 export interface PaidUsage { input: number; output: number }
 interface Price { inputUsdPerMillion: string; outputUsdPerMillion: string; callReserveKrw: string; source: string }
 interface BudgetConfig { timeZone: string; krwPerUsd: string; validUntil: string; prices: Record<string, Price> }
-interface Scope { key: string; owner: string; config?: BudgetConfig; failure?: PaidBudgetError; started: boolean; closed: boolean }
+interface Scope { key: string; owner: string; config?: BudgetConfig; failure?: PaidBudgetError; started: boolean; closed: boolean; measurements?:ReviewMeasurementContext }
 const scopes = new AsyncLocalStorage<Scope>();
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 const CALL_TIMEOUT_MS=60_000;
@@ -21,8 +22,8 @@ export function assertPaidAnalysisAllowed():void {
 }
 
 /** Scope carries no prompt or credential to the durable ledger. Admission is lazy. */
-export async function withPaidAnalysis<T>(key: string, work: () => Promise<T>): Promise<T> {
-  const scope: Scope={key:hash(key),owner:randomUUID(),started:false,closed:false};
+export async function withPaidAnalysis<T>(key: string, work: () => Promise<T>, measurements?:ReviewMeasurementContext): Promise<T> {
+  const scope: Scope={key:hash(key),owner:randomUUID(),started:false,closed:false,measurements};
   return scopes.run(scope, async()=>{
     try {
       const result=await work();
@@ -33,7 +34,7 @@ export async function withPaidAnalysis<T>(key: string, work: () => Promise<T>): 
       throw scope.failure ?? error;
     } finally {
       scope.closed=true;
-      if(scope.started)await rpc({p_action:'close',p_run:scope.key,p_owner:scope.owner});
+      if(scope.started)await measureReviewAsync(measurements,'budget_close',()=>rpc({p_action:'close',p_run:scope.key,p_owner:scope.owner}));
     }
   });
 }
@@ -91,21 +92,24 @@ function validateConfig(raw:unknown):BudgetConfig {
   return c;
 }
 
-export async function paidProviderCall<T>(options:{provider:'google'|'openai';model:string;invoke:(signal:AbortSignal)=>Promise<T>;usage:(result:T)=>PaidUsage|null}):Promise<T> {
+export async function paidProviderCall<T>(options:{provider:'google'|'openai';model:string;invoke:(signal:AbortSignal)=>Promise<T>;usage:(result:T)=>PaidUsage|null;measurements?:ReviewMeasurementContext}):Promise<T> {
   const scope=scopes.getStore();
   if(!scope || scope.closed)throw new PaidBudgetError('budget_scope_required');
   if(scope.failure)throw scope.failure;
-  let price:Price;
+  const measurements=options.measurements??scope.measurements;
+  let price!:Price;
   const callId=randomUUID();
   try {
-    scope.config ??= validateConfig((await rpc({p_action:'config'})).config);
-    price=scope.config.prices[`${options.provider}/${options.model}`];
-    if(!price || typeof price.source!=='string' || !price.source.startsWith('https://'))throw new PaidBudgetError('budget_price_unconfigured');
-    if(decimal(price.inputUsdPerMillion,6)<=0n||decimal(price.outputUsdPerMillion,6)<=0n)throw new PaidBudgetError('budget_price_invalid');
-    const reserve=safeNumber(decimal(price.callReserveKrw,3));
-    if(reserve<=0)throw new PaidBudgetError('budget_reserve_invalid');
-    await rpc({p_action:'reserve',p_run:scope.key,p_owner:scope.owner,p_call:callId,p_reserve:reserve,p_config:scope.config});
-    scope.started=true;
+    await measureReviewAsync(measurements,'budget_reserve',async()=>{
+      scope.config ??= validateConfig((await rpc({p_action:'config'})).config);
+      price=scope.config.prices[`${options.provider}/${options.model}`];
+      if(!price || typeof price.source!=='string' || !price.source.startsWith('https://'))throw new PaidBudgetError('budget_price_unconfigured');
+      if(decimal(price.inputUsdPerMillion,6)<=0n||decimal(price.outputUsdPerMillion,6)<=0n)throw new PaidBudgetError('budget_price_invalid');
+      const reserve=safeNumber(decimal(price.callReserveKrw,3));
+      if(reserve<=0)throw new PaidBudgetError('budget_reserve_invalid');
+      await rpc({p_action:'reserve',p_run:scope.key,p_owner:scope.owner,p_call:callId,p_reserve:reserve,p_config:scope.config});
+      scope.started=true;
+    });
   } catch(error) {
     scope.failure=error instanceof PaidBudgetError?error:new PaidBudgetError('budget_unavailable');
     throw scope.failure;
@@ -122,24 +126,24 @@ export async function paidProviderCall<T>(options:{provider:'google'|'openai';mo
   timer=setTimeout(poll,PAUSE_POLL_MS);
   let charge:number|null=null;
   try {
-    const result=await Promise.race([
+    const result=await measureReviewAsync(measurements,'provider_transport',()=>Promise.race([
       options.invoke(controller.signal),
       new Promise<never>((_resolve,reject)=>controller.signal.addEventListener('abort',()=>reject(controller.signal.reason),{once:true}))
-    ]);
+    ]));
     const usage=options.usage(result);
-    charge=usage?calculateUsageMilliKrw(usage,price,scope.config.krwPerUsd):null;
+    charge=usage?calculateUsageMilliKrw(usage,price,scope.config!.krwPerUsd):null;
     return result;
   } finally {
     done=true;clearTimeout(timeout);if(timer)clearTimeout(timer);
     // Missing usage, cancellation and provider/network failure retain the reservation.
     // A failed settlement also leaves the durable pending reservation in place.
-    try { await rpc({p_action:'settle',p_run:scope.key,p_owner:scope.owner,p_call:callId,p_charge:charge}); }
+    try { await measureReviewAsync(measurements,'budget_settle',()=>rpc({p_action:'settle',p_run:scope.key,p_owner:scope.owner,p_call:callId,p_charge:charge})); }
     catch(error) { scope.failure=error instanceof PaidBudgetError?error:new PaidBudgetError('budget_unavailable');throw scope.failure; }
   }
 }
 
 /** All OpenAI POSTs pass here; legacy background submissions fail closed. GETs do not create work. */
-export async function budgetedOpenAIFetch(url:string,init:RequestInit,fetchFn:typeof fetch=fetch):Promise<Response> {
+export async function budgetedOpenAIFetch(url:string,init:RequestInit,fetchFn:typeof fetch=fetch,measurements?:ReviewMeasurementContext):Promise<Response> {
   if(init.method==='GET')return fetchFn(url,init);
   const body=JSON.parse(String(init.body));
   if(body.background){
@@ -148,7 +152,7 @@ export async function budgetedOpenAIFetch(url:string,init:RequestInit,fetchFn:ty
     throw error;
   }
   if(typeof body.model!=='string')throw new PaidBudgetError('budget_price_unconfigured');
-  return paidProviderCall({provider:'openai',model:body.model,
+  return paidProviderCall({provider:'openai',model:body.model,measurements,
     invoke:async signal=>{
       const response=await fetchFn(url,{...init,signal:init.signal?AbortSignal.any([signal,init.signal]):signal});
       // Read within the guarded lifetime; a stalled response body is cancellable too.

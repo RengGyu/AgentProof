@@ -1,5 +1,5 @@
 import { budgetedOpenAIFetch } from './paid-budget';
-import { recordNavigationTransport, type NavigationTransportDiagnostics } from './review-navigation-diagnostics';
+import { getNavigationMeasurements, recordNavigationTransport, type ReviewMeasurementContext, type NavigationTransportDiagnostics } from './review-navigation-diagnostics';
 import {
   buildLlmSemanticPackage,
   buildLlmSemanticPackageSubset,
@@ -86,6 +86,7 @@ export class OpenAISemanticError extends Error {
 }
 
 export interface OpenAISemanticOptions {
+  measurements?: ReviewMeasurementContext;
   apiKey: string;
   model?: string;
   outputLocale?: string;
@@ -100,7 +101,7 @@ export interface OpenAISemanticResult {
 /** Sends the already bounded observer package; validation remains with the observer. */
 export async function submitGeneralPrSemanticObservationWithOpenAI(
   semanticPackage: GeneralPrSemanticObserverPackageV4,
-  options: Pick<OpenAISemanticOptions, "apiKey" | "fetchFn">
+  options: Pick<OpenAISemanticOptions, "apiKey" | "fetchFn" | "measurements">
 ): Promise<unknown> {
   try {
     const response = await fetchGeneralPrSemanticObservationResponse(OPENAI_RESPONSES_URL, {
@@ -117,7 +118,7 @@ export async function submitGeneralPrSemanticObservationWithOpenAI(
         max_output_tokens: semanticPackage.request.maxOutputTokens
       }),
       signal: AbortSignal.timeout(semanticPackage.request.timeoutMs)
-    }, options.fetchFn);
+    }, options.fetchFn, options.measurements);
     const payload = await parseOpenAIResponseJson(response);
     const incompleteReason = openAIIncompleteReason(payload);
     if (incompleteReason) throw new OpenAISemanticError("openai_output_invalid", false, "OpenAI observer response was incomplete.", undefined, undefined, incompleteReason);
@@ -137,10 +138,11 @@ export async function submitGeneralPrSemanticObservationWithOpenAI(
 async function fetchGeneralPrSemanticObservationResponse(
   url: string,
   init: RequestInit,
-  fetchFn: typeof fetch | undefined
+  fetchFn: typeof fetch | undefined,
+  measurements?: ReviewMeasurementContext
 ): Promise<Response> {
   try {
-    const response = await budgetedOpenAIFetch(url, init, fetchFn);
+    const response = await budgetedOpenAIFetch(url, init, fetchFn, measurements);
     if (response.ok) return response;
 
     const status = response.status;
@@ -731,7 +733,7 @@ export async function submitReviewNavigationWithOpenAI(
   const format=request.stage==='intent'
     ? {type:'json_schema',name:'agentproof_review_navigation_intent_v1',strict:true,schema:REVIEW_NAVIGATION_INTENT_SCHEMA}
     : {type:'json_schema',name:'agentproof_review_navigation_ranking_v1',strict:true,schema:REVIEW_NAVIGATION_RANKING_SCHEMA};
-  const response=await fetchGeneralPrSemanticObservationResponse(OPENAI_RESPONSES_URL,{method:'POST',headers:openAIHeaders(options.apiKey),body:JSON.stringify({model:request.model,input:[{role:'system',content:[{type:'input_text',text:system}]},{role:'user',content:[{type:'input_text',text:JSON.stringify(request)}]}],text:{format},store:false,max_output_tokens:6000}),signal:AbortSignal.timeout(60_000)},options.fetchFn);
+  const response=await fetchGeneralPrSemanticObservationResponse(OPENAI_RESPONSES_URL,{method:'POST',headers:openAIHeaders(options.apiKey),body:JSON.stringify({model:request.model,input:[{role:'system',content:[{type:'input_text',text:system}]},{role:'user',content:[{type:'input_text',text:JSON.stringify(request)}]}],text:{format},store:false,max_output_tokens:6000}),signal:AbortSignal.timeout(60_000)},options.fetchFn,getNavigationMeasurements(request));
   const payload=await parseOpenAIResponseJson(response);
   if(payload&&typeof payload==='object'){
     const p=payload as {model?:unknown;usage?:{input_tokens?:unknown;output_tokens?:unknown}};

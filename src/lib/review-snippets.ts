@@ -1,4 +1,6 @@
 import { redactSecretsPreservingLines } from './redact';
+import { createHash } from 'crypto';
+import { recordReviewEvidence, reviewArtifactId, reviewFileId, type ReviewMeasurementContext } from './review-navigation-diagnostics';
 
 // Search bounds are independent of the much smaller model context bounds.
 export const REVIEW_FILE_BYTES = 256 * 1024;
@@ -15,11 +17,19 @@ const wordsFor=(text:string)=>{
 };
 
 /** AST boundaries for JS/TS; other languages remain explicitly unparsed, anchored context. */
-export async function extractReviewSnippets(files:ReadFile[],goals:GoalHint[]):Promise<{snippets:Snippet[];limitations:string[]}> {
+export async function extractReviewSnippets(files:ReadFile[],goals:GoalHint[],measurements?:ReviewMeasurementContext):Promise<{snippets:Snippet[];limitations:string[]}> {
+ const hash=(s:string)=>createHash('sha256').update(s).digest('hex');
+ const metadataCache=new WeakMap<Snippet,{content:string;start:number;end:number;value:{artifactId:string;fileId:string;hash:string;startLine:number;endLine:number;bytes:number}}>();
+ const metadata=(s:Snippet)=>{
+  const cached=metadataCache.get(s);if(cached&&cached.content===s.content&&cached.start===s.startLine&&cached.end===s.endLine)return cached.value;
+  const digest=hash(s.content),value={artifactId:reviewArtifactId({path:s.path,revision:s.headSha,startLine:s.startLine,endLine:s.endLine,hash:digest}),fileId:reviewFileId(s.path,s.headSha),hash:digest,startLine:s.startLine,endLine:s.endLine,bytes:Buffer.byteLength(s.content)};
+  metadataCache.set(s,{content:s.content,start:s.startLine,end:s.endLine,value});return value;
+ };
+ const event=(stage:'snippet_candidate'|'snippet',s:Snippet,reason:string,parentIds?:()=>string[])=>recordReviewEvidence(measurements,stage,()=>({...metadata(s),reason,parentIds:parentIds?.()}));
  const limitations=new Set<string>();
  const candidates:Array<Snippet & {score:number}>=[];
  for(const file of files){
-  if(Buffer.byteLength(file.content)>REVIEW_FILE_BYTES){limitations.add('retrieval_file_budget_exceeded');continue;}
+  if(Buffer.byteLength(file.content)>REVIEW_FILE_BYTES){recordReviewEvidence(measurements,'read',{fileId:reviewFileId(file.path,file.headSha),bytes:Buffer.byteLength(file.content),reason:'file_budget_exceeded'});limitations.add('retrieval_file_budget_exceeded');continue;}
   // Masking can remove delimiters (for example password=password)), so use the
   // transient original only for boundaries. Matching, budgets and output stay redacted.
   const sourceContent=file.content.replace(/\r\n?/g,'\n'),sourceLines=sourceContent.split('\n');
@@ -156,6 +166,7 @@ export async function extractReviewSnippets(files:ReadFile[],goals:GoalHint[]):P
    if(scores.size)candidates.push({...file,content:text,startLine:range.startLine,endLine:range.endLine,goalIds:[...scores.keys()],goalScores:Object.fromEntries(scores),matched:[...scores.values()].some(score=>score>0),score:(goals.some(g=>g.anchors.some(a=>!a.weak&&a.path===file.path&&overlaps(a,range)))?1000:0)+relevance(range,allowedTerms)+range.priority});
   }
  }
+ for(const candidate of candidates)event('snippet_candidate',candidate,'included');
  const selected:Snippet[]=[];let bytes=2;
  const ranked=candidates.sort((a,b)=>b.score-a.score||a.path.localeCompare(b.path)||a.startLine-b.startLine);
  const firstPaths=new Set<string>();const leading=ranked.filter(c=>{if(firstPaths.has(c.path))return false;firstPaths.add(c.path);return true;});
@@ -163,13 +174,33 @@ export async function extractReviewSnippets(files:ReadFile[],goals:GoalHint[]):P
  const ordered=[...new Set([...goalLeading,...leading,...ranked])];
  const testIndex=ordered.findIndex(c=>/(?:^|\/)(?:tests?|__tests__)(?:\/|\.)|[._]test\./i.test(c.path));
  if(testIndex>0)ordered.splice(1,0,...ordered.splice(testIndex,1));
+ const payloadSize=(s:Snippet)=>{const {goalScores:_,...payload}=s;return Buffer.byteLength(JSON.stringify({...payload,goalIds:Array.from({length:16},(_,n)=>`goal_${n+1}`)}));};
  for(const candidate of ordered){
-  const covering=selected.find(r=>r.path===candidate.path&&r.headSha===candidate.headSha&&r.startLine<=candidate.startLine&&r.endLine>=candidate.endLine);
-  if(covering){covering.goalIds=[...new Set([...covering.goalIds,...candidate.goalIds])];for(const [id,score] of Object.entries(candidate.goalScores))covering.goalScores[id]=Math.max(covering.goalScores[id]??0,score);continue;}
+  const covering=selected.find(r=>r.path===candidate.path&&r.headSha===candidate.headSha&&r.startLine<=candidate.startLine&&r.endLine>=candidate.endLine&&r.content.split('\n').slice(candidate.startLine-r.startLine,candidate.endLine-r.startLine+1).join('\n')===candidate.content);
+  if(covering){event('snippet_candidate',candidate,'covered',()=>[metadata(covering).artifactId]);covering.goalIds=[...new Set([...covering.goalIds,...candidate.goalIds])];for(const [id,score] of Object.entries(candidate.goalScores))covering.goalScores[id]=Math.max(covering.goalScores[id]??0,score);continue;}
   const {score:_,...snippet}=candidate;
-  const {goalScores:__,...payloadSnippet}=snippet;
-  const size=Buffer.byteLength(JSON.stringify({...payloadSnippet,goalIds:Array.from({length:16},(_,n)=>`goal_${n+1}`)}))+1;
-  if(selected.length>=REVIEW_PAYLOAD_SNIPPETS||bytes+size>REVIEW_PAYLOAD_BYTES){limitations.add('retrieval_budget_exceeded');continue;}
+  // Charge the bounded source union, not every overlapping fallback window.
+  // Otherwise a dense prefix consumes all slots before the later merge releases them.
+  let joined=false;
+  for(const previous of selected){
+   if(previous.path!==snippet.path||previous.headSha!==snippet.headSha||!overlaps(previous,snippet))continue;
+   const start=Math.min(previous.startLine,snippet.startLine),end=Math.max(previous.endLine,snippet.endLine);
+   if(end-start>=80)continue;
+   const a=previous.content.split('\n'),b=snippet.content.split('\n');
+   let agrees=true;for(let line=Math.max(previous.startLine,snippet.startLine);line<=Math.min(previous.endLine,snippet.endLine);line++)if(a[line-previous.startLine]!==b[line-snippet.startLine])agrees=false;
+   if(!agrees)continue;
+   const content=Array.from({length:end-start+1},(_,offset)=>{const line=start+offset;return line>=previous.startLine&&line<=previous.endLine?a[line-previous.startLine]!:b[line-snippet.startLine]!;}).join('\n');
+   if(Buffer.byteLength(content)>8000)continue;
+   const merged={...previous,startLine:start,endLine:end,content,matched:previous.matched||snippet.matched};
+   const delta=payloadSize(merged)-payloadSize(previous);if(bytes+delta>REVIEW_PAYLOAD_BYTES)continue;
+   const parents=measurements?.trace.canRecordEvidence()?[metadata(previous).artifactId,metadata(snippet).artifactId]:undefined;
+   Object.assign(previous,merged);previous.goalIds=[...new Set([...previous.goalIds,...snippet.goalIds])];
+   for(const [id,score] of Object.entries(snippet.goalScores))previous.goalScores[id]=Math.max(previous.goalScores[id]??0,score);
+   bytes+=delta;event('snippet_candidate',previous,'merged',parents?()=>parents:undefined);joined=true;break;
+  }
+  if(joined)continue;
+  const size=payloadSize(snippet)+(selected.length?1:0);
+  if(selected.length>=REVIEW_PAYLOAD_SNIPPETS||bytes+size>REVIEW_PAYLOAD_BYTES){event('snippet_candidate',candidate,'snippet_budget_exceeded');limitations.add('retrieval_budget_exceeded');continue;}
   bytes+=size;selected.push(snippet);
  }
  // Merge overlapping windows only when their shared text agrees and the union stays bounded.
@@ -181,10 +212,12 @@ export async function extractReviewSnippets(files:ReadFile[],goals:GoalHint[]):P
    const agrees=Array.from({length:Math.min(previous.endLine,snippet.endLine)-snippet.startLine+1},(_,i)=>a[snippet.startLine-previous.startLine+i]===b[i]).every(Boolean);
    const content=[...a,...b.slice(Math.max(0,previous.endLine-snippet.startLine+1))].join('\n');
    if(agrees&&endLine-previous.startLine<80&&Buffer.byteLength(content)<=8000){
-    previous.endLine=endLine;previous.content=content;previous.goalIds=[...new Set([...previous.goalIds,...snippet.goalIds])];for(const [id,score] of Object.entries(snippet.goalScores))previous.goalScores[id]=Math.max(previous.goalScores[id]??0,score);previous.matched||=snippet.matched;continue;
+    const parents=measurements?.trace.canRecordEvidence()?[metadata(previous).artifactId,metadata(snippet).artifactId]:undefined;
+    previous.endLine=endLine;previous.content=content;previous.goalIds=[...new Set([...previous.goalIds,...snippet.goalIds])];for(const [id,score] of Object.entries(snippet.goalScores))previous.goalScores[id]=Math.max(previous.goalScores[id]??0,score);previous.matched||=snippet.matched;event('snippet_candidate',previous,'merged',parents?()=>parents:undefined);continue;
    }
   }
   merged.push(snippet);
  }
+ for(const snippet of merged)event('snippet',snippet,'selected');
  return {snippets:merged,limitations:[...limitations]};
 }

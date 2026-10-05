@@ -1,3 +1,5 @@
+import { createReviewMeasurements, measureReviewAsync, measureReviewSync, recordReviewEvidence, type ReviewMeasurementContext } from '@/lib/review-navigation-diagnostics';
+import { buildPrEvidenceReview } from '@/lib/pr-evidence-review';
 import { resolveWorkspaceAccess, validWorkspaceMutation, type WorkspaceSource } from "./access";
 import { PaidBudgetError, withPaidAnalysis } from "@/lib/paid-budget";
 import type { TenantAuthAccessResult } from "@/lib/tenant-auth";
@@ -56,6 +58,7 @@ export async function POST(request: Request, source: WorkspaceSource = "web", op
   const timing = createAnalyzeTiming();
   const evidenceTiming = createGitHubEvidenceTiming();
   const operatorDiagnosticsRequested = request.headers.get(OPERATOR_DIAGNOSTIC_HEADER) === OPERATOR_DIAGNOSTIC_VERSION;
+  let measurements: ReviewMeasurementContext | undefined;
 
   try {
     let nativeAccess: TenantAuthAccessResult | undefined;
@@ -67,6 +70,8 @@ export async function POST(request: Request, source: WorkspaceSource = "web", op
     if (operatorDiagnosticsRequested) {
       const auth = verifyOpsRequest(request);
       if (!auth.ok) return auth.response;
+      const trace = createReviewMeasurements();
+      measurements = { trace, parentId: trace.start('request') };
     }
 
     const contentLength = Number(request.headers.get("content-length") ?? 0);
@@ -169,9 +174,13 @@ export async function POST(request: Request, source: WorkspaceSource = "web", op
     }
 
     timing.start("evidence");
-    const input = body.demoScenario
+    const input = await measureReviewAsync(measurements, 'initial_evidence', async () => body.demoScenario
       ? demoScenarios[body.demoScenario]
-      : await buildPullRequestInput(publicPrUrl ? { ...body, githubToken: githubCredential } : { ...body, githubToken: undefined }, evidenceTiming);
+      : await buildPullRequestInput(publicPrUrl ? { ...body, githubToken: githubCredential } : { ...body, githubToken: undefined }, evidenceTiming));
+    // Preserve the existing public-only detailed operator diagnostic boundary.
+    if (input.repositoryPrivate !== false) measurements = undefined;
+    const reportSpan = measurements?.trace.start('report', measurements.parentId);
+    const reportMeasurements = measurements ? { trace: measurements.trace, parentId: reportSpan } : undefined;
     if (publicPrUrl && input.repositoryPrivate === true && !privateGrant) {
       return jsonNoStore({ error: "Private repository analysis is off until its code-analysis notice is accepted.", code: "github_private_consent_required", hint: "Open repository settings and turn on AgentProof analysis." }, 409, timing);
     }
@@ -188,6 +197,7 @@ export async function POST(request: Request, source: WorkspaceSource = "web", op
       input,
       navigation: {
         model: navigationProvider.model,
+        measurements: reportMeasurements,
         ...(operatorDiagnosticsRequested && input.repositoryPrivate === false ? {
           onDiagnostics: (event: ReviewNavigationDiagnostics) => navigationDiagnostics.push(event)
         } : {}),
@@ -202,33 +212,33 @@ export async function POST(request: Request, source: WorkspaceSource = "web", op
           readCurrentInput: () => buildGitHubPullRequestInput(publicPrUrl, githubCredential, "", undefined, {expectedHeadSha:input.sourceProvenance?.headSha,expectedBaseSha:input.sourceProvenance?.baseSha})
         } : {})
       },
-      ...(publicPrUrl && input.repositoryPrivate === false ? { collectDocumentationArtifacts: (paths: string[], headSha: string) => collectOrdinaryDocumentationArtifacts(publicPrUrl, githubCredential, paths, headSha) } : {}),
-      ...(publicPrUrl && input.repositoryPrivate === false ? { collectStaticArtifacts: (paths: string[], headSha: string) => collectOrdinaryStaticArtifacts(publicPrUrl, githubCredential, paths, headSha) } : {}),
-      ...(publicPrUrl && input.repositoryPrivate === false ? { collectScalarArtifacts: (paths: string[], headSha: string) => collectOrdinaryScalarArtifacts(publicPrUrl, githubCredential, paths, headSha) } : {}),
-      ...(publicPrUrl && input.repositoryPrivate === false ? { collectTypeScriptProject: (headSha: string) => collectOrdinaryTypeScriptProject(publicPrUrl, githubCredential, headSha) } : {}),
+      ...(publicPrUrl && input.repositoryPrivate === false ? { collectDocumentationArtifacts: (paths: string[], headSha: string) => measureReviewAsync(reportMeasurements, 'additional_read', () => collectOrdinaryDocumentationArtifacts(publicPrUrl, githubCredential, paths, headSha)) } : {}),
+      ...(publicPrUrl && input.repositoryPrivate === false ? { collectStaticArtifacts: (paths: string[], headSha: string) => measureReviewAsync(reportMeasurements, 'additional_read', () => collectOrdinaryStaticArtifacts(publicPrUrl, githubCredential, paths, headSha)) } : {}),
+      ...(publicPrUrl && input.repositoryPrivate === false ? { collectScalarArtifacts: (paths: string[], headSha: string) => measureReviewAsync(reportMeasurements, 'additional_read', () => collectOrdinaryScalarArtifacts(publicPrUrl, githubCredential, paths, headSha)) } : {}),
+      ...(publicPrUrl && input.repositoryPrivate === false ? { collectTypeScriptProject: (headSha: string) => measureReviewAsync(reportMeasurements, 'additional_read', () => collectOrdinaryTypeScriptProject(publicPrUrl, githubCredential, headSha)) } : {}),
       generateReport: generateVerificationReportV2FromInput,
       // The existing runtime gate remains the final authority below. This
       // preflight merely prevents shadow collection for an invalid report.
       validateDeterministicReport: (candidateInput, candidateReport) =>
-        resolveRuntimeReportValidation({
+        measureReviewSync(reportMeasurements, 'runtime_validation', () => resolveRuntimeReportValidation({
           boundary: "generated_private_full",
           input: candidateInput,
           report: candidateReport,
           requireV2: true
-        }).valid,
+        }).valid),
       ...(semanticEligible && publicPrUrl && observerApiKey && observerModel ? {
         semantic: {
           provider: {
-            observe: (semanticPackage) => submitGeneralPrSemanticObservationWithOpenAI(semanticPackage, {
-              apiKey: observerApiKey
-            })
+            observe: (semanticPackage) => measureReviewAsync(reportMeasurements, 'model', child => submitGeneralPrSemanticObservationWithOpenAI(semanticPackage, {
+              apiKey: observerApiKey, measurements: child
+            }))
           },
           providerAvailable: true,
           privateRepository: false,
-          readCurrentInput: () => buildGitHubPullRequestInput(publicPrUrl, githubCredential, "", undefined, {
+          readCurrentInput: () => measureReviewAsync(reportMeasurements, 'freshness_read', () => buildGitHubPullRequestInput(publicPrUrl, githubCredential, "", undefined, {
             expectedHeadSha: input.sourceProvenance?.headSha,
             expectedBaseSha: input.sourceProvenance?.baseSha
-          }),
+          })),
           modelProfile: {
             model: observerModel,
             promptVersion: "general-pr-observer.v4",
@@ -243,17 +253,18 @@ export async function POST(request: Request, source: WorkspaceSource = "web", op
         const diagnosticRun = operatorDiagnosticsRequested ? await runGeneralPrInformationDiagnosticV1(observationOptions) : null;
         const observed = diagnosticRun?.result ?? await generalPrObservationService.runGeneralPrObservationNowV2(observationOptions);
         return { diagnosticRun, observed };
-      }
+      }, reportMeasurements
     );
+    if (reportSpan) measurements!.trace.finish(reportSpan);
     const report = observed.report;
 
     timing.start("validation");
-    const validation = resolveRuntimeReportValidation({
+    const validation = measureReviewSync(measurements, 'runtime_validation', () => resolveRuntimeReportValidation({
       boundary: "generated_private_full",
       input,
       report,
       requireV2: true
-    });
+    }));
 
     if (!validation.valid) {
       return jsonNoStore(
@@ -295,6 +306,17 @@ export async function POST(request: Request, source: WorkspaceSource = "web", op
       });
     }
 
+    const operatorPayload = (projectedReport: typeof validation.report) => {
+      if (!measurements) return {};
+      try { measureReviewSync(measurements, 'display_projection', child => buildPrEvidenceReview(projectedReport, {
+        onNavigationProjection: event => recordReviewEvidence(child, 'projection', event)
+      })); } catch { /* Diagnostics must not turn an acknowledged save into a failure. */ }
+      measurements.trace.finish(measurements.parentId!);
+      // Ends before response JSON encoding/network delivery; projection is the
+      // shared navigation view transform, not a browser paint acknowledgement.
+      return { operatorNavigationDiagnostics: navigationDiagnostics, operatorMeasurements: measurements.trace.snapshot() };
+    };
+
     if (workspaceIdentity) {
       const headSha = input.sourceProvenance?.headSha;
       const requestedPr = parseGitHubPullUrl(publicPrUrl!);
@@ -308,25 +330,25 @@ export async function POST(request: Request, source: WorkspaceSource = "web", op
       const target = { repositoryId: workspaceIdentity.repositoryId, pullRequestNumber: workspaceIdentity.pullRequestNumber, headSha };
       // A session/account may have been revoked while generation was running.
       // The durable store's deletion guard is the final concurrent write gate.
-      const currentAccess = await resolveWorkspaceAccess(request, source);
+      const currentAccess = await measureReviewAsync(measurements, 'session_recheck', () => resolveWorkspaceAccess(request, source));
       if (!currentAccess.authorized || currentAccess.tenantId !== workspaceIdentity.tenantId) {
         return jsonNoStore({ error: "Sign in again before generating a saved report.", code: "workspace_session_changed" }, 401, timing);
       }
       // The durable projection intentionally omits source provenance. Keep the
       // validated snapshot binding in this transient, sanitized signed response
       // so the browser can check the report against the selected PR target.
-      const responseReport = prepareTenantDetailReportForStorage(validation.report, "verified_agentproof");
+      const responseReport = measureReviewSync(measurements, 'response_projection', () => prepareTenantDetailReportForStorage(validation.report, "verified_agentproof"));
       try {
-        const saved = await createVerifiedSavedReport(validation.report, {
+        const saved = await measureReviewAsync(measurements, 'storage', child => createVerifiedSavedReport(validation.report, {
           ...workspaceIdentity, headSha, retention: "until-deletion", validationInput: input
-        });
+        }, child));
         return jsonNoStore({
-          report: responseReport, target,
+          report: responseReport, target, ...operatorPayload(responseReport),
           persistence: { status: "saved", id: saved.id, createdAt: saved.createdAt }
         }, 200, timing, evidenceTiming);
       } catch {
         return jsonNoStore({
-          report: responseReport, target,
+          report: responseReport, target, ...operatorPayload(responseReport),
           persistence: { status: "failed", message: "Report generated, but it could not be saved. Previous reports are unchanged. Try again." }
         }, 200, timing, evidenceTiming);
       }
@@ -336,7 +358,7 @@ export async function POST(request: Request, source: WorkspaceSource = "web", op
       report: validation.report,
       ...(operatorDiagnosticsRequested ? {
         operatorDiagnostics: buildGeneralPrSemanticOperatorDiagnosticsV1(observed.bundle),
-        ...(input.repositoryPrivate === false ? { operatorNavigationDiagnostics: navigationDiagnostics } : {}),
+        ...operatorPayload(validation.report),
         operatorTargetDiagnostics: diagnosticRun?.diagnostic
       } : {})
     }, 200, timing, evidenceTiming);
