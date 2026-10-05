@@ -1638,7 +1638,16 @@ export function buildEvidenceIndexResult(
 
   const buckets: EvidenceItem[][] = Array.from({ length: 6 }, () => []);
   for (const item of items) buckets[evidenceRank(item)].push(item);
-  const ranked = buckets.flat();
+  // Review priority always names risk-sensitive changed files, so when the index
+  // must drop items their file evidence (with or without a patch) is kept first.
+  const riskFiles = [...buckets[3], ...buckets[5]].filter(isRiskFileEvidence);
+  const ranked = items.length <= MAX_REPORT_EVIDENCE_ITEMS ? buckets.flat() : [
+    ...buckets[0], ...buckets[1], ...buckets[2],
+    ...riskFiles,
+    ...buckets[3].filter((item) => !isRiskFileEvidence(item)),
+    ...buckets[4],
+    ...buckets[5].filter((item) => !isRiskFileEvidence(item))
+  ];
   // Retain original IDs so existing evidence references remain stable even
   // when lower-priority items are omitted.
   const kept = ranked.slice(0, MAX_REPORT_EVIDENCE_ITEMS);
@@ -1670,6 +1679,10 @@ function firstChangedLine(patch: string | undefined, side: "head" | "base"): num
 
 function exactRevisionSha(value: string | undefined): string | undefined {
   return value && /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(value) ? value : undefined;
+}
+
+function isRiskFileEvidence(item: EvidenceItem): boolean {
+  return (item.kind === "diff" || item.kind === "changed_file") && typeof item.locator === "string" && isRiskFile(item.locator);
 }
 
 function evidenceRank(item: EvidenceItem): number {

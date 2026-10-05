@@ -62,6 +62,10 @@ After this no-secret gate, verify a signed-in PR once in the browser and trigger
 
 ## P0 Cron Decision
 
+Automatic one-report-per-head analysis requires `202609250001_automatic_analysis_once_per_head.sql` and a durable analysis queue. On Vercel, each accepted queued PR or completed-check webhook schedules one post-response wake after the 45-second CI discovery window. The worker keeps a known pending check queued until it settles; a completed-check webhook wakes it again. A PR without CI analyzes on the initial wake. The daily worker cron (`0 5 * * *` in `vercel.json`) is recovery if an event wake fails or a check settles without a delivered webhook. That fallback may wait until the next daily run. Queue-disabled inline webhook analysis retains its earlier immediate behavior and does not provide this guarantee.
+
+The GitHub session credential cleanup runs daily at `/api/cron/github-sessions/cleanup` after session expiry. It requires the same `CRON_SECRET` or `AGENTPROOF_CRON_TOKEN` as the existing crons. Verify the deployed cron reports `status: "ran"`; `status: "disabled"` means credentials are not being purged automatically.
+
 The public demo keeps the Vercel cron entries in `vercel.json`, but cron work only runs when `CRON_SECRET` or `AGENTPROOF_CRON_TOKEN` is configured and the request presents that token by `Authorization: Bearer ...` or `x-agentproof-cron-token`. Query-string tokens are rejected.
 
 For design-partner beta readiness, token-unconfigured cron requests are harmless metadata-only no-ops. This avoids noisy scheduled failures on the public demo while preserving fail-closed behavior for invalid tokens and unavailable queue/storage dependencies. The no-op response must not return repository names, tenant ids, report ids, raw reports, evidence, claims, diffs, logs, re-prompt text, table/env names, or secrets.
@@ -178,3 +182,354 @@ Most recent no-secret production gate:
 - GitHub App comments are a separate opt-in and update one marker comment only.
 - No auto-merge or merge-blocking decision.
 - No durable raw diff, raw log, raw annotation detail, token, claim, or raw re-prompt storage.
+
+## 2026-09-22 public analysis candidate — launch blocked on policy
+
+This checkpoint supersedes no historical live-pass claim above. It concerns the
+existing public `/analyze` flow on Vercel project `agentproof`, production alias
+`https://agentproof-pearl.vercel.app`, worktree branch
+`codex/recover-bounded-target-20260913`, base `dea35fb`. No deployment was performed.
+
+### Verified locally
+
+- Restored only the duplicate-inspection source/test changes from `50041e6`.
+  The first recommended artifact appears once in its goal; other revisions and
+  ranges remain separate. Exact selected links survive both Markdown exports.
+- Reviewer questions are collapsed, optional supporting text. Reasons, uncertainty,
+  source links and exact-commit navigation remain visible.
+- A valid interpretation with no goal shows collected changes neutrally; an
+  interpretation failure says it is unavailable. Ranking failure preserves the
+  existing source/collected-change route without a fabricated recommendation.
+- Analysis handles non-JSON 429/503/504 responses with safe manual retry guidance,
+  retains entered evidence, clears the optional token, and allows switching to
+  pasted evidence. An old report is identified when the latest request fails.
+  No automatic paid retry is added.
+- Focused tests: 18 files / 277 passed, including API diagnostics authorization,
+  GitHub permission/rate-limit fallbacks, OAuth start/callback boundaries, quota
+  fail-closed behavior, privacy/share, storage-backed projection and exact links.
+  `pnpm typecheck` and `pnpm build` passed (exit 0).
+- Logs: `/tmp/public-readiness-focused.log`, `/tmp/public-readiness-typecheck.log`,
+  `/tmp/public-readiness-build.log`. Full suite and browser/live login/provider
+  smoke were not run. Mocked provider tests are not live provider evidence.
+
+### Verified operational gap (read-only inspection)
+
+`/api/analyze` currently authenticates only requests for operator diagnostics.
+Ordinary requests can reach server-paid navigation/semantic providers without a
+usage reservation. The 80,000-byte body cap bounds input, not request frequency or
+spend. Existing `reserveUsageQuota` is tenant GitHub App analysis infrastructure;
+its monthly reservation is not called by this public route. Its enforcement
+variables were not present in the inspected production env-name listing.
+
+Vercel `firewall status --json` on the linked project reported firewall disabled,
+zero active/inactive custom rules, and bot protection disabled. This establishes
+no project-level custom request limiter here; it does not assess every platform
+DDoS mechanism or provider account spending setting. No external setting changed.
+
+The production env-name listing confirms presence of `AI_GATEWAY_API_KEY`,
+`AGENTPROOF_LLM_MODEL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `AGENTPROOF_OPS_TOKEN`,
+`AGENTPROOF_GITHUB_APP_CLIENT_ID`, `AGENTPROOF_GITHUB_APP_CLIENT_SECRET`,
+`AGENTPROOF_GITHUB_APP_OAUTH_CALLBACK_URL`, `AGENTPROOF_PUBLIC_AUTH_SECRET`,
+`AGENTPROOF_TENANT_SESSION_SECRET`, control-plane/report signing and storage
+credentials. Values, valid credentials, current callback registration, durable
+session migrations, and actual service operation were not verified. The repository's
+`vercel.json` supplies `AGENTPROOF_GENERAL_PR_OBSERVATION_MODE=advisory`.
+No Jev code, key, flag or model change is included.
+
+### Required owner decision before public model-backed launch
+
+Choose either anonymous public analysis with an approved distributed request/spend
+budget, or public self-service GitHub login using the existing OAuth/session path
+with an approved durable per-user/tenant quota. Neither option implies invite-only
+beta. Specify allowed request burst/period and a total paid-usage ceiling, including
+what users see when exhausted. Existing Vercel firewall and Supabase atomic quota
+infrastructure can then be reused with the approved identity/budget policy.
+An IP-only limiter is insufficient as the sole spend ceiling. Do not substitute a
+client button lock, Origin header, arbitrary tenant header or process-local map
+for server-enforced distributed authorization/quota. No policy numbers were invented.
+
+### Verification and rollback ownership
+
+The main task owns any subsequent deployment after the above decision and its
+implementation. Before promotion, verify the approved gate rejects over-budget,
+missing/invalid identity (if required), and unavailable quota-store requests before
+GitHub/model work; verify distributed concurrent requests cannot bypass the ceiling.
+Run one authorized public PR and login (if required) smoke on the candidate, checking
+source, recommendation/failure state, exact SHA links, and text-free operator
+traces. No July smoke result counts as this evidence.
+
+Record the actual immutable candidate and previous production deployment URLs
+before promotion. Roll back by restoring that recorded previous deployment in
+Vercel; Git revert alone does not change production. For a cost incident, the
+existing observation mode can disable paid analysis only through an explicitly
+approved setting/deployment change; no such change has been made here. Keep
+operator diagnostics behind `x-agentproof-ops-token`; never send that token to
+ordinary users or share links.
+
+
+### Same-day browser stability follow-up
+
+The preceding 277-test result is retained, not rerun wholesale. Additional
+changed-flow checks passed: 9 files / 76 tests, plus typecheck and production build (exit 0). The local HTTP probe
+also passed: actual summary save, API reread and saved page returned 200 using
+`short-lived-in-memory`, with zero evidence items and claims. A full untrusted
+report import returned 422; existing summary sanitization is required, and no
+validation was weakened. The browser UI's Recent list uses localStorage rather
+than this server-store endpoint.
+
+Reproduced/fixed: localStorage getter rejection crashed initial load; history
+save failure was labeled as a network/analysis failure; history clear failure
+escaped; share-copy failure was overwritten by success. Handler-level failure
+injection demonstrated all four before fixes. Browser testing also showed local
+summaries reopened in full-report mode; they now use summary mode and an explicit
+notice. Input validation errors now ask for correction rather than waiting.
+A new report mounts its own export/action state. Existing clipboard fallback is
+reused instead of a second copy implementation.
+
+Actual browser observations (local server, paid model and remote storage disabled):
+
+- Desktop 1280px and mobile viewport 390×844: demo analysis, invalid/empty input,
+  previous-report notice, cleared test credential, pasted-evidence recovery,
+  successful result focus, local history reopen. Mobile page width was 390px
+  with no horizontal overflow; captured error console entries were empty.
+- One live GitHub read: `psf/requests#7589` produced collected changes and the
+  source link. Its `_internal_utils.py#L44` link opened at commit
+  `1e2517e537eb5483771aefc72ca1aeb1f6b99962`. This is collection/navigation
+  evidence, not a paid-model recommendation or correctness evaluation.
+- The existing helper's portable demo summary and a locally saved demo summary
+  opened in the browser with imported/unverified and summary-only notices.
+  Temporary probe/test-link files were removed afterward.
+- Local GitHub sign-in displayed its unavailable message and reenabled the
+  button. Actual OAuth completion and durable tenant report access remain
+  untested; use an approved callback-compatible deployment and user login.
+- The browser automation virtual clipboard returned no data even after the UI
+  reported copying, so OS copy/paste success is not claimed. Copy failure behavior
+  is covered by injected rejection tests; user verification remains necessary.
+
+Local user test: open `http://127.0.0.1:3100/analyze`, choose Demo and Generate,
+then open the generated entry under Recent. Try an invalid PR URL, use pasted
+context, and generate again. Try Copy Share Link and open the pasted URL in a new
+tab in your regular browser. Recent and portable shares intentionally omit raw
+code and recommendations; keep the original page or explicitly download it.
+No credential is needed for these checks. Physical-phone or remote-user testing
+requires an authorized preview deployment; localhost is only on this machine.
+
+The local server is started with these process-only overrides (no env file edits):
+
+```sh
+AGENTPROOF_GENERAL_PR_OBSERVATION_MODE=disabled OPENAI_API_KEY= GEMINI_API_KEY= AI_GATEWAY_API_KEY= AGENTPROOF_REPORTS_SUPABASE_URL= AGENTPROOF_REPORTS_SUPABASE_SERVICE_ROLE_KEY= SUPABASE_URL= SUPABASE_SERVICE_ROLE_KEY= pnpm exec next start --hostname 127.0.0.1 --port 3100
+```
+
+Logs: `/tmp/usability-focused-final.log`, `/tmp/usability-typecheck-final.log`,
+`/tmp/usability-build-final.log`, `/tmp/usability-local-http.log`. No production
+settings, permissions, subscription, commit, push or deployment changed. Public
+access and spend policy remain the launch blocker described above.
+
+### 2026-09-22 authentication candidate (local only)
+
+Public PR requests with an enabled/configured paid provider now require the
+existing durable GitHub self-service session and same-origin mutation proof
+before GitHub collection. Missing/forged/expired/revoked/inactive sessions are
+rejected, and store errors fail closed. Operator tokens and submitted tenant
+identifiers cannot replace the session. This supersedes the earlier pending
+login-policy decision; quota and total-cost limits are still not implemented.
+Demos, pasted evidence, saved summaries and model-disabled/unconfigured
+PR collection remain public. Mixed demo/PR input never attaches a paid provider.
+
+The analysis sign-in button reuses the existing OAuth start/callback. Its sealed
+state permits only /analyze or /dashboard; arbitrary destinations fall back to
+/dashboard. Returning to analysis requires entering the PR again; raw input and
+GitHub tokens are not saved across login. Callback origin restrictions remain.
+
+Local verification: 167 tests passed, 6 skipped, one existing static-type display
+assertion failed; the same failure reproduced with the pre-auth API route.
+The 15 auth-boundary tests passed after the final stronger demo assertion.
+Typecheck and production build passed. OAuth/store/provider responses in these
+checks were fixtures. Actual browser OAuth and deployed session durability still
+need a callback-compatible deployment and user login; no paid execution occurred.
+Do not treat these local results as deployed auth or cost-limit verification.
+
+### Monthly paid-analysis budget candidate (2026-09-22, not deployed)
+
+The approved policy is a **30,000 KRW soft stop for new analyses** and a
+**50,000 KRW hard pause**. The new ledger is an estimate derived from provider
+usage, configured prices and FX; it is not an invoice or a provider account cap.
+Its calculation includes known estimated charges plus pending/unknown per-call
+reservations. Reservations can stop admission before known charges reach 30,000.
+Existing admitted runs may reserve follow-up calls after the soft stop. A call
+whose reservation would reach the hard boundary is refused. A settlement reaching
+50,000 latches that month paused; new calls and retries then fail closed.
+
+Install `supabase/migrations/202609220001_paid_analysis_budget.sql` through the
+normal approved deployment process. It creates a service-role-only RPC and
+metadata-only ledger using the existing control-plane Supabase connection. All
+reservations and settlements share a PostgreSQL transaction advisory lock across
+tenants and workers. Duplicate run owners/call IDs and closed-run replay are
+rejected; there is no process-memory quota fallback. Settlement is exactly once.
+Missing usage, errors, timeouts, cancellation, failed settlement and abandoned
+processes retain reservations; there is no automatic zero-cost refund or expiry.
+No prompt, raw response, GitHub token or API key is written to these tables.
+
+**Required owner configuration — intentionally unset:** the singleton
+`agentproof_paid_budget_settings.config` must contain:
+
+- `timeZone`: approved IANA calendar zone. The DB uses its own clock to assign the
+  month at call reservation; changing the zone after ledger use fails closed.
+  A run crossing a month must pass admission again. Pending calls remain in the
+  month in which they were reserved, including late settlement. This is a ledger
+  convention, not a claim about invoice month boundaries.
+- `krwPerUsd`: positive decimal string, at most three decimal places. No live FX
+  lookup, tax, card surcharge or assumed exchange rate is included.
+- `validUntil`: explicit ISO timestamp limiting the price/FX snapshot's validity.
+- `prices`: keys such as `google/gemini-3.8-flash` and each enabled OpenAI model.
+  Each entry requires positive decimal strings `inputUsdPerMillion` and
+  `outputUsdPerMillion` (up to six decimals), `callReserveKrw` (up to three), and
+  an HTTPS `source`. The call reservation is an owner-approved conservative
+  estimate, not a proven upper bound on provider billing. Unlisted models fail
+  closed. Prices and FX are pinned to the admitted run until their expiry.
+
+Missing/expired settings or an unavailable durable store block paid generation.
+The migration intentionally provides no FX, calendar, reserve amount or model
+price default. Gemini model selection remains unchanged. The official Gemini
+standard text prices checked on 2026-09-22 were USD 0.75 input and USD 3.75 output
+per million tokens through 2026-12-31, with output including thinking; verify the
+applicable tier/date before configuring.
+[Google pricing](https://ai.google.dev/gemini-api/docs/pricing).
+
+Gemini accounting uses `totalTokenCount - promptTokenCount` for combined output
+and verifies candidate/thought consistency when present; it never adds thoughts
+a second time. Missing/inconsistent usage retains the reservation. Cached input
+is conservatively priced as full input. OpenAI output tokens already include
+reasoning; nested reasoning counts are not added again.
+[Gemini usage fields](https://ai.google.dev/api/generate-content#UsageMetadata).
+
+**Cancellation boundary:** active synchronous calls check the durable pause every
+second (each store request has a five-second timeout) and abort locally on a
+pause/store failure. Calls have a 60-second local timeout; SDK-internal Gemini
+retries are disabled so every application retry needs another reservation.
+Detection/abort has polling and network latency; it is not instantaneous across
+processes. Google explicitly documents AbortSignal as client-only: service work
+and applicable charges can continue after local cancellation.
+[Google SDK cancellation](https://googleapis.github.io/js-genai/release_docs/interfaces/types.GenerateContentConfig.html#abortSignal).
+No exact 50,000 KRW external bill ceiling or reversal of an already-sent call is
+promised. Calls made outside these server paths or through a shared provider key
+are not observed by this ledger.
+
+**Server paid-path inventory:**
+
+- Public `/api/analyze`: existing session/CSRF first; one budget scope covers
+  navigation and semantic follow-ups. The browser sends an analysis attempt key;
+  replay of that key cannot create a second paid run. Missing keys use a hashed
+  request identity. A fresh user click is a new analysis.
+- GitHub webhook: budget scope keyed by delivery identity after the existing
+  signature/tenant gates; synchronous provider calls share the global ledger.
+- Analysis worker: scope keyed by durable job ID. A process retry cannot reclaim
+  an already-admitted paid run with a different owner.
+- `/api/llm/verify`: existing operator authentication followed by the budget scope.
+- All OpenAI semantic/navigation/verifier/proof-planner POST transports and the
+  Gemini adapter enforce the boundary, including direct calls without a scope.
+- **Legacy OpenAI background POSTs are blocked.** Existing background GETs remain
+  retrieval-only. Durable background submission/cancellation/settlement is not
+  integrated with this new ledger; any already-running provider jobs must be
+  inspected/drained separately before rollout. OpenAI background cancellation is
+  a distinct API operation; none was issued during this local task.
+  [OpenAI background mode](https://developers.openai.com/api/docs/guides/background).
+
+Demos, pasted deterministic evidence, saved report retrieval and summaries do not
+reserve paid budget. No report is deleted and no existing read path is gated.
+Migration installation, owner configuration, multi-process deployed DB contention,
+real OAuth/store integration and provider billing reconciliation remain rollout
+checks; no production setting, deployment or paid request was made here.
+
+Local verification for this candidate: the final 154-test run includes 22 budget
+runtime checks, eight PostgreSQL SQL-engine checks, three actual public-route
+budget checks, and 121 worker/webhook regressions. Prices/FX used in tests are
+synthetic fixtures, not configured production policy. PGlite was installed only
+in `/private/tmp/agentproof-budget-pg`; rerun SQL tests with
+`AGENTPROOF_TEST_PGLITE_MODULE` pointing to its `dist/index.js` and
+`pnpm exec vitest run src/lib/paid-budget-sql.test.ts --maxWorkers=1`.
+The embedded engine serializes queued calls; real multi-process contention remains
+an external deployment check. Costs round upward per call to 0.001 KRW.
+The one full-suite run exposed two remaining unrelated fixture/presentation
+failures; details and exact results are in docs/work-log.md. Final typecheck,
+production build and diff-check passed; no deployment or paid call occurred.
+
+### 2026-09-23 operating preparation — external application blocked
+
+**Verified target:** Vercel project `agentproof`
+(`prj_76UNYkQGUBTc15kiYnOTCSYvRcIF`, team
+`team_RgOQUIJZTU9MufwDOGzuJYA6`). Current production is READY at
+`agentproof-qdtr1jbej-renggyus-projects.vercel.app`, deployment
+`dpl_63DfGkRo8C7PcQ1okrD56mPpB7Mj`. The production environment's readable
+control-plane URL identifies Supabase project `plfqpwuujbrqosijsvhg`.
+
+The Vercel API returned empty values for sensitive variables even on its env-pull
+endpoint. These are **not evidence that the running values are empty**. Runtime
+model overrides, callback URL and service-role key could not be recovered; no
+empty value was written back. Preview names exist, but its resolved store/secret
+values remain unverified. No Vercel environment was changed and no deployment was
+created/promoted. The retrievable production `vercel.json` selects advisory mode
+and the existing two crons; source file retrieval did not expose the deployed
+Gemini adapter, so it did not establish the exact production transport/model.
+
+Local candidate transport is Google `@google/genai` directly, including when the
+key is held in the legacy `AI_GATEWAY_API_KEY` variable; it is not a Vercel Gateway
+request. The proposed Google standard rates remain $0.75 input / $3.75 output per
+million tokens through 2026-12-31, as rechecked on the official pricing page.
+[Google standard pricing](https://ai.google.dev/gemini-api/docs/pricing).
+The open Google AI Studio spend page showed a selected project named “Gemini API”,
+Tier 1, a 5,000 KRW provider cap and 1,121 KRW monthly displayed spend; its Gemini
+3.8 Flash filter showed 971.30 KRW for August 27–September 23. The UI states up to
+10 minutes of cap overshoot and a Pacific-time reset. These are observations of
+that selected project, **not proof it owns the production key**. No provider cap,
+billing tier or payment setting was modified; the model filter was restored.
+If it is the production project, its 5,000 KRW cap can stop requests before the
+app's 30,000/50,000 KRW policy. Confirm that mapping before considering any change.
+
+**Prepared, unapplied draft** (nulls deliberately fail configuration validation):
+
+```json
+{
+  "timeZone": "Asia/Seoul",
+  "krwPerUsd": null,
+  "validUntil": "2026-09-30T15:00:00Z",
+  "prices": {
+    "google/gemini-3.8-flash": {
+      "inputUsdPerMillion": "0.75",
+      "outputUsdPerMillion": "3.75",
+      "callReserveKrw": null,
+      "source": "https://ai.google.dev/gemini-api/docs/pricing"
+    }
+  }
+}
+```
+
+Asia/Seoul is now owner-approved. The draft expiry is the next Seoul month
+boundary, proposed for a monthly FX review. Minimum remaining monetary decisions:
+use a confirmed Google billing/monthly conversion rate for `krwPerUsd`, and an
+approved conservative amount per provider call for `callReserveKrw`. For this
+standard text path the estimate is
+`FX × (inputTokens × 0.75 + combinedOutputTokens × 3.75) / 1,000,000` KRW.
+The existing 6,000 output-token setting alone does not bound input or unobserved
+billing, so it does not justify inventing a numeric reserve. No OpenAI prices
+were guessed; unlisted paid models remain blocked by the candidate ledger.
+
+**Exact access step:** sign in to the existing
+[Supabase SQL Editor](https://supabase.com/dashboard/project/plfqpwuujbrqosijsvhg/sql/new).
+The browser redirected to sign-in; the CLI also has no management access token or
+DB password. No remote SQL or migration was run. After sign-in, first inspect
+`to_regclass('public.agentproof_paid_budget_settings')` and
+`to_regprocedure('public.agentproof_paid_budget(text,text,uuid,uuid,bigint,bigint,jsonb)')`.
+If objects already exist, inspect definitions and save existing `config, paused`
+before replacing anything. Otherwise run only the named budget migration inside
+`BEGIN`/`COMMIT`; do not push all historical migrations. Apply a complete approved
+config only after confirming its target and the production key's provider/model.
+
+**Rollback:** no external state changed in this preparation, so none needs
+restoring. For a subsequent candidate rollout, retain the current immutable
+production deployment above as the rollback target and preserve the budget
+ledger tables; do not drop tables or delete reports. Before any future env write,
+retain the actual previous value through authorized secret storage—not the blank
+API representation. Restore prior `config, paused` if a later config update
+must be undone. New code must not be promoted while its required config/store
+access is unverified; the currently running deployment remains untouched.

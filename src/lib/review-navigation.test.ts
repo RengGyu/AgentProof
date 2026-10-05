@@ -190,9 +190,10 @@ it('bounds fragmented source input and retains explicitly unprocessed source eve
  const r=await run(i,async(q:any)=>{if(q.stage==='intent'){sourceBytes=Buffer.byteLength(JSON.stringify(q));spanCount=q.sources[0].spans.length;return {goals:[{summary:'Inspect repeated source intent',emphasis:'uncertain',sourceRefs:[q.sources[0].spans[0].id],facets:[],openQuestions:[]}],unprocessed:[q.sources[0].spans[0].id]};}return ranks(q);});
  expect(sourceBytes).toBeLessThan(100000);expect(spanCount).toBeLessThanOrEqual(256);expect(r.reviewCandidates.navigation.unprocessed).toContain('task:0');expect(validateRuntimeReportBoundary({boundary:'generated_private_full',input:i,report:r}).valid).toBe(true);
 });
-it('displays the source identity alongside offsets in mixed-source goals',async()=>{
+it('retains source identity and offsets internally without displaying goal provenance',async()=>{
  const i=input();const r=await run(i,async(q:any)=>q.stage==='intent'?{goals:[{...goals(q).goals[0],sourceRefs:[q.sources[0].spans[0].id,q.sources[1].spans[0].id]}],unprocessed:[]}:ranks(q));
- const html=renderToStaticMarkup(createElement(PrEvidenceReview,{review:buildPrEvidenceReview(r)}));expect(html).toContain('task 0');expect(html).toContain('description 0');
+ const review=buildPrEvidenceReview(r);expect(review.objectives[0].sourceRefs).toEqual(expect.arrayContaining([expect.objectContaining({sourceId:'task',start:0}),expect.objectContaining({sourceId:'description',start:0})]));
+ const html=renderToStaticMarkup(createElement(PrEvidenceReview,{review}));expect(html).not.toContain('task 0');expect(html).not.toContain('description 0');expect(html).not.toContain('Goal details');
 });
 it('preserves the PR title as a distinct author-claim source when the body is empty',async()=>{
  const i=input();i.taskText='';i.description='';i.title='Retain pending work after reconnect';
@@ -253,7 +254,8 @@ describe('navigation refinement resilience',()=>{
   const r=await run(i,async(q:any)=>q.stage==='intent'?{goals:[{summary:'Maintain the active catalog selection',emphasis:'primary',sourceRefs:[q.sources[0].spans[0].id],facets:[{kind:'motivation',summary:'Reconnection disrupts reader continuity',sourceRefs:[q.sources[0].spans[1].id]},{kind:'implementation_claim',summary:'The author reports persistent selection storage',sourceRefs:[q.sources[0].spans[2].id]},{kind:'test_claim',summary:'The author reports adding a regression check',sourceRefs:[q.sources[0].spans[2].id]}],openQuestions:[]}],unprocessed:[]}:ranks(q));
   expect(r.reviewCandidates.navigation.goals[0]?.facets.map((f:any)=>f.kind)).toEqual(['motivation','implementation_claim','test_claim']);expect(r.requirements).toEqual(strict.requirements);expect(r.summary).toEqual(strict.summary);
   expect(validateRuntimeReportBoundary({boundary:'generated_private_full',input:i,report:r}).valid).toBe(true);
-  for(const surface of [reportToMarkdown(r),renderToStaticMarkup(createElement(PrEvidenceReview,{review:buildPrEvidenceReview(r)}))]){expect(surface).toContain('Author-stated motivation');expect(surface).toContain('unverified');expect(surface).toContain('description 36');}
+  const markdown=reportToMarkdown(r);expect(markdown).toContain('Author-stated motivation');expect(markdown).toContain('unverified');expect(markdown).toContain('description 36');
+  const review=buildPrEvidenceReview(r);expect(review.objectives[0].goalContext?.join(' ')).toContain('Author-stated motivation');const html=renderToStaticMarkup(createElement(PrEvidenceReview,{review}));expect(html).not.toContain('Goal details');expect(html).not.toContain('description 36');
   const n=structuredClone(r.reviewCandidates.navigation);n.goals[0].facets[0].sourceRefs=[];expect(intent.validReviewNavigation(n)).toBe(false);
  });
  it('uses deterministic incomplete-response evidence for the output-limit category',async()=>{
@@ -589,9 +591,11 @@ it.each(['condition','exception','motivation','implementation_claim'])('preserve
  expect(n.unprocessed).not.toContain(`task:${i.taskText.indexOf('Only when')}`);expect(validateRuntimeReportBoundary({boundary:'generated_private_full',input:i,report:r}).valid).toBe(true);
  const saved=projectTenantPersistedReport(prepareTenantDetailReportForStorage(r,'verified_agentproof','test-key'),'test-key');const decoded=decodeTenantPersistedReport(saved,{signingSecret:'test-key',createdAt:r.createdAt});expect(decoded.status).toBe('valid');if(decoded.status!=='valid')throw Error('decode failed');
  expect((decoded.report as any).reviewCandidates.navigation.goals[0]).toEqual(g);
- for(const surface of [reportToMarkdown(decoded.report),renderToStaticMarkup(createElement(PrEvidenceReview,{review:buildDashboardPrEvidenceReview({report:decoded.report,repositoryFullName:'acme/queue',headSha:head})!}))]){
+ for(const surface of [reportToMarkdown(decoded.report)]){
   expect(surface).toContain('Summary omitted; inspect the referenced source.');expect(surface).toContain(`task ${i.taskText.indexOf('Only when')}`);expect(surface).toContain('Exclude suspended deliveries');expect(surface).toContain('Is capacity enforced?');expect(surface).toContain('Does reconnect retain pending entries?');expect(surface).not.toContain('return queue.pending;');
  }
+ const review=buildDashboardPrEvidenceReview({report:decoded.report,repositoryFullName:'acme/queue',headSha:head})!;expect(review.objectives[0].goalContext?.join(' ')).toContain(`task ${i.taskText.indexOf('Only when')}`);
+ const html=renderToStaticMarkup(createElement(PrEvidenceReview,{review}));expect(html).not.toContain('Goal details');expect(html).not.toContain(`task ${i.taskText.indexOf('Only when')}`);expect(html).not.toContain('return queue.pending;');expect(html).toContain('Does reconnect retain pending entries?');
  expect(JSON.stringify(saved)).not.toContain('return queue.pending;');expect(JSON.stringify(sanitizeReportForShare(r))).not.toContain('Retain eligible deliveries');
  const malformed=structuredClone(n);malformed.goals[0].facets[0].sourceRefs=[];expect(intent.validReviewNavigation(malformed)).toBe(false);
 });
@@ -630,4 +634,58 @@ it('preserves the selected exact line link in both Markdown exports after dedupl
   expect(firstSection).toContain(first.whyInspect);
   expect(firstSection).toContain(first.reviewQuestion);
  }
+});
+
+it('deepens late requirement-linked implementation and tests ahead of unrelated missing patches',async()=>{
+ const i=input();
+ i.changedFiles=[...Array.from({length:133},(_,n)=>({path:`docs/queue-plan-${n}.md`,status:'modified' as const,patch:n<110?'@@ -1 +1 @@\n+ unrelated note':undefined})),{path:'src/queue.ts',status:'modified' as const},{path:'tests/queue.test.ts',status:'modified' as const,patch:'@@ -1 +1 @@\n+ clipped\n...[truncated for privacy and token control]'}];
+ const read=vi.fn(async(paths:string[],revision:string)=>paths.map(path=>({path,headSha:revision,content:path==='src/queue.ts'?'function reconnect(queue) { return queue.pending; }':path==='tests/queue.test.ts'?'test("pending queue reconnect", () => expect(reconnect(queue)).toEqual(queue.pending));':'unrelated note'})));
+ let packet:any;
+ const r=await run(i,async(q:any)=>{if(q.stage==='intent')return goals(q);packet=q;return ranks(q);},{readArtifacts:read});
+ expect(read.mock.calls[0][0].slice(0,2)).toEqual(['src/queue.ts','tests/queue.test.ts']);
+ expect(read.mock.calls[0][1]).toBe(head);
+ expect(read.mock.calls[0][0]).toHaveLength(8);
+ for(const path of ['src/queue.ts','tests/queue.test.ts']){
+  expect(packet.inventory.some((f:any)=>f.path===path)).toBe(true);
+  expect(packet.artifacts.some((a:any)=>a.path===path&&a.revision===head&&a.origin==='snapshot')).toBe(true);
+ }
+ expect(r.reviewCandidates.navigation.limitations).toContain('diff_context_incomplete');
+ expect(r.reviewCandidates.navigation.limitations).toContain('retrieval_file_budget_exceeded');
+ expect(r.reviewCandidates.navigation.goals[0].firstInspection).not.toBeNull();
+ expect(validateRuntimeReportBoundary({boundary:'generated_private_full',input:i,report:r}).valid).toBe(true);
+});
+
+it('reserves goal-linked module and paired test reads instead of spending them on aggregate verification commands',async()=>{
+ const i=input();
+ const scripts=Array.from({length:12},(_,n)=>`scripts/evaluate-pending-queue-reconnect-policy-${n}.test.mjs`);
+ i.taskSource=undefined;i.taskText='';
+ i.description='Retain pending queue work in shadow mode.\n\nRefresh public input before and after provider callbacks.\n\nVerification:\n'+scripts.map(p=>`node --test ${p}`).join('\n');
+ i.changedFiles=[...scripts.map(path=>({path,status:'added' as const})),...['src/queue.ts','src/queue.test.ts','src/callback.ts','src/callback.test.ts'].map(path=>({path,status:'added' as const}))];
+ const content:Record<string,string>={
+  'src/queue.ts':'function retain(queue) { return queue.pending; }',
+  'src/queue.test.ts':'test("pending queue work", () => expect(retain(queue)).toBe(queue.pending));',
+  'src/callback.ts':'async function invoke(provider) { const beforeCall = await readCurrentPublicSubject(); await provider.observe(); const afterCall = await readCurrentPublicSubject(); return beforeCall === afterCall; }',
+  'src/callback.test.ts':'test("public input before and after provider callbacks", () => expect(invoke(provider)).toBe(true));'
+ };
+ let packet:any;let requested:string[]=[];
+ const r=await run(i,async(q:any)=>{
+  if(q.stage==='intent'){const spans=q.sources.find((s:any)=>s.id==='description').spans;return {goals:[{summary:'Retain pending queue work in shadow mode',emphasis:'primary',sourceRefs:[spans[0].id],facets:[],openQuestions:[]},{summary:'Refresh public input before and after provider callbacks',emphasis:'primary',sourceRefs:[spans[1].id],facets:[],openQuestions:[]}],unprocessed:[]};}
+  packet=q;return {rankings:[],readPaths:[]};
+ },{readArtifacts:async(paths:string[],revision:string)=>{requested.push(...paths);return paths.map(path=>({path,headSha:revision,content:content[path]??'test("pending queue reconnect policy", () => evaluateQueue());'}));}});
+ for(const path of Object.keys(content))expect(packet.artifacts.some((a:any)=>a.path===path&&a.revision===head&&a.origin==='snapshot'),path).toBe(true);
+ expect(requested.length).toBeLessThanOrEqual(8);
+ expect(packet.artifacts.length).toBeLessThanOrEqual(16);
+ expect(validateRuntimeReportBoundary({boundary:'generated_private_full',input:i,report:r}).valid).toBe(true);
+});
+
+it('uses changed relative imports to read an orchestration module, its test and a missing callee',async()=>{
+ const i=input();i.taskText='Dispatch queued work with backpressure and cancellation.';
+ i.changedFiles=[...Array.from({length:10},(_,n)=>({path:`scripts/dispatch-backpressure-cancellation-${n}.ts`,status:'added' as const})),
+  {path:'src/workflow.ts',status:'added',patch:"@@ -0,0 +1,100 @@\n+import { dispatch } from './dispatch';\n+import { backpressure } from './backpressure';\n+import { cancellation } from './cancellation';\n+ clipped\n...[truncated for privacy and token control]"},
+  ...['src/workflow.test.ts','src/dispatch.ts','src/backpressure.ts','src/cancellation.ts'].map(path=>({path,status:'added' as const}))];
+ let packet:any;
+ const r=await run(i,async(q:any)=>{if(q.stage==='intent')return {goals:[{summary:'Dispatch queued work with backpressure and cancellation',emphasis:'primary',sourceRefs:[q.sources[0].spans[0].id],facets:[],openQuestions:[]}],unprocessed:[]};packet=q;return {rankings:[],readPaths:[]};},{readArtifacts:async(paths:string[],headSha:string)=>paths.map(path=>({path,headSha,content:path.endsWith('.test.ts')?'test("dispatch backpressure cancellation", () => expect(runWorkflow()).toBe(true));':'function runWorkflow() { return dispatch(backpressure(cancellation)); }'}))});
+ for(const path of ['src/workflow.ts','src/workflow.test.ts','src/dispatch.ts'])expect(packet.artifacts.some((a:any)=>a.path===path&&a.origin==='snapshot'),path).toBe(true);
+ expect(JSON.stringify(packet)).not.toContain('clipped');
+ expect(validateRuntimeReportBoundary({boundary:'generated_private_full',input:i,report:r}).valid).toBe(true);
 });

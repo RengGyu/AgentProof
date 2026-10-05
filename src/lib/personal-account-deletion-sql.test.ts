@@ -188,10 +188,17 @@ describe.skipIf(!modulePath)("personal deletion with repository schemas", () => 
       await actual.query("insert into agentproof_github_installations(tenant_id,installation_id,status,created_at,updated_at) values($1,987,'active',now(),now())",[owner.tenant_id]);
       await actual.query("insert into agentproof_tenant_repository_grants(tenant_id,installation_id,repository_id,repository_full_name) values($1,987,123,'fixture/repo')",[owner.tenant_id]);
       await actual.query("insert into agentproof_concierge_analysis_runs(request_key,tenant_id,installation_id,repository_id,status,bounded_reason) values(repeat('d',64),$1,987,123,'completed','fixture')",[owner.tenant_id]);
+      // The nullable-expiry migration must retain both generations and still
+      // participate in the existing transactional account deletion.
+      for (const id of ["retained-first", "retained-second"]) {
+        await actual.query("select * from agentproof_store_tenant_report($1,now(),null,'{}'::jsonb,$2,987,123,7,repeat('a',40))", [id, owner.tenant_id]);
+      }
+      expect((await actual.query("select count(*)::int n from agentproof_saved_reports where expires_at is null")).rows[0].n).toBe(2);
       const result=(await actual.query("select agentproof_delete_personal_account(repeat('c',64),'github','delete') result")).rows[0].result;
       expect(result).toEqual({status:"completed"});
       expect((await actual.query("select count(*)::int n from agentproof_concierge_analysis_runs")).rows[0].n).toBe(0);
       expect((await actual.query("select count(*)::int n from agentproof_tenants")).rows[0].n).toBe(0);
+      expect((await actual.query("select count(*)::int n from agentproof_saved_reports")).rows[0].n).toBe(0);
     } finally { await actual.close(); }
   }, 20000);
 });

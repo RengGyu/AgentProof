@@ -19,7 +19,8 @@ const GITHUB_CHECK_ANNOTATION_TIMEOUT_MS = 2500;
 const GITHUB_ACTION_JOB_TIMEOUT_MS = 2500;
 const GITHUB_PAGE_SIZE = 100;
 const GITHUB_MAX_PAGES = 3;
-export const GITHUB_MAX_CHANGED_FILES = 120;
+// Metadata pages have a separate budget from selected code reads and diff summaries.
+export const GITHUB_MAX_CHANGED_FILES = GITHUB_PAGE_SIZE * GITHUB_MAX_PAGES;
 const GITHUB_MAX_CHECK_RUNS = 60;
 const GITHUB_MAX_COMMIT_STATUSES = 30;
 const GITHUB_MAX_ACTION_RUNS = 3;
@@ -391,7 +392,7 @@ async function fetchGitHubPullRequest(
     measureGitHubEvidenceTiming(
       evidenceTiming,
       "github_files",
-      () => fetchPullFiles(pr.url + "/files", headers, limitations, hasToken)
+      () => fetchPullFiles(pr.url + "/files", headers, limitations, hasToken, pr.changed_files)
     ),
     measureGitHubEvidenceTiming(
       evidenceTiming,
@@ -970,7 +971,7 @@ function buildMetadataOnlyProvenance({ origin, input, capturedAt, headSha, baseS
 
 function hasIncompleteChangedFileInventory(limitations: string[] | undefined): boolean {
   return (limitations ?? []).some((limitation) =>
-    /changed-file evidence (?:unavailable|was capped)|changed-file fetch failed|file evidence may be incomplete|renamed file lacks its previous path|patch text|diff evidence is unavailable/i.test(limitation)
+    /changed-file evidence (?:unavailable|was capped)|changed-file fetch failed|file evidence may be incomplete|renamed file lacks its previous path/i.test(limitation)
   );
 }
 
@@ -1426,38 +1427,43 @@ async function fetchPullFiles(
   baseUrl: string,
   headers: Record<string, string>,
   limitations: string[],
-  hasToken: boolean
+  hasToken: boolean,
+  expectedCount?: number
 ): Promise<GitHubFileResponse[]> {
   const files: GitHubFileResponse[] = [];
-
+  const knownCount = Number.isSafeInteger(expectedCount) && expectedCount! >= 0 ? expectedCount : undefined;
+  const incomplete = () => limitations.push("GitHub file evidence may be incomplete: changed-file inventory could not be reconciled.");
   for (let page = 1; page <= GITHUB_MAX_PAGES; page += 1) {
     let response: Response;
-
     try {
       response = await githubFetch(`${baseUrl}?per_page=${GITHUB_PAGE_SIZE}&page=${page}`, headers);
     } catch {
       limitations.push("GitHub changed-file evidence unavailable: request timed out or network failed.");
       return files;
     }
-
     if (!response.ok) {
       limitations.push(`GitHub changed-file fetch failed: ${githubFailureReason(response, hasToken)} File evidence may be incomplete.`);
       return files;
     }
-
-    const pageItems = (await response.json()) as GitHubFileResponse[];
-    files.push(...pageItems);
-
-    if (files.length >= GITHUB_MAX_CHANGED_FILES) {
-      limitations.push(`GitHub changed-file evidence was capped at ${GITHUB_MAX_CHANGED_FILES} files.`);
-      return files.slice(0, GITHUB_MAX_CHANGED_FILES);
+    let pageItems: GitHubFileResponse[];
+    try {
+      const value: unknown = await response.json();
+      if (!Array.isArray(value) || value.length > GITHUB_PAGE_SIZE || value.some(item => !item || typeof item.filename !== "string")) throw new Error("Invalid file inventory");
+      pageItems = value;
+    } catch {
+      incomplete();
+      return files;
     }
-
-    if (pageItems.length < GITHUB_PAGE_SIZE) {
+    if (pageItems.some(item => files.some(file => file.filename === item.filename)) || new Set(pageItems.map(item => item.filename)).size !== pageItems.length) {
+      incomplete();
+      return files;
+    }
+    files.push(...pageItems);
+    if (pageItems.length < GITHUB_PAGE_SIZE || knownCount === files.length) {
+      if (knownCount !== undefined && knownCount !== files.length) incomplete();
       return files;
     }
   }
-
   limitations.push(`GitHub changed-file evidence was capped at ${GITHUB_MAX_CHANGED_FILES} files.`);
   return files;
 }

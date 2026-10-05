@@ -63,10 +63,10 @@ describe("PR-to-Evidence producer and surfaces", () => {
     const report = generateVerificationReportV2FromInput(input());
     report.testing = { ...report.testing, ciStatus: "passed", lintStatus: "unknown", typecheckStatus: "unknown" };
     const detail = { repositoryFullName: "acme/widget", pullRequestNumber: 42, headSha: HEAD, report, freshness: "current" as const, copyEligible: true };
-    const html = renderToStaticMarkup(<QuickSummaryPanel detail={detail} quickSummary={toQuickSummary(detail)} onShowDetail={() => {}} showDetailedEvidence={false} demoMode={false} />);
+    const html = renderToStaticMarkup(<QuickSummaryPanel detail={detail} quickSummary={toQuickSummary(detail)} onShowDetail={() => {}} showDetailedEvidence={true} demoMode={false} />);
     const markdown = dashboardReportToMarkdown(detail);
-    expect(html).toContain("Checks: CI passed");
-    expect(html).toContain("CI</span><strong>passed</strong>");
+    expect(html).toContain("CI passed"); expect(html).toContain("Other checks not recorded");
+    expect(html).not.toContain("Checks &amp; CI"); // the top summary already lists recorded checks
     expect(html).not.toContain("Lint</span><strong>unknown</strong>");
     expect(html).not.toContain("Typecheck</span><strong>unknown</strong>");
     expect(markdown).toContain("- CI: passed");
@@ -101,9 +101,11 @@ describe("PR-to-Evidence producer and surfaces", () => {
         reportToGitHubComment(candidate),
         dashboardReportToMarkdown(detail),
       ];
-      for (const surface of surfaces) {
+      for (const [index, surface] of surfaces.entries()) {
         expect(surface).toContain("PR-to-Evidence Review");
-        expect(surface).toContain("Linked issue requirement source");
+        // The full report also contains the collapsed, unchanged export preview.
+        if (index === 1) expect(surface).not.toContain("Linked issue requirement source");
+        else expect(surface).toContain("Linked issue requirement source");
         expect(surface).toContain(`blob/${HEAD}/src/reset.ts`);
         expect(surface).toContain(`blob/${BASE}/src/legacy.ts`);
         expect(surface).not.toContain("No approved verification contract");
@@ -115,22 +117,21 @@ describe("PR-to-Evidence producer and surfaces", () => {
     expect(report).toEqual(before);
   });
 
-  it("shows ordinary PR objectives and exact code links before opening supporting details", () => {
+  it("shows ordinary PR objectives and exact code links when evidence is opened", () => {
     const report = generateVerificationReportV2FromInput(input());
     const detail = { repositoryFullName: "acme/widget", pullRequestNumber: 42, headSha: HEAD, report, freshness: "current" as const, copyEligible: true };
-    const html = renderToStaticMarkup(<QuickSummaryPanel detail={detail} quickSummary={toQuickSummary(detail)} onShowDetail={() => {}} showDetailedEvidence={false} demoMode={false} />);
+    const html = renderToStaticMarkup(<QuickSummaryPanel detail={detail} quickSummary={toQuickSummary(detail)} onShowDetail={() => {}} showDetailedEvidence={true} demoMode={false} />);
     expect(html).toContain("The service must reject expired reset links");
     expect(html).toContain(`blob/${HEAD}/src/reset.ts`);
     expect(html).toContain("Copy report");
     expect(html).toContain("Copy JSON");
-    expect(html).toContain("Checks &amp; CI");
-    expect(html.indexOf("PR-to-Evidence Review")).toBeLessThan(html.indexOf("Check state"));
+    expect(html.indexOf("PR-to-Evidence Review")).toBeLessThan(html.indexOf("Export report"));
   });
 
   it("keeps non-current ordinary reports readable with copy actions disabled", () => {
     const report = generateVerificationReportV2FromInput(input());
     const detail = { repositoryFullName: "acme/widget", headSha: HEAD, report, freshness: "refreshing" as const, copyEligible: false };
-    const html = renderToStaticMarkup(<QuickSummaryPanel detail={detail} quickSummary={toQuickSummary(detail)} onShowDetail={() => {}} showDetailedEvidence={false} demoMode={false} />);
+    const html = renderToStaticMarkup(<QuickSummaryPanel detail={detail} quickSummary={toQuickSummary(detail)} onShowDetail={() => {}} showDetailedEvidence={true} demoMode={false} />);
     expect(html).toContain(`blob/${HEAD}/src/reset.ts`);
     expect(html).toContain("This saved report remains readable");
     expect(html.match(/<button[^>]*disabled=""/g)).toHaveLength(2);
@@ -204,12 +205,13 @@ describe("PR-to-Evidence producer and surfaces", () => {
     ]));
     const dashboardHtml = renderToStaticMarkup(<DetailedEvidence detail={detail} demoMode={false} />);
     expect(dashboardHtml).toContain("PR-to-Evidence Review");
-    expect(dashboardHtml).toContain("Linked issue requirement source");
-    expect(dashboardHtml).toContain(`blob/${BASE}/src/legacy.ts`);
-    expect(dashboardHtml).toContain("failed");
+    expect(dashboardHtml).not.toContain("Linked issue requirement source");
+    expect(dashboardHtml).toContain("Read code for src/legacy.ts");
     expect(dashboardHtml).not.toContain("Requirements and PR objectives");
-    const quickHtml = renderToStaticMarkup(<QuickSummaryPanel detail={detail} quickSummary={toQuickSummary(detail)} onShowDetail={() => {}} showDetailedEvidence={false} demoMode={false} />);
-    expect(quickHtml).toContain(`blob/${HEAD}/src/reset.ts`);
+    const quickHtml = renderToStaticMarkup(<QuickSummaryPanel detail={detail} quickSummary={toQuickSummary(detail)} onShowDetail={() => {}} showDetailedEvidence={true} demoMode={false} />);
+    expect(quickHtml).toContain("Read code for src/reset.ts");
+    expect(quickHtml).toContain("failed");
+    expect(quickHtml).not.toContain(`blob/${HEAD}/src/reset.ts`);
     expect(quickHtml).not.toContain("MOST IMPORTANT EVIDENCE GAP");
     expect(quickHtml).toContain("CI failed");
   });

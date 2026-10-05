@@ -1,1 +1,10 @@
-:root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#18261f;background:#f6f5f0}*{box-sizing:border-box}body{margin:0}main{max-width:720px;margin:auto;padding:env(safe-area-inset-top) 22px calc(32px + env(safe-area-inset-bottom))}header{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #d6dcd4;padding:18px 0 20px}header strong{font-size:22px;letter-spacing:-.04em}header span,.eyebrow{color:#597166;font-size:12px;letter-spacing:.09em;text-transform:uppercase}section{padding-top:32px}h1{font-size:37px;line-height:1.08;letter-spacing:-.055em;margin:12px 0 20px}h2{font-size:19px;margin-top:34px}h3{font-size:16px}p{line-height:1.5;color:#52645a}button{font:inherit;cursor:pointer;border:0;border-radius:8px;background:#184c37;color:white;padding:13px 17px;min-height:44px}button:disabled{opacity:.45}nav{display:flex;justify-content:space-between;margin-top:18px}nav button,.back{background:transparent;color:#184c37;padding:8px 0}.welcome{padding-top:68px}.welcome button{margin-top:20px}.report{display:flex;flex-direction:column;gap:6px;text-align:left;width:100%;margin:10px 0;background:white;color:#16251d;border:1px solid #dae1d8}.report small{color:#62766a}article{border-top:1px solid #d6dcd4;padding:8px 0}.message{background:#e8efe9;border-radius:8px;padding:12px 15px}ul{padding-left:20px}li{padding:6px 0}
+/* The product screens use the same stylesheet as mobile web. Only native chrome
+   and safe-area spacing live here. */
+html { background: #f7f8fb; }
+.native-shell { min-height: 100dvh; padding: env(safe-area-inset-top) env(safe-area-inset-right) calc(16px + env(safe-area-inset-bottom)) env(safe-area-inset-left); }
+.native-shell .github-dashboard { min-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
+.native-message { max-width: 1180px; margin: 12px auto; padding: 12px 18px; color: var(--ink); background: var(--panel-muted); overflow-wrap: anywhere; }
+.native-navigation { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; padding: 12px 18px; border-bottom: 1px solid var(--line); }
+.native-shell .account-deletion-panel { margin: 24px auto; }
+.native-shell select { max-width: 100%; }
+.native-shell .dashboard-section { min-width: 0; }

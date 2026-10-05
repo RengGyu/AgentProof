@@ -4640,3 +4640,61 @@ function customerDisplayNameBothPathsInput(overrides: {
     }]
   };
 }
+
+describe("bounded evidence index and review-priority references", () => {
+  it("keeps every file-specific priority item linked to retained evidence when a large PR exceeds the evidence index bound", () => {
+    // Risk-sensitive files arrive after more than the bounded number of ordinary diffs.
+    const ordinary = Array.from({ length: 240 }, (_, index) => ({ path: `src/feature/module-${index}.ts`, status: "modified" as const, patch: `@@ -1,1 +1,1 @@\n+export const value${index} = ${index};` }));
+    const riskSensitive = ["src/ls/semantictokens.go", "src/project/session.go", "src/fourslash/semantictokens.go"].map(path => ({ path, status: "modified" as const, patch: "@@ -1,1 +1,1 @@\n+func changed() {}" }));
+    const input: PullRequestInput = {
+      title: "Large refactor",
+      description: "Refactors modules and token handling.",
+      taskText: "",
+      changedFiles: [...ordinary, ...riskSensitive],
+      checks: [{ name: "build", status: "passed" }],
+      logs: []
+    };
+    const report = generateVerificationReportV2FromInput(input);
+    const ids = new Set(report.evidenceIndex.map(item => item.id));
+
+    expect(report.evidenceIndex.length).toBeLessThanOrEqual(200);
+    expect(validateVerificationReport(report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
+    for (const path of riskSensitive.map(file => file.path)) {
+      const item = report.reviewPriority.find(priority => priority.path === path);
+      expect(item, path).toBeTruthy();
+      expect((item!.evidenceRefs ?? []).length, path).toBeGreaterThan(0);
+      expect((item!.evidenceRefs ?? []).every(ref => ids.has(ref)), path).toBe(true);
+      expect((item!.evidenceRefs ?? []).some(ref => report.evidenceIndex.find(evidence => evidence.id === ref)?.locator === path), path).toBe(true);
+    }
+    expectPriorityReferencesSupported(report);
+  });
+
+  it("retains a risk-sensitive file without a patch and never leaves a file-specific priority unsupported", () => {
+    const ordinary = Array.from({ length: 230 }, (_, index) => ({ path: `src/feature/module-${index}.ts`, status: "modified" as const, patch: `@@ -1,1 +1,1 @@\n+export const value${index} = ${index};` }));
+    const input: PullRequestInput = {
+      title: "Large change",
+      description: "Adjusts feature modules.",
+      taskText: "Update the feature module values.",
+      changedFiles: [...ordinary, { path: "config/billing/limits.yaml", status: "modified" as const }, { path: "docs/notes/readme-extra.md", status: "added" as const }],
+      checks: [{ name: "build", status: "passed" }],
+      logs: []
+    };
+    const report = generateVerificationReportV2FromInput(input);
+
+    expect(validateVerificationReport(report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
+    const billing = report.reviewPriority.find(priority => priority.path === "config/billing/limits.yaml");
+    expect(billing?.evidenceRefs?.length).toBeGreaterThan(0);
+    expectPriorityReferencesSupported(report);
+  });
+});
+
+/** Every concrete file named in review priority has retained evidence for it or an explicit unavailable note. */
+function expectPriorityReferencesSupported(report: VerificationReport) {
+  const byId = new Map(report.evidenceIndex.map(item => [item.id, item]));
+  for (const item of report.reviewPriority) {
+    expect((item.evidenceRefs ?? []).every(ref => byId.has(ref)), item.path).toBe(true);
+    if (!/(^|\/)[^/\s]+\.[^/\s]+$/.test(item.path) && !item.path.includes("/")) continue;
+    if (!item.evidenceRefs?.length) expect(item.reason, item.path).toMatch(/evidence is unavailable/i);
+    expect(item.reason, item.path).not.toMatch(/bounded|capped|limit/i);
+  }
+}

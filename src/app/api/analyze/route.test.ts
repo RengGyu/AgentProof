@@ -1432,7 +1432,7 @@ describe("POST /api/analyze", () => {
   });
 
   it("caps large GitHub PR evidence before full report validation", async () => {
-    const filePage = Array.from({ length: 100 }, (_, index) => ({
+    const filePage = Array.from({ length: 350 }, (_, index) => ({
       filename: `src/generated/file-${index}.ts`,
       additions: 1,
       deletions: 0,
@@ -1443,7 +1443,8 @@ describe("POST /api/analyze", () => {
       if (url.endsWith("/pulls/77")) {
         return Promise.resolve(
           Response.json({
-            title: "Large generated PR",
+            title: "Bounded generated PR",
+            changed_files: 350,
             body: "Updated generated files.",
             url: "https://api.github.com/repos/acme/app/pulls/77",
             user: { login: "coding-agent" },
@@ -1454,7 +1455,8 @@ describe("POST /api/analyze", () => {
       }
 
       if (url.includes("/files?")) {
-        return Promise.resolve(Response.json(filePage));
+        const page = Number(new URL(url).searchParams.get("page"));
+        return Promise.resolve(Response.json(filePage.slice((page-1)*100,page*100)));
       }
 
       if (url.includes("/check-runs")) {
@@ -1484,7 +1486,7 @@ describe("POST /api/analyze", () => {
     expect(response.status).toBe(200);
     expect(validateVerificationReport(json.report, { mode: "v2_full" })).toEqual({ valid: true, errors: [] });
     expect(json.report.evidenceIndex.length).toBeLessThanOrEqual(200);
-    expect(json.report.limitations.join(" ")).toContain("capped at 120 files");
+    expect(json.report.limitations.join(" ")).toContain("capped at 300 files");
   });
 });
 

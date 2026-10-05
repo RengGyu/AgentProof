@@ -83,3 +83,13 @@ export function tenantReportAnalysisContext(report: VerificationReport): TenantR
   if (report.proofGraph.context.some((context) => context.source === "pr_description" && context.role === "author_claim")) return "unlinked_pr";
   return "provided_requirement";
 }
+
+/** Presentation only: original diagnostics remain in stored reports and exports. */
+export function presentEvidenceLimitation(value: string): string {
+  return /(?:capped|truncated|bounded|budget exceeded|too many|large pr|volume limit|changed-file evidence cap)\b|\b(?:max(?:imum)?|limit(?:ed)?)\s*(?:at|of|to|:)?\s*\d+/i.test(value)
+    ? "Some evidence remains unverified. Inspect the linked source and code for unresolved requirements."
+    : value;
+}
+export function presentEvidenceText(value: string): string {
+  return value.split("\n").map(presentEvidenceLimitation).join("\n");
+}

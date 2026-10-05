@@ -24,7 +24,7 @@ describe("GitHub PR analysis credential routing", () => {
       readOAuth: () => null,
       fetchGitHub
     } });
-    expect(result).toEqual({ ok: true, token: installationToken, kind: "installation", ...(repositoryPrivate ? { privateAnalysisApproved: true, installationId: 42, repositoryId: 9 } : {}) });
+    expect(result).toEqual({ ok: true, token: installationToken, kind: "installation", installationId: 42, repositoryId: 9, ...(repositoryPrivate ? { privateAnalysisApproved: true } : {}) });
     expect(issueToken).toHaveBeenCalledExactlyOnceWith(42);
     expect(fetchGitHub).toHaveBeenCalledWith("https://api.github.com/repos/owner/repo", expect.objectContaining({
       headers: expect.objectContaining({ Authorization: `Bearer ${installationToken}` })

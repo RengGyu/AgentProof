@@ -5,7 +5,7 @@ import { prepareTenantDetailReportForStorage } from "./server-report-store";
 import { projectTenantPersistedReport, decodeTenantPersistedReport } from "./tenant-report-validation";
 import { validateRuntimeReportBoundary } from "./report-runtime-validation";
 import { validateVerificationReport } from "./report-validation";
-import { buildReviewIntentGraph, validReviewIntentGraph } from "./review-intent";
+import { buildReviewIntentGraph, rankReviewFiles, validReviewIntentGraph } from "./review-intent";
 import { reportToMarkdown } from "./markdown";
 import { dashboardReportToMarkdown } from "./dashboard-report-export";
 import type { PullRequestInput } from "./types";
@@ -203,5 +203,74 @@ describe("review intent retrieval Phase A", () => {
     for(const markdown of [reportToMarkdown(report),dashboardReportToMarkdown({report:decoded.report,copyEligible:true,freshness:"current"})]) {
       expect(markdown).toContain("Inspect first");expect(markdown).toContain("More context");expect(markdown).toContain("Source offsets");expect(markdown).toContain("symbol resolution unavailable");
     }
+  });
+});
+
+describe("review intent retrieval: path relevance and bounded graph order", () => {
+  const base = (description: string, changedFiles: PullRequestInput["changedFiles"]): PullRequestInput => ({ ...input(), url: "https://github.com/acme/widget/pull/12", taskText: "", taskSource: undefined, description, changedFiles });
+  const candidatePaths = (report: ReturnType<typeof generateVerificationReportV2FromInput>) => new Set(report.reviewCandidates!.requirements.flatMap(row => row.candidates.map(c => report.evidenceIndex.find(e => e.id === c.evidenceId)?.locator)));
+
+  it("offers a changed implementation file whose name matches the stated behavior even when its visible patch shares few words", () => {
+    const i = base("## Summary\n\n- Fix the false positive when `widget.raises` is used as a context manager in a `with` statement and extra positional arguments are passed.",
+      [{ path: "crates/core/resources/mdtest/rules/legacy-form-widget-raises.md", status: "added", patch: "@@ -0,0 +1,2 @@\n+# widget.raises in a with statement\n+Extra positional arguments are allowed in context manager form." },
+       { path: "crates/core/src/rules/legacy_form_widget_raises.rs", status: "modified", patch: "@@ -10,2 +10,4 @@\n     return;\n+    if let Stmt::With(items) = current() {\n+        return;\n+    }" }]);
+    const report = generateVerificationReportV2FromInput(i);
+    expect(report.requirements.length).toBeGreaterThan(0);
+    expect(candidatePaths(report).has("crates/core/src/rules/legacy_form_widget_raises.rs")).toBe(true);
+    expect(validateVerificationReport(report, { mode: "v2_full" }).valid).toBe(true);
+  });
+
+  it("keeps a relevant implementation file in the bounded graph when many unrelated files sort before it", () => {
+    const unrelated = Array.from({ length: 135 }, (_, n) => ({ path: `docs/archive/note-${String(n).padStart(3, "0")}.md`, status: "modified" as const, patch: `@@ -1,1 +1,1 @@\n+Archive entry ${n}.` }));
+    const i = base("## Requirements\n\n- dispatchQueue must preserve dispatchWindow when a job is retried.",
+      [...unrelated, { path: "src/queue/dispatch-window.ts", status: "modified", patch: "@@ -1,1 +1,1 @@\n+export function dispatchQueue(dispatchWindow) { return dispatchWindow; }" }]);
+    const report = generateVerificationReportV2FromInput(i);
+    expect(report.reviewCandidates!.intentGraph!.chunks.some(c => c.path === "src/queue/dispatch-window.ts")).toBe(true);
+    expect(candidatePaths(report).has("src/queue/dispatch-window.ts")).toBe(true);
+    expect(validReviewIntentGraph(report.reviewCandidates!.intentGraph, new Set(report.requirements.map(r => r.requirementId)), report.evidenceIndex)).toBe(true);
+  });
+
+  it("does not let documentation that repeats the goal's words crowd changed code out of a behavior goal's bounded candidates", () => {
+    const docs = Array.from({ length: 13 }, (_, n) => ({ path: `docs/plans/rollout-note-${n}.md`, status: "added" as const, patch: `@@ -0,0 +1,2 @@\n+Rollout note ${n}: the default private shadow observation pipeline has release evaluation gates.\n+Observation pipeline release evaluation stays default-off.` }));
+    const unrelated = Array.from({ length: 20 }, (_, n) => ({ path: `src/feature/unrelated-${n}.ts`, status: "modified" as const, patch: `@@ -1,1 +1,1 @@\n+export const unrelatedValue${n} = ${n};` }));
+    const i = base("## Summary\n\n- Add a default-off private shadow observation pipeline with release evaluation gates.",
+      [...docs, ...unrelated, { path: "src/lib/observation-runner.ts", status: "added", patch: "@@ -0,0 +1,2 @@\n+export function runShadow(defaultEnabled = false, privateRepository = true) { return defaultEnabled && !privateRepository; }\n+// default private shadow runner" }]);
+    const report = generateVerificationReportV2FromInput(i);
+    const graph = report.reviewCandidates!.intentGraph!;
+    const edgePaths = graph.edges.map(e => graph.chunks.find(c => c.id === e.chunkId)!.path);
+    expect(edgePaths).toContain("src/lib/observation-runner.ts");
+    expect(buildPrEvidenceReview(report).objectives[0]!.code[0]?.label).toBe("src/lib/observation-runner.ts");
+  });
+
+  it("keeps documentation first for a documentation goal", () => {
+    const i = base("## Summary\n\n- Update the observation pipeline documentation guide.",
+      [{ path: "docs/observation-pipeline-guide.md", status: "modified", patch: "@@ -1,1 +1,1 @@\n+Observation pipeline documentation guide." },
+       { path: "src/lib/observation-pipeline.ts", status: "modified", patch: "@@ -1,1 +1,1 @@\n+// observation pipeline documentation guide" }]);
+    const report = generateVerificationReportV2FromInput(i);
+    const graph = report.reviewCandidates!.intentGraph!;
+    expect(graph.chunks.find(c => c.id === graph.edges[0]!.chunkId)!.path).toBe("docs/observation-pipeline-guide.md");
+  });
+
+  it("orders equally relevant paths as code, tests, fixtures or generated output, then documentation", () => {
+    const files = [
+      { path: "docs/observation-pipeline.md", additions: 50 },
+      { path: "eval/fixtures/observation-pipeline.json", additions: 900 },
+      { path: "scripts/observation-pipeline.test.mjs", additions: 300 },
+      { path: "src/lib/observation-pipeline.ts", additions: 120 },
+      { path: "src/lib/unrelated.ts", additions: 2000 }
+    ].map(f => ({ ...f, status: "modified" as const }));
+    expect(rankReviewFiles(files, "Add the private observation pipeline.").map(f => f.path)).toEqual([
+      "src/lib/observation-pipeline.ts", "scripts/observation-pipeline.test.mjs", "eval/fixtures/observation-pipeline.json", "docs/observation-pipeline.md", "src/lib/unrelated.ts"
+    ]);
+    expect(rankReviewFiles(files, "See docs/observation-pipeline.md.")[0]!.path).toBe("docs/observation-pipeline.md");
+    expect(rankReviewFiles([{ path: "pnpm-lock.yaml", additions: 40 }, { path: "src/pnpm-runner.ts", additions: 4 }], "Run pnpm test.").map(f => f.path)).toEqual(["src/pnpm-runner.ts", "pnpm-lock.yaml"]);
+  });
+
+  it("spreads equally tiered relevant paths across directories so one folder cannot fill a bounded read budget", () => {
+    const tools = Array.from({ length: 6 }, (_, n) => ({ path: `scripts/evaluate-observation-release-gate-${n}.mjs`, status: "modified" as const, additions: 10 }));
+    const core = [{ path: "src/lib/observation-pipeline.ts", status: "modified" as const, additions: 400 }, { path: "src/lib/observation-source.ts", status: "modified" as const, additions: 300 }];
+    const top = rankReviewFiles([...tools, ...core], "Add the observation pipeline and release evaluation gates.").slice(0, 4).map(f => f.path);
+    expect(top).toContain("src/lib/observation-pipeline.ts");
+    expect(top).toContain("src/lib/observation-source.ts");
   });
 });

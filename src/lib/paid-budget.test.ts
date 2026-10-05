@@ -63,7 +63,63 @@ describe('paid transport boundary',()=>{
 import { submitReviewNavigationWithGemini } from './gemini-navigation';
 import { budgetedOpenAIFetch } from './paid-budget';
 import type { ReviewNavigationRequest } from './review-intent';
+import * as diagnostics from './review-navigation-diagnostics';
 const navigation:ReviewNavigationRequest={stage:'intent',model:'gemini-3.8-flash',sources:[],goals:[],artifacts:[],inventory:[],capabilities:{readPaths:false,searchScope:'supplied_artifacts',wholeRepository:false}};
+
+it('separates actual transport from reservation, settlement and run close intervals', async () => {
+ let now = 0;
+ const trace = diagnostics.createReviewMeasurements(() => now);
+ const context = { trace, parentId: trace.start('report') };
+ storeMock();
+ const baseFetch = fetch;
+ vi.stubGlobal('fetch', async (url:RequestInfo|URL, init?:RequestInit) => {
+  now += ({ config: 5, reserve: 7, settle: 11, close: 13 } as Record<string, number>)[JSON.parse(String(init?.body)).p_action] ?? 0;
+  return baseFetch(url, init);
+ });
+ await withPaidAnalysis('fixture', () => diagnostics.measureReviewAsync(context, 'model', child => paidProviderCall({
+  provider: 'google', model: 'gemini-3.8-flash', measurements: child,
+  invoke: async () => { now += 19; return { text: 'PRIVATE_PROVIDER_OUTPUT' }; }, usage: () => ({ input: 100, output: 50 })
+ })), context);
+ const spans = trace.snapshot().spans;
+ expect(spans.find(s => s.phase === 'model')?.durationMs).toBe(42);
+ expect(spans.find(s => s.phase === 'budget_reserve')?.durationMs).toBe(12);
+ expect(spans.find(s => s.phase === 'provider_transport')?.durationMs).toBe(19);
+ expect(spans.find(s => s.phase === 'budget_settle')?.durationMs).toBe(11);
+ expect(spans.find(s => s.phase === 'budget_close')?.durationMs).toBe(13);
+ const callId = spans.find(s => s.phase === 'model')!.id;
+ expect(spans.filter(s => ['budget_reserve','provider_transport','budget_settle'].includes(s.phase)).every(s => s.parentId === callId)).toBe(true);
+ expect(JSON.stringify(trace.snapshot())).not.toContain('PRIVATE_PROVIDER_OUTPUT');
+});
+
+it('includes OpenAI response-body time in transport and excludes ledger work', async () => {
+ let now=0;
+ const trace=diagnostics.createReviewMeasurements(()=>now),context={trace,parentId:trace.start('report')};
+ storeMock();const original=fetch;
+ vi.stubGlobal('fetch',async (url:RequestInfo|URL,init?:RequestInit)=>{
+  const action=JSON.parse(String(init?.body)).p_action;
+  now+=({config:2,reserve:3,settle:5,close:7} as Record<string,number>)[action]??0;
+  if(action==='config')return Response.json({allowed:true,config:{...config,prices:{'openai/gpt-fixture':price}}});
+  return original(url,init);
+ });
+ const external=vi.fn(async()=>{now+=11;const response=Response.json({usage:{input_tokens:100,output_tokens:50}});const read=response.text.bind(response);response.text=async()=>{now+=13;return read();};return response;});
+ await withPaidAnalysis('offline',()=>diagnostics.measureReviewAsync(context,'model',child=>budgetedOpenAIFetch('https://model.invalid',{method:'POST',body:JSON.stringify({model:'gpt-fixture'})},external,child)),context);
+ expect(external).toHaveBeenCalledOnce();
+ expect(trace.snapshot().spans.find(s=>s.phase==='provider_transport')?.durationMs).toBe(24);
+ expect(trace.snapshot().spans.find(s=>s.phase==='model')?.durationMs).toBe(34);
+});
+
+it('records denial and failed transport with closed, text-free outcomes', async () => {
+ const trace=diagnostics.createReviewMeasurements(),context={trace};
+ storeMock('soft_stop');const invoke=vi.fn();
+ await expect(withPaidAnalysis('denied',()=>paidProviderCall({provider:'google',model:'gemini-3.8-flash',invoke,usage:()=>null,measurements:context}),context)).rejects.toMatchObject({code:'soft_stop'});
+ expect(invoke).not.toHaveBeenCalled();
+ expect(trace.snapshot().spans).toEqual([expect.objectContaining({phase:'budget_reserve',outcome:'error'})]);
+ storeMock();
+ await expect(withPaidAnalysis('failed',()=>paidProviderCall({provider:'google',model:'gemini-3.8-flash',invoke:async()=>{throw Error('PRIVATE_FAILURE');},usage:()=>null,measurements:context}),context)).rejects.toThrow();
+ expect(trace.snapshot().spans.find(s=>s.phase==='provider_transport')?.outcome).toBe('error');
+ expect(trace.snapshot().spans.filter(s=>['budget_settle','budget_close'].includes(s.phase)).every(s=>s.outcome==='ok')).toBe(true);
+ expect(JSON.stringify(trace.snapshot())).not.toContain('PRIVATE_FAILURE');
+});
 
 describe('real adapter budget wiring',()=>{
  it('meters one Gemini request once and disables SDK retries',async()=>{

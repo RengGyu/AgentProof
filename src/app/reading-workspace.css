@@ -123,9 +123,9 @@
 .github-dashboard .dashboard-repository-strip > :not(summary) { margin: 0 24px 24px; }
 .github-dashboard .dashboard-repository-strip[open] > summary { margin-bottom: 20px; border-bottom: 1px solid var(--workspace-line); }
 .github-dashboard .repository-tabs { gap: 14px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); }
-.github-dashboard .repository-tab { min-height: 88px; padding: 18px; gap: 8px; border-radius: 10px; }
-.github-dashboard .repository-tab span { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
-.github-dashboard :is(.repository-tab small, .dashboard-list-row small) { font-size: 13px; line-height: 1.5; }
+.github-dashboard .repository-tab { min-height: 0; padding: 14px 16px; gap: 8px; border-radius: 10px; }
+.github-dashboard .repository-tab .repository-tab-name { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.github-dashboard :is(.repository-tab small, .dashboard-list-row small) { font-size: 12px; line-height: 1.5; }
 .github-dashboard .repository-tab.active { background: var(--workspace-violet-soft); border-color: #9ab3a2; }
 .github-dashboard .dashboard-list-row { min-height: 64px; padding: 16px; gap: 14px; font-weight: 550; }
 .github-dashboard .dashboard-activity-row > span:nth-child(2) { gap: 8px; }
@@ -208,8 +208,8 @@
 .github-dashboard .settings-panel > .dashboard-section:first-child + .dashboard-section-heading { margin-top: 24px; }
 .github-dashboard .dashboard-toggle-row { min-height: 88px; gap: 24px; padding: 24px 0; }
 .github-dashboard .dashboard-toggle-row span { min-width: 0; gap: 8px; }
-.github-dashboard .dashboard-toggle-row strong { font-size: 15px; font-weight: 600; line-height: 1.6; }
-.github-dashboard .dashboard-toggle-row small { font-size: 14px; line-height: 1.7; }
+.github-dashboard .dashboard-toggle-row strong { font-size: 14px; font-weight: 600; line-height: 1.6; }
+.github-dashboard .dashboard-toggle-row small { font-size: 12px; line-height: 1.6; }
 .github-dashboard .dashboard-toggle-row input { flex: 0 0 44px; width: 44px; height: 44px; cursor: pointer; accent-color: var(--workspace-violet); }
 .github-dashboard .dashboard-account-settings { margin-top: 32px; padding-top: 28px; }
 .github-dashboard .analysis-choice-dialog { padding: 28px; gap: 24px; max-width: 100%; border-radius: 12px; }

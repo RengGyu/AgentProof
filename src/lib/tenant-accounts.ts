@@ -86,6 +86,39 @@ export class TenantAccountStoreError extends Error {
   }
 }
 
+/** Account/member metadata only. A cutoff never deletes reports or jobs. */
+export async function readTenantInboxDismissedThrough(input: { tenantId: string; memberId: string }, env = process.env): Promise<string | null> {
+  const config = getTenantAccountStoreConfig(env);
+  if (!config) return null;
+  const params = new URLSearchParams({ tenant_id: `eq.${input.tenantId}`, member_id: `eq.${input.memberId}`, select: "inbox_dismissed_through", limit: "1" });
+  const response = await tenantAccountFetch(config, config.membersTable, `?${params}`, { method: "GET", signal: AbortSignal.timeout(8000) })
+    .catch(() => { throw new TenantAccountStoreError("Inbox state is unavailable."); });
+  const rows: unknown = await response.json().catch(() => null);
+  if (!response.ok || !Array.isArray(rows) || rows.length !== 1) throw new TenantAccountStoreError("Inbox state is unavailable.");
+  return inboxCutoff(rows[0]?.inbox_dismissed_through, true);
+}
+
+export async function dismissTenantInbox(input: { tenantId: string; memberId: string }, env = process.env): Promise<string> {
+  const config = getTenantAccountStoreConfig(env);
+  if (!config || config.membersTable !== DEFAULT_TENANT_MEMBERS_TABLE || config.tenantsTable !== DEFAULT_TENANTS_TABLE) throw new TenantAccountStoreError("Inbox dismissal requires durable account storage.");
+  // The database chooses the timestamp and serializes concurrent clears. The
+  // caller cannot hide future notifications or target another account member.
+  const response = await fetch(`${config.url}/rest/v1/rpc/agentproof_dismiss_inbox`, {
+    method: "POST", cache: "no-store", signal: AbortSignal.timeout(8000),
+    headers: { apikey: config.serviceRoleKey, Authorization: `Bearer ${config.serviceRoleKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ p_tenant_id: input.tenantId, p_member_id: input.memberId })
+  });
+  const rows: unknown = await response.json().catch(() => null);
+  if (!response.ok || !Array.isArray(rows) || rows.length !== 1) throw new TenantAccountStoreError("Inbox dismissal could not be saved.");
+  return inboxCutoff(rows[0]?.dismissed_through, false)!;
+}
+
+function inboxCutoff(value: unknown, nullable: boolean): string | null {
+  if (nullable && value === null) return null;
+  if (typeof value !== "string" || !Number.isFinite(Date.parse(value))) throw new TenantAccountStoreError("Inbox state is invalid.");
+  return new Date(value).toISOString();
+}
+
 export interface GitHubOwnerTenant {
   tenantId: string;
   memberId: string;

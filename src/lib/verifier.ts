@@ -3409,7 +3409,12 @@ function buildReviewPriority(
     });
   }
 
-  return dedupeReviewPriorityItems(items);
+  // A changed file can be named here without retained file evidence; say so and
+  // direct inspection rather than emit an unsupported file reference.
+  const changedPaths = new Set(input.changedFiles.map((file) => safeReportPath(file.path)));
+  return dedupeReviewPriorityItems(items).map((item) => !item.evidenceRefs?.length && changedPaths.has(item.path)
+    ? { ...item, reason: `${item.reason} File evidence is unavailable in this report; inspect the file directly.` }
+    : item);
 }
 
 function dedupeReviewPriorityItems(items: ReviewPriorityItem[]): ReviewPriorityItem[] {

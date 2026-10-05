@@ -1731,7 +1731,7 @@ describe("server report store", () => {
     ]);
     expect(String(url)).toContain("https://agentproof-test.supabase.co/rest/v1/saved_reports_test?");
     expect(String(url)).toContain("tenant_id=eq.tenant_a");
-    expect(String(url)).toContain("expires_at=gt.");
+    expect(new URL(String(url)).searchParams.get("or")).toMatch(/^\(expires_at\.is\.null,expires_at\.gt\./);
     expect(String(url)).toContain("limit=100");
     expect(String(url)).not.toContain("service-role-secret");
     expect(init?.method).toBe("GET");
