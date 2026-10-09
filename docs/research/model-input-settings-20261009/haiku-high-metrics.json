@@ -1,0 +1,192 @@
+{
+  "rows": [
+    {
+      "caseId": "pr1",
+      "url": "https://github.com/expressjs/express/pull/7442",
+      "status": "failed",
+      "error": "purpose_final_quote",
+      "totalSeconds": 31.704826917000002,
+      "generation": 3,
+      "count": 3,
+      "inputTokens": 34519,
+      "outputTokensIncludingThinking": 4222,
+      "estimatedUSD": 0.0055629,
+      "generationSeconds": 29.072076126000002,
+      "countSeconds": 2.007797458000001,
+      "blobReadSeconds": 0.5388387909999983,
+      "blobReadCount": 2,
+      "evidence": [
+        {
+          "id": "pe_703346b657f121f0d5a45d5a",
+          "path": ".github/workflows/ci.yml",
+          "side": "head",
+          "startLine": 1,
+          "endLine": 118
+        },
+        {
+          "id": "pe_ea65efc6279fb8a9a065e4ea",
+          "path": ".github/workflows/legacy.yml",
+          "side": "head",
+          "startLine": 1,
+          "endLine": 102
+        }
+      ],
+      "quotes": [
+        {
+          "field": "changeObservations[0]",
+          "refs": [
+            "pe_703346b657f121f0d5a45d5a",
+            "pe_ea65efc6279fb8a9a065e4ea"
+          ],
+          "singleRef": false,
+          "allQuotedSourcesContainText": true
+        },
+        {
+          "field": "testObservations[0]",
+          "refs": [
+            "pe_703346b657f121f0d5a45d5a",
+            "pe_ea65efc6279fb8a9a065e4ea"
+          ],
+          "singleRef": false,
+          "allQuotedSourcesContainText": true
+        }
+      ]
+    },
+    {
+      "caseId": "pr2",
+      "url": "https://github.com/expressjs/express/pull/7425",
+      "status": "complete",
+      "error": null,
+      "totalSeconds": 92.717164083,
+      "generation": 3,
+      "count": 3,
+      "inputTokens": 53768,
+      "outputTokensIncludingThinking": 5671,
+      "estimatedUSD": 0.0082123,
+      "generationSeconds": 31.850692584000026,
+      "countSeconds": 2.4426196249999994,
+      "blobReadSeconds": 58.27689416900006,
+      "blobReadCount": 213,
+      "evidence": [
+        {
+          "id": "pe_5e205712620f6ceee3aed9e6",
+          "path": "lib/response.js",
+          "side": "head",
+          "startLine": 1,
+          "endLine": 1056
+        },
+        {
+          "id": "pe_635c052868bb847b98dfb1ac",
+          "path": "test/res.send.js",
+          "side": "head",
+          "startLine": 1,
+          "endLine": 652
+        }
+      ],
+      "quotes": [
+        {
+          "field": "changeObservations[0]",
+          "refs": [
+            "pe_5e205712620f6ceee3aed9e6"
+          ],
+          "singleRef": true,
+          "allQuotedSourcesContainText": true
+        },
+        {
+          "field": "changeObservations[1]",
+          "refs": [
+            "pe_5e205712620f6ceee3aed9e6"
+          ],
+          "singleRef": true,
+          "allQuotedSourcesContainText": true
+        },
+        {
+          "field": "testObservations[0]",
+          "refs": [
+            "pe_635c052868bb847b98dfb1ac"
+          ],
+          "singleRef": true,
+          "allQuotedSourcesContainText": true
+        },
+        {
+          "field": "testObservations[1]",
+          "refs": [
+            "pe_635c052868bb847b98dfb1ac"
+          ],
+          "singleRef": true,
+          "allQuotedSourcesContainText": true
+        },
+        {
+          "field": "testObservations[2]",
+          "refs": [
+            "pe_635c052868bb847b98dfb1ac"
+          ],
+          "singleRef": true,
+          "allQuotedSourcesContainText": true
+        }
+      ]
+    },
+    {
+      "caseId": "pr12",
+      "url": "https://github.com/go-chi/chi/pull/1166",
+      "status": "complete",
+      "error": null,
+      "totalSeconds": 33.36115724999999,
+      "generation": 3,
+      "count": 3,
+      "inputTokens": 27630,
+      "outputTokensIncludingThinking": 5798,
+      "estimatedUSD": 0.005662,
+      "generationSeconds": 30.722181541000026,
+      "countSeconds": 1.809368416000012,
+      "blobReadSeconds": 0.774332040999987,
+      "blobReadCount": 3,
+      "evidence": [
+        {
+          "id": "pe_ab921b5875b5e648babc8904",
+          "path": "middleware/middleware_test.go",
+          "side": "head",
+          "startLine": 1,
+          "endLine": 200
+        },
+        {
+          "id": "pe_60958715a2803a36e049ae4d",
+          "path": "middleware/basic_auth_test.go",
+          "side": "head",
+          "startLine": 1,
+          "endLine": 60
+        },
+        {
+          "id": "pe_f861aa85272b0984d5229e7b",
+          "path": "middleware/heartbeat_test.go",
+          "side": "head",
+          "startLine": 1,
+          "endLine": 32
+        }
+      ],
+      "quotes": [
+        {
+          "field": "changeObservations[0]",
+          "refs": [
+            "pe_60958715a2803a36e049ae4d"
+          ],
+          "singleRef": true,
+          "allQuotedSourcesContainText": true
+        },
+        {
+          "field": "testObservations[0]",
+          "refs": [
+            "pe_f861aa85272b0984d5229e7b"
+          ],
+          "singleRef": true,
+          "allQuotedSourcesContainText": true
+        }
+      ]
+    }
+  ],
+  "generationCalls": 9,
+  "countCalls": 9,
+  "estimatedUSD": 0.0194372,
+  "invoice": "UNKNOWN",
+  "pricingSource": "https://platform.claude.com/docs/en/about-claude/pricing"
+}

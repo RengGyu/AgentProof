@@ -1,0 +1,36 @@
+function materialize(b: Loaded, start: number, end: number, clauseId: string, expand = true) {
+        guard();
+        const lines = b.content.split('\n');
+        if (start < 1 || end < start || start > lines.length || end > lines.length && !b.complete)
+            return null;
+        end = Math.min(end, lines.length);
+        let completeness: 'full_unit' | 'window_only' | 'split_unit' = 'window_only';
+        if (b.complete && start===1 && end===lines.length && !js(b.file.path)) {
+            start = 1;
+            end = lines.length;
+            completeness = 'full_unit';
+        }
+        const s = expand ? syntax(b) : undefined;
+        if (s) {
+            let unit: ts.Node | undefined;
+            const position = lines.slice(0, start - 1).join('\n').length + (start > 1 ? 1 : 0);
+            function find(n: ts.Node) { if (n.getStart(s) <= position && n.getEnd() >= position) {
+                if (ts.isFunctionDeclaration(n) || ts.isMethodDeclaration(n) || ts.isClassDeclaration(n) || ts.isVariableStatement(n) || ts.isExpressionStatement(n) || ts.isIfStatement(n))
+                    unit = n;
+                ts.forEachChild(n, find);
+            } }
+            find(s);
+            if (unit) {
+                const a = s.getLineAndCharacterOfPosition(unit.getStart(s)).line + 1, z = s.getLineAndCharacterOfPosition(unit.getEnd()).line + 1;
+                // Expansion may add context but must never remove any requested source line.
+                const expandedStart = Math.min(start, a), expandedEnd = Math.max(end, z);
+                if (true) {
+                    start = expandedStart;
+                    end = expandedEnd;
+                    completeness = start === a && end === z ? 'full_unit' : 'window_only';
+                }
+
+            }
+        }
+
+        

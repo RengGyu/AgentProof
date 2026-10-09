@@ -1,0 +1,754 @@
+[
+  {
+    "model": "Haiku",
+    "case": "pr1",
+    "calls": [
+      {
+        "stage": "locate",
+        "inputTokens": 9104,
+        "outputTokens": 693,
+        "thinkingTokens": 490,
+        "seconds": 6.8756022920000035,
+        "cost": 0.0012569,
+        "inputBytes": 13752,
+        "parts": {
+          "stage": 8,
+          "flow": 18,
+          "sources": 10635,
+          "spec": 656,
+          "localization": 2382
+        },
+        "localizationParts": {
+          "initial": 1270,
+          "results": 2,
+          "selectionSources": 2,
+          "omittedCandidates": 2,
+          "omittedToolResults": 2,
+          "readOutcomes": 2,
+          "candidateMetadata": 2,
+          "round": 1,
+          "selectionRule": 215,
+          "protocol": 697,
+          "rolesAreHypotheses": 4
+        },
+        "sourceContentBytes": 0,
+        "repeatedExactContentBytes": 0
+      },
+      {
+        "stage": "locate",
+        "inputTokens": 13998,
+        "outputTokens": 819,
+        "thinkingTokens": 570,
+        "seconds": 5.141425625,
+        "cost": 0.0018093,
+        "inputBytes": 23930,
+        "parts": {
+          "stage": 8,
+          "flow": 18,
+          "sources": 10635,
+          "spec": 656,
+          "localization": 12560
+        },
+        "localizationParts": {
+          "initial": 1270,
+          "results": 1547,
+          "selectionSources": 7271,
+          "omittedCandidates": 2,
+          "omittedToolResults": 2,
+          "readOutcomes": 335,
+          "candidateMetadata": 1033,
+          "round": 1,
+          "selectionRule": 215,
+          "protocol": 697,
+          "rolesAreHypotheses": 4
+        },
+        "sourceContentBytes": 5978,
+        "repeatedExactContentBytes": 0
+      },
+      {
+        "stage": "assess",
+        "inputTokens": 11417,
+        "outputTokens": 2710,
+        "thinkingTokens": 1732,
+        "seconds": 17.055048209,
+        "cost": 0.0024967,
+        "inputBytes": 19638,
+        "parts": {
+          "stage": 8,
+          "flow": 18,
+          "sources": 10635,
+          "spec": 656,
+          "evidence": 7271,
+          "executionSignals": 50,
+          "limitations": 24,
+          "coverage": 452,
+          "localization": 412
+        },
+        "localizationParts": {
+          "clauses": 374,
+          "rolesAreHypotheses": 4
+        },
+        "sourceContentBytes": 5978,
+        "repeatedExactContentBytes": 0
+      }
+    ]
+  },
+  {
+    "model": "Haiku",
+    "case": "pr2",
+    "calls": [
+      {
+        "stage": "locate",
+        "inputTokens": 5143,
+        "outputTokens": 886,
+        "thinkingTokens": 573,
+        "seconds": 5.689122209000001,
+        "cost": 0.0009573000000000001,
+        "inputBytes": 5248,
+        "parts": {
+          "stage": 8,
+          "flow": 18,
+          "sources": 2113,
+          "spec": 712,
+          "localization": 2344
+        },
+        "localizationParts": {
+          "initial": 1232,
+          "results": 2,
+          "selectionSources": 2,
+          "omittedCandidates": 2,
+          "omittedToolResults": 2,
+          "readOutcomes": 2,
+          "candidateMetadata": 2,
+          "round": 1,
+          "selectionRule": 215,
+          "protocol": 697,
+          "rolesAreHypotheses": 4
+        },
+        "sourceContentBytes": 0,
+        "repeatedExactContentBytes": 0
+      },
+      {
+        "stage": "locate",
+        "inputTokens": 25885,
+        "outputTokens": 1084,
+        "thinkingTokens": 875,
+        "seconds": 8.025496750000006,
+        "cost": 0.0031305,
+        "inputBytes": 53402,
+        "parts": {
+          "stage": 8,
+          "flow": 18,
+          "sources": 2113,
+          "spec": 712,
+          "localization": 50498
+        },
+        "localizationParts": {
+          "initial": 1232,
+          "results": 2538,
+          "selectionSources": 44131,
+          "omittedCandidates": 2,
+          "omittedToolResults": 2,
+          "readOutcomes": 480,
+          "candidateMetadata": 1013,
+          "round": 1,
+          "selectionRule": 215,
+          "protocol": 697,
+          "rolesAreHypotheses": 4
+        },
+        "sourceContentBytes": 41267,
+        "repeatedExactContentBytes": 0
+      },
+      {
+        "stage": "assess",
+        "inputTokens": 22740,
+        "outputTokens": 3701,
+        "thinkingTokens": 2715,
+        "seconds": 18.13607362500002,
+        "cost": 0.0041245,
+        "inputBytes": 48121,
+        "parts": {
+          "stage": 8,
+          "flow": 18,
+          "sources": 2113,
+          "spec": 712,
+          "evidence": 44131,
+          "executionSignals": 50,
+          "limitations": 24,
+          "coverage": 597,
+          "localization": 356
+        },
+        "localizationParts": {
+          "clauses": 318,
+          "rolesAreHypotheses": 4
+        },
+        "sourceContentBytes": 41267,
+        "repeatedExactContentBytes": 0
+      }
+    ]
+  },
+  {
+    "model": "Haiku",
+    "case": "pr12",
+    "calls": [
+      {
+        "stage": "locate",
+        "inputTokens": 5619,
+        "outputTokens": 792,
+        "thinkingTokens": 478,
+        "seconds": 5.558000708000007,
+        "cost": 0.0009578999999999999,
+        "inputBytes": 6024,
+        "parts": {
+          "stage": 8,
+          "flow": 18,
+          "sources": 1075,
+          "spec": 692,
+          "localization": 4178
+        },
+        "localizationParts": {
+          "initial": 3066,
+          "results": 2,
+          "selectionSources": 2,
+          "omittedCandidates": 2,
+          "omittedToolResults": 2,
+          "readOutcomes": 2,
+          "candidateMetadata": 2,
+          "round": 1,
+          "selectionRule": 215,
+          "protocol": 697,
+          "rolesAreHypotheses": 4
+        },
+        "sourceContentBytes": 0,
+        "repeatedExactContentBytes": 0
+      },
+      {
+        "stage": "locate",
+        "inputTokens": 13098,
+        "outputTokens": 1181,
+        "thinkingTokens": 900,
+        "seconds": 7.559764792000002,
+        "cost": 0.0019003000000000002,
+        "inputBytes": 19322,
+        "parts": {
+          "stage": 8,
+          "flow": 18,
+          "sources": 1075,
+          "spec": 692,
+          "localization": 17476
+        },
+        "localizationParts": {
+          "initial": 3066,
+          "results": 2326,
+          "selectionSources": 8923,
+          "omittedCandidates": 2,
+          "omittedToolResults": 2,
+          "readOutcomes": 502,
+          "candidateMetadata": 1555,
+          "round": 1,
+          "selectionRule": 215,
+          "protocol": 697,
+          "rolesAreHypotheses": 4
+        },
+        "sourceContentBytes": 6538,
+        "repeatedExactContentBytes": 0
+      },
+      {
+        "stage": "assess",
+        "inputTokens": 8913,
+        "outputTokens": 3825,
+        "thinkingTokens": 2922,
+        "seconds": 17.604416041000018,
+        "cost": 0.0028038,
+        "inputBytes": 11998,
+        "parts": {
+          "stage": 8,
+          "flow": 18,
+          "sources": 1075,
+          "spec": 692,
+          "evidence": 8923,
+          "executionSignals": 50,
+          "limitations": 24,
+          "coverage": 619,
+          "localization": 477
+        },
+        "localizationParts": {
+          "clauses": 439,
+          "rolesAreHypotheses": 4
+        },
+        "sourceContentBytes": 6538,
+        "repeatedExactContentBytes": 0
+      }
+    ]
+  },
+  {
+    "model": "Gemini",
+    "case": "pr1",
+    "calls": [
+      {
+        "stage": "purpose_locate_v1",
+        "inputTokens": 5952,
+        "outputTokens": 1358,
+        "thinkingTokens": 1093,
+        "seconds": 11.33566925,
+        "cost": 0.009556499999999999,
+        "inputBytes": 13855,
+        "parts": {
+          "stage": 8,
+          "flow": 18,
+          "sources": 10635,
+          "spec": 656,
+          "localization": 2485
+        },
+        "localizationParts": {
+          "initial": 1270,
+          "results": 2,
+          "readOutcomes": 2,
+          "omittedToolResults": 2,
+          "selectionSources": 2,
+          "omittedCandidates": 2,
+          "selectionRule": 126,
+          "candidateMetadata": 2,
+          "round": 1,
+          "actionsRemaining": 4,
+          "roundsRemaining": 1,
+          "protocol": 764,
+          "limits": 71,
+          "rolesAreHypotheses": 4
+        },
+        "sourceContentBytes": 0,
+        "repeatedExactContentBytes": 0
+      },
+      {
+        "stage": "purpose_locate_v1",
+        "inputTokens": 6797,
+        "outputTokens": 2294,
+        "thinkingTokens": 1789,
+        "seconds": 18.313171625000003,
+        "cost": 0.01370025,
+        "inputBytes": 15912,
+        "parts": {
+          "stage": 8,
+          "flow": 18,
+          "sources": 10635,
+          "spec": 656,
+          "localization": 4542
+        },
+        "localizationParts": {
+          "initial": 1270,
+          "results": 1780,
+          "readOutcomes": 281,
+          "omittedToolResults": 2,
+          "selectionSources": 2,
+          "omittedCandidates": 2,
+          "selectionRule": 126,
+          "candidateMetadata": 2,
+          "round": 1,
+          "actionsRemaining": 4,
+          "roundsRemaining": 1,
+          "protocol": 764,
+          "limits": 71,
+          "rolesAreHypotheses": 4
+        },
+        "sourceContentBytes": 0,
+        "repeatedExactContentBytes": 0
+      },
+      {
+        "stage": "purpose_locate_v1",
+        "inputTokens": 15831,
+        "outputTokens": 2298,
+        "thinkingTokens": 2060,
+        "seconds": 22.5630305,
+        "cost": 0.020490750000000002,
+        "inputBytes": 36274,
+        "parts": {
+          "stage": 8,
+          "flow": 18,
+          "sources": 10635,
+          "spec": 656,
+          "localization": 24904
+        },
+        "localizationParts": {
+          "initial": 1270,
+          "results": 4872,
+          "readOutcomes": 949,
+          "omittedToolResults": 2,
+          "selectionSources": 14541,
+          "omittedCandidates": 2,
+          "selectionRule": 126,
+          "candidateMetadata": 2065,
+          "round": 1,
+          "actionsRemaining": 4,
+          "roundsRemaining": 1,
+          "protocol": 764,
+          "limits": 71,
+          "rolesAreHypotheses": 4
+        },
+        "sourceContentBytes": 11956,
+        "repeatedExactContentBytes": 0
+      },
+      {
+        "stage": "purpose_final_v1",
+        "inputTokens": 11382,
+        "outputTokens": 20036,
+        "thinkingTokens": 18733,
+        "seconds": 146.620429208,
+        "cost": 0.0836715,
+        "inputBytes": 27521,
+        "parts": {
+          "stage": 8,
+          "flow": 18,
+          "sources": 10635,
+          "spec": 656,
+          "evidence": 14541,
+          "executionSignals": 110,
+          "limitations": 77,
+          "coverage": 1011,
+          "localization": 353
+        },
+        "localizationParts": {
+          "clauses": 315,
+          "rolesAreHypotheses": 4
+        },
+        "sourceContentBytes": 11956,
+        "repeatedExactContentBytes": 0
+      }
+    ]
+  },
+  {
+    "model": "Gemini",
+    "case": "pr2",
+    "calls": [
+      {
+        "stage": "purpose_locate_v1",
+        "inputTokens": 2690,
+        "outputTokens": 729,
+        "thinkingTokens": 469,
+        "seconds": 6.828976792,
+        "cost": 0.00475125,
+        "inputBytes": 5351,
+        "parts": {
+          "stage": 8,
+          "flow": 18,
+          "sources": 2113,
+          "spec": 712,
+          "localization": 2447
+        },
+        "localizationParts": {
+          "initial": 1232,
+          "results": 2,
+          "readOutcomes": 2,
+          "omittedToolResults": 2,
+          "selectionSources": 2,
+          "omittedCandidates": 2,
+          "selectionRule": 126,
+          "candidateMetadata": 2,
+          "round": 1,
+          "actionsRemaining": 4,
+          "roundsRemaining": 1,
+          "protocol": 764,
+          "limits": 71,
+          "rolesAreHypotheses": 4
+        },
+        "sourceContentBytes": 0,
+        "repeatedExactContentBytes": 0
+      },
+      {
+        "stage": "purpose_locate_v1",
+        "inputTokens": 3517,
+        "outputTokens": 1592,
+        "thinkingTokens": 1324,
+        "seconds": 11.65520925,
+        "cost": 0.008607749999999999,
+        "inputBytes": 7823,
+        "parts": {
+          "stage": 8,
+          "flow": 18,
+          "sources": 2113,
+          "spec": 712,
+          "localization": 4919
+        },
+        "localizationParts": {
+          "initial": 1232,
+          "results": 2195,
+          "readOutcomes": 281,
+          "omittedToolResults": 2,
+          "selectionSources": 2,
+          "omittedCandidates": 2,
+          "selectionRule": 126,
+          "candidateMetadata": 2,
+          "round": 1,
+          "actionsRemaining": 4,
+          "roundsRemaining": 1,
+          "protocol": 764,
+          "limits": 71,
+          "rolesAreHypotheses": 4
+        },
+        "sourceContentBytes": 0,
+        "repeatedExactContentBytes": 0
+      },
+      {
+        "stage": "purpose_locate_v1",
+        "inputTokens": 7034,
+        "outputTokens": 2045,
+        "thinkingTokens": 1780,
+        "seconds": 14.821095708999998,
+        "cost": 0.012944250000000001,
+        "inputBytes": 15849,
+        "parts": {
+          "stage": 8,
+          "flow": 18,
+          "sources": 2113,
+          "spec": 712,
+          "localization": 12945
+        },
+        "localizationParts": {
+          "initial": 1232,
+          "results": 3747,
+          "readOutcomes": 619,
+          "omittedToolResults": 2,
+          "selectionSources": 5124,
+          "omittedCandidates": 2,
+          "selectionRule": 126,
+          "candidateMetadata": 1016,
+          "round": 1,
+          "actionsRemaining": 4,
+          "roundsRemaining": 1,
+          "protocol": 764,
+          "limits": 71,
+          "rolesAreHypotheses": 4
+        },
+        "sourceContentBytes": 3927,
+        "repeatedExactContentBytes": 0
+      },
+      {
+        "stage": "purpose_final_v1",
+        "inputTokens": 3994,
+        "outputTokens": 4957,
+        "thinkingTokens": 4339,
+        "seconds": 32.21584975,
+        "cost": 0.02158425,
+        "inputBytes": 9335,
+        "parts": {
+          "stage": 8,
+          "flow": 18,
+          "sources": 2113,
+          "spec": 712,
+          "evidence": 5124,
+          "executionSignals": 110,
+          "limitations": 77,
+          "coverage": 681,
+          "localization": 380
+        },
+        "localizationParts": {
+          "clauses": 342,
+          "rolesAreHypotheses": 4
+        },
+        "sourceContentBytes": 3927,
+        "repeatedExactContentBytes": 0
+      }
+    ]
+  },
+  {
+    "model": "Gemini",
+    "case": "pr12",
+    "calls": [
+      {
+        "stage": "purpose_locate_v1",
+        "inputTokens": 3311,
+        "outputTokens": 2962,
+        "thinkingTokens": 2236,
+        "seconds": 24.544154541,
+        "cost": 0.013590749999999999,
+        "inputBytes": 6127,
+        "parts": {
+          "stage": 8,
+          "flow": 18,
+          "sources": 1075,
+          "spec": 692,
+          "localization": 4281
+        },
+        "localizationParts": {
+          "initial": 3066,
+          "results": 2,
+          "readOutcomes": 2,
+          "omittedToolResults": 2,
+          "selectionSources": 2,
+          "omittedCandidates": 2,
+          "selectionRule": 126,
+          "candidateMetadata": 2,
+          "round": 1,
+          "actionsRemaining": 4,
+          "roundsRemaining": 1,
+          "protocol": 764,
+          "limits": 71,
+          "rolesAreHypotheses": 4
+        },
+        "sourceContentBytes": 0,
+        "repeatedExactContentBytes": 0
+      },
+      {
+        "stage": "purpose_locate_v1",
+        "inputTokens": 4807,
+        "outputTokens": 7252,
+        "thinkingTokens": 5813,
+        "seconds": 48.572877875,
+        "cost": 0.03080025,
+        "inputBytes": 10214,
+        "parts": {
+          "stage": 8,
+          "flow": 18,
+          "sources": 1075,
+          "spec": 692,
+          "localization": 8368
+        },
+        "localizationParts": {
+          "initial": 3066,
+          "results": 3250,
+          "readOutcomes": 841,
+          "omittedToolResults": 2,
+          "selectionSources": 2,
+          "omittedCandidates": 2,
+          "selectionRule": 126,
+          "candidateMetadata": 2,
+          "round": 1,
+          "actionsRemaining": 4,
+          "roundsRemaining": 1,
+          "protocol": 764,
+          "limits": 71,
+          "rolesAreHypotheses": 4
+        },
+        "sourceContentBytes": 0,
+        "repeatedExactContentBytes": 0
+      },
+      {
+        "stage": "purpose_locate_v1",
+        "inputTokens": 25624,
+        "outputTokens": 2023,
+        "thinkingTokens": 1878,
+        "seconds": 16.493606,
+        "cost": 0.026804249999999998,
+        "inputBytes": 53270,
+        "parts": {
+          "stage": 8,
+          "flow": 18,
+          "sources": 1075,
+          "spec": 692,
+          "localization": 51424
+        },
+        "localizationParts": {
+          "initial": 3066,
+          "results": 12534,
+          "readOutcomes": 2835,
+          "omittedToolResults": 2,
+          "selectionSources": 25571,
+          "omittedCandidates": 2,
+          "selectionRule": 126,
+          "candidateMetadata": 6211,
+          "round": 1,
+          "actionsRemaining": 4,
+          "roundsRemaining": 1,
+          "protocol": 764,
+          "limits": 71,
+          "rolesAreHypotheses": 4
+        },
+        "sourceContentBytes": 17170,
+        "repeatedExactContentBytes": 0
+      },
+      {
+        "stage": "purpose_locate_v1",
+        "inputTokens": 28318,
+        "outputTokens": 2370,
+        "thinkingTokens": 2107,
+        "seconds": 19.884747458999993,
+        "cost": 0.030126,
+        "inputBytes": 57992,
+        "parts": {
+          "stage": 8,
+          "flow": 18,
+          "sources": 1075,
+          "spec": 692,
+          "localization": 56146
+        },
+        "localizationParts": {
+          "initial": 3066,
+          "results": 17117,
+          "readOutcomes": 2974,
+          "omittedToolResults": 2,
+          "selectionSources": 25571,
+          "omittedCandidates": 2,
+          "selectionRule": 126,
+          "candidateMetadata": 6211,
+          "round": 1,
+          "actionsRemaining": 4,
+          "roundsRemaining": 1,
+          "protocol": 764,
+          "limits": 71,
+          "rolesAreHypotheses": 4
+        },
+        "sourceContentBytes": 17170,
+        "repeatedExactContentBytes": 0
+      },
+      {
+        "stage": "purpose_locate_v1",
+        "inputTokens": 32073,
+        "outputTokens": 5070,
+        "thinkingTokens": 4382,
+        "seconds": 36.11168645800001,
+        "cost": 0.04306725,
+        "inputBytes": 67077,
+        "parts": {
+          "stage": 8,
+          "flow": 18,
+          "sources": 1075,
+          "spec": 692,
+          "localization": 65231
+        },
+        "localizationParts": {
+          "initial": 3066,
+          "results": 18619,
+          "readOutcomes": 3306,
+          "omittedToolResults": 2,
+          "selectionSources": 31832,
+          "omittedCandidates": 2,
+          "selectionRule": 126,
+          "candidateMetadata": 7201,
+          "round": 1,
+          "actionsRemaining": 4,
+          "roundsRemaining": 1,
+          "protocol": 764,
+          "limits": 71,
+          "rolesAreHypotheses": 4
+        },
+        "sourceContentBytes": 22131,
+        "repeatedExactContentBytes": 0
+      },
+      {
+        "stage": "purpose_final_v1",
+        "inputTokens": 16988,
+        "outputTokens": 12882,
+        "thinkingTokens": 11153,
+        "seconds": 84.1147195,
+        "cost": 0.061048500000000006,
+        "inputBytes": 38123,
+        "parts": {
+          "stage": 8,
+          "flow": 18,
+          "sources": 1075,
+          "spec": 692,
+          "evidence": 31832,
+          "executionSignals": 110,
+          "limitations": 77,
+          "coverage": 3368,
+          "localization": 831
+        },
+        "localizationParts": {
+          "clauses": 793,
+          "rolesAreHypotheses": 4
+        },
+        "sourceContentBytes": 22131,
+        "repeatedExactContentBytes": 0
+      }
+    ]
+  }
+]

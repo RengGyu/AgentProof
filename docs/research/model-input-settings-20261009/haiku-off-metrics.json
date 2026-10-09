@@ -1,0 +1,658 @@
+{
+  "model": "claude-haiku-5-5",
+  "thinking": {
+    "type": "disabled"
+  },
+  "effort": "high",
+  "cases": {
+    "pr1": {
+      "case": "pr1",
+      "status": "complete",
+      "error": null,
+      "errorObject": null,
+      "rounds": 2,
+      "totalSeconds": 12.791,
+      "calls": [
+        {
+          "stage": "locate",
+          "http": 200,
+          "model": "claude-haiku-5-5",
+          "stopReason": "end_turn",
+          "countInput": 9280,
+          "input": 9280,
+          "output": 202,
+          "thinkingTokens": 0,
+          "thinkingBlocks": [],
+          "cacheCreate": 0,
+          "cacheRead": 0,
+          "generationSeconds": 4.171,
+          "countSeconds": 0.755,
+          "costUSD": 0.001029,
+          "countGenerateSameCommon": true,
+          "composition": {
+            "inputBytes": 13665,
+            "parts": {
+              "stage": 8,
+              "flow": 18,
+              "sources": 10635,
+              "spec": 656,
+              "localization": 2295
+            },
+            "localizationParts": {
+              "initial": 1270,
+              "results": 2,
+              "selectionSources": 2,
+              "omittedCandidates": 2,
+              "omittedToolResults": 2,
+              "readOutcomes": 2,
+              "round": 1,
+              "selectionRule": 151,
+              "protocol": 697,
+              "rolesAreHypotheses": 4
+            },
+            "evidenceContentBytes": 0
+          },
+          "responseId": "msg_011Cfr2Xo2hpAjvfpMb3SDhR"
+        },
+        {
+          "stage": "locate",
+          "http": 200,
+          "model": "claude-haiku-5-5",
+          "stopReason": "end_turn",
+          "countInput": 13616,
+          "input": 13616,
+          "output": 144,
+          "thinkingTokens": 0,
+          "thinkingBlocks": [],
+          "cacheCreate": 0,
+          "cacheRead": 0,
+          "generationSeconds": 2.176,
+          "countSeconds": 0.711,
+          "costUSD": 0.0014336,
+          "countGenerateSameCommon": true,
+          "composition": {
+            "inputBytes": 22812,
+            "parts": {
+              "stage": 8,
+              "flow": 18,
+              "sources": 10635,
+              "spec": 656,
+              "localization": 11442
+            },
+            "localizationParts": {
+              "initial": 1270,
+              "results": 1547,
+              "selectionSources": 7271,
+              "omittedCandidates": 2,
+              "omittedToolResults": 2,
+              "readOutcomes": 335,
+              "round": 1,
+              "selectionRule": 151,
+              "protocol": 697,
+              "rolesAreHypotheses": 4
+            },
+            "evidenceContentBytes": 5978
+          },
+          "responseId": "msg_011Cfr2YBfUz8Y37kbzAw5Pt"
+        },
+        {
+          "stage": "assess",
+          "http": 200,
+          "model": "claude-haiku-5-5",
+          "stopReason": "end_turn",
+          "countInput": 11312,
+          "input": 11312,
+          "output": 371,
+          "thinkingTokens": 0,
+          "thinkingBlocks": [],
+          "cacheCreate": 0,
+          "cacheRead": 0,
+          "generationSeconds": 3.741,
+          "countSeconds": 0.618,
+          "costUSD": 0.0013167,
+          "countGenerateSameCommon": true,
+          "composition": {
+            "inputBytes": 19490,
+            "parts": {
+              "stage": 8,
+              "flow": 18,
+              "sources": 10635,
+              "spec": 656,
+              "evidence": 7271,
+              "executionSignals": 50,
+              "limitations": 24,
+              "coverage": 452,
+              "localization": 264
+            },
+            "localizationParts": {
+              "clauses": 226,
+              "rolesAreHypotheses": 4
+            },
+            "evidenceContentBytes": 5978
+          },
+          "responseId": "msg_011Cfr2YQcrfZ9uKHSvtU4EW"
+        }
+      ],
+      "costUSD": 0.0037793,
+      "repoReadSeconds": 0.539,
+      "repoReads": 2,
+      "repoReadBytes": 5978,
+      "evidence": [
+        {
+          "id": "pe_703346b657f121f0d5a45d5a",
+          "path": ".github/workflows/ci.yml",
+          "side": "head",
+          "lines": [
+            1,
+            118
+          ],
+          "contentHash": "8cda2dcf7bbca4d37cf77b36bafda50935d6aa3109ee9349850d1c1e25471f6d",
+          "bytes": 3230
+        },
+        {
+          "id": "pe_ea65efc6279fb8a9a065e4ea",
+          "path": ".github/workflows/legacy.yml",
+          "side": "head",
+          "lines": [
+            1,
+            102
+          ],
+          "contentHash": "1e000ce95194fa9ffe1972b77db6a24755e3517b15abdb731d8d22df053f9531",
+          "bytes": 2748
+        }
+      ],
+      "selection": {
+        "stopReason": "selected",
+        "searchStates": [
+          "collected"
+        ]
+      },
+      "actionsPerRound": [
+        2,
+        0
+      ],
+      "quoteAndRefChecks": [
+        {
+          "field": "changeObservations",
+          "refs": 1,
+          "matches": true
+        },
+        {
+          "field": "changeObservations",
+          "refs": 1,
+          "matches": true
+        },
+        {
+          "field": "allRefsExist",
+          "matches": true
+        }
+      ],
+      "serverRange": [
+        {
+          "path": ".github/workflows/ci.yml",
+          "side": "head",
+          "requested": [
+            1,
+            200
+          ],
+          "returned": [
+            1,
+            118
+          ],
+          "extraLines": 0
+        },
+        {
+          "path": ".github/workflows/legacy.yml",
+          "side": "head",
+          "requested": [
+            1,
+            200
+          ],
+          "returned": [
+            1,
+            102
+          ],
+          "extraLines": 0
+        }
+      ]
+    },
+    "pr2": {
+      "case": "pr2",
+      "status": "complete",
+      "error": null,
+      "errorObject": null,
+      "rounds": 2,
+      "totalSeconds": 14.064,
+      "calls": [
+        {
+          "stage": "locate",
+          "http": 200,
+          "model": "claude-haiku-5-5",
+          "stopReason": "end_turn",
+          "countInput": 5319,
+          "input": 5319,
+          "output": 207,
+          "thinkingTokens": 0,
+          "thinkingBlocks": [],
+          "cacheCreate": 0,
+          "cacheRead": 0,
+          "generationSeconds": 3.654,
+          "countSeconds": 0.331,
+          "costUSD": 0.0006354,
+          "countGenerateSameCommon": true,
+          "composition": {
+            "inputBytes": 5161,
+            "parts": {
+              "stage": 8,
+              "flow": 18,
+              "sources": 2113,
+              "spec": 712,
+              "localization": 2257
+            },
+            "localizationParts": {
+              "initial": 1232,
+              "results": 2,
+              "selectionSources": 2,
+              "omittedCandidates": 2,
+              "omittedToolResults": 2,
+              "readOutcomes": 2,
+              "round": 1,
+              "selectionRule": 151,
+              "protocol": 697,
+              "rolesAreHypotheses": 4
+            },
+            "evidenceContentBytes": 0
+          },
+          "responseId": "msg_011Cfr2YhBWvAc3cyGVxsjdj"
+        },
+        {
+          "stage": "locate",
+          "http": 200,
+          "model": "claude-haiku-5-5",
+          "stopReason": "end_turn",
+          "countInput": 15876,
+          "input": 15876,
+          "output": 191,
+          "thinkingTokens": 0,
+          "thinkingBlocks": [],
+          "cacheCreate": 0,
+          "cacheRead": 0,
+          "generationSeconds": 2.621,
+          "countSeconds": 0.519,
+          "costUSD": 0.0016831,
+          "countGenerateSameCommon": true,
+          "composition": {
+            "inputBytes": 29325,
+            "parts": {
+              "stage": 8,
+              "flow": 18,
+              "sources": 2113,
+              "spec": 712,
+              "localization": 26421
+            },
+            "localizationParts": {
+              "initial": 1232,
+              "results": 1551,
+              "selectionSources": 22284,
+              "omittedCandidates": 2,
+              "omittedToolResults": 2,
+              "readOutcomes": 335,
+              "round": 1,
+              "selectionRule": 151,
+              "protocol": 697,
+              "rolesAreHypotheses": 4
+            },
+            "evidenceContentBytes": 20391
+          },
+          "responseId": "msg_011Cfr2Z4AaRjAwCeJcRHdvY"
+        },
+        {
+          "stage": "assess",
+          "http": 200,
+          "model": "claude-haiku-5-5",
+          "stopReason": "end_turn",
+          "countInput": 13569,
+          "input": 13569,
+          "output": 941,
+          "thinkingTokens": 0,
+          "thinkingBlocks": [],
+          "cacheCreate": 0,
+          "cacheRead": 0,
+          "generationSeconds": 5.806,
+          "countSeconds": 0.566,
+          "costUSD": 0.0018274,
+          "countGenerateSameCommon": true,
+          "composition": {
+            "inputBytes": 26095,
+            "parts": {
+              "stage": 8,
+              "flow": 18,
+              "sources": 2113,
+              "spec": 712,
+              "evidence": 22284,
+              "executionSignals": 50,
+              "limitations": 24,
+              "coverage": 452,
+              "localization": 322
+            },
+            "localizationParts": {
+              "clauses": 284,
+              "rolesAreHypotheses": 4
+            },
+            "evidenceContentBytes": 20391
+          },
+          "responseId": "msg_011Cfr2ZH9RrGRSQA2LQeC25"
+        }
+      ],
+      "costUSD": 0.0041459,
+      "repoReadSeconds": 0.525,
+      "repoReads": 2,
+      "repoReadBytes": 41290,
+      "evidence": [
+        {
+          "id": "pe_d58798234571d02da4a7782c",
+          "path": "lib/response.js",
+          "side": "head",
+          "lines": [
+            1,
+            400
+          ],
+          "contentHash": "53656aeb6fc8065dc36befdd334a48e2ac444a0a67075967401d15333a2cca38",
+          "bytes": 10499
+        },
+        {
+          "id": "pe_cc2f55715c6b5d6d06f00fd2",
+          "path": "test/res.send.js",
+          "side": "head",
+          "lines": [
+            1,
+            400
+          ],
+          "contentHash": "e3c95b68ccc9ae3060af9b59b5e744173cabc9f8e3b4d6ee6d62b16c7178b589",
+          "bytes": 9892
+        }
+      ],
+      "selection": {
+        "stopReason": "selected",
+        "searchStates": [
+          "collected"
+        ]
+      },
+      "actionsPerRound": [
+        2,
+        0
+      ],
+      "quoteAndRefChecks": [
+        {
+          "field": "changeObservations",
+          "refs": 1,
+          "matches": true
+        },
+        {
+          "field": "changeObservations",
+          "refs": 1,
+          "matches": true
+        },
+        {
+          "field": "testObservations",
+          "refs": 1,
+          "matches": true
+        },
+        {
+          "field": "testObservations",
+          "refs": 1,
+          "matches": true
+        },
+        {
+          "field": "testObservations",
+          "refs": 1,
+          "matches": true
+        },
+        {
+          "field": "allRefsExist",
+          "matches": true
+        }
+      ],
+      "serverRange": [
+        {
+          "path": "lib/response.js",
+          "side": "head",
+          "requested": [
+            1,
+            400
+          ],
+          "returned": [
+            1,
+            400
+          ],
+          "extraLines": 0
+        },
+        {
+          "path": "test/res.send.js",
+          "side": "head",
+          "requested": [
+            1,
+            400
+          ],
+          "returned": [
+            1,
+            400
+          ],
+          "extraLines": 0
+        }
+      ]
+    },
+    "pr12": {
+      "case": "pr12",
+      "status": "complete",
+      "error": null,
+      "errorObject": null,
+      "rounds": 2,
+      "totalSeconds": 13.51,
+      "calls": [
+        {
+          "stage": "locate",
+          "http": 200,
+          "model": "claude-haiku-5-5",
+          "stopReason": "end_turn",
+          "countInput": 5795,
+          "input": 5795,
+          "output": 311,
+          "thinkingTokens": 0,
+          "thinkingBlocks": [],
+          "cacheCreate": 0,
+          "cacheRead": 0,
+          "generationSeconds": 4.08,
+          "countSeconds": 0.555,
+          "costUSD": 0.000735,
+          "countGenerateSameCommon": true,
+          "composition": {
+            "inputBytes": 5937,
+            "parts": {
+              "stage": 8,
+              "flow": 18,
+              "sources": 1075,
+              "spec": 692,
+              "localization": 4091
+            },
+            "localizationParts": {
+              "initial": 3066,
+              "results": 2,
+              "selectionSources": 2,
+              "omittedCandidates": 2,
+              "omittedToolResults": 2,
+              "readOutcomes": 2,
+              "round": 1,
+              "selectionRule": 151,
+              "protocol": 697,
+              "rolesAreHypotheses": 4
+            },
+            "evidenceContentBytes": 0
+          },
+          "responseId": "msg_011Cfr2ZjVBtqe8g7RTnEYXN"
+        },
+        {
+          "stage": "locate",
+          "http": 200,
+          "model": "claude-haiku-5-5",
+          "stopReason": "end_turn",
+          "countInput": 11746,
+          "input": 11746,
+          "output": 211,
+          "thinkingTokens": 0,
+          "thinkingBlocks": [],
+          "cacheCreate": 0,
+          "cacheRead": 0,
+          "generationSeconds": 2.375,
+          "countSeconds": 0.676,
+          "costUSD": 0.0012801,
+          "countGenerateSameCommon": true,
+          "composition": {
+            "inputBytes": 16502,
+            "parts": {
+              "stage": 8,
+              "flow": 18,
+              "sources": 1075,
+              "spec": 692,
+              "localization": 14656
+            },
+            "localizationParts": {
+              "initial": 3066,
+              "results": 6132,
+              "selectionSources": 3967,
+              "omittedCandidates": 2,
+              "omittedToolResults": 2,
+              "readOutcomes": 472,
+              "round": 1,
+              "selectionRule": 151,
+              "protocol": 697,
+              "rolesAreHypotheses": 4
+            },
+            "evidenceContentBytes": 2534
+          },
+          "responseId": "msg_011Cfr2a97WHooZFFgvLjcRR"
+        },
+        {
+          "stage": "assess",
+          "http": 200,
+          "model": "claude-haiku-5-5",
+          "stopReason": "end_turn",
+          "countInput": 5938,
+          "input": 5938,
+          "output": 562,
+          "thinkingTokens": 0,
+          "thinkingBlocks": [],
+          "cacheCreate": 0,
+          "cacheRead": 0,
+          "generationSeconds": 4.669,
+          "countSeconds": 0.566,
+          "costUSD": 0.0008748,
+          "countGenerateSameCommon": true,
+          "composition": {
+            "inputBytes": 6893,
+            "parts": {
+              "stage": 8,
+              "flow": 18,
+              "sources": 1075,
+              "spec": 692,
+              "evidence": 3967,
+              "executionSignals": 50,
+              "limitations": 24,
+              "coverage": 589,
+              "localization": 358
+            },
+            "localizationParts": {
+              "clauses": 320,
+              "rolesAreHypotheses": 4
+            },
+            "evidenceContentBytes": 2534
+          },
+          "responseId": "msg_011Cfr2aMZcZbDsz83D6eTSt"
+        }
+      ],
+      "costUSD": 0.0028899,
+      "repoReadSeconds": 0.557,
+      "repoReads": 2,
+      "repoReadBytes": 2534,
+      "evidence": [
+        {
+          "id": "pe_60958715a2803a36e049ae4d",
+          "path": "middleware/basic_auth_test.go",
+          "side": "head",
+          "lines": [
+            1,
+            60
+          ],
+          "contentHash": "fffb9b471f26e5b5a5562faa95bc0205f4b62ad77216d846f01ae61c36717c53",
+          "bytes": 1265
+        },
+        {
+          "id": "pe_2c598ac4e442c2ccae875cf5",
+          "path": "middleware/basic_auth_test.go",
+          "side": "base",
+          "lines": [
+            1,
+            60
+          ],
+          "contentHash": "ca34d66c4138338a02ccfcd74e0d176d99f1c5336364f5c8adefd44953ec7bfc",
+          "bytes": 1269
+        }
+      ],
+      "selection": {
+        "stopReason": "selected",
+        "searchStates": [
+          "partial_access"
+        ]
+      },
+      "actionsPerRound": [
+        3,
+        0
+      ],
+      "quoteAndRefChecks": [
+        {
+          "field": "changeObservations",
+          "refs": 1,
+          "matches": true
+        },
+        {
+          "field": "allRefsExist",
+          "matches": true
+        }
+      ],
+      "serverRange": [
+        {
+          "path": "middleware/basic_auth_test.go",
+          "side": "head",
+          "requested": [
+            1,
+            60
+          ],
+          "returned": [
+            1,
+            60
+          ],
+          "extraLines": 0
+        },
+        {
+          "path": "middleware/basic_auth_test.go",
+          "side": "base",
+          "requested": [
+            1,
+            60
+          ],
+          "returned": [
+            1,
+            60
+          ],
+          "extraLines": 0
+        }
+      ]
+    }
+  },
+  "totals": {
+    "generation": 9,
+    "costUSD": 0.0108151,
+    "thinkingTokensNonZeroOrUnknown": [],
+    "thinkingBlocksSeen": 0
+  }
+}
