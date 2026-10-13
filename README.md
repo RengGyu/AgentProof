@@ -109,6 +109,8 @@ Live smoke commands such as OpenAI, webhook, GitHub comment, or Slack checks sho
 
 AgentProof separates test/build execution proof from other GitHub checks:
 
+Reading changed source or a static test assertion does not establish that a test ran; execution status must come from recorded check or log evidence.
+
 - `Test/Build` status is backed only by check or log names/summaries that look like test, spec, unit, integration, e2e, coverage, CI, or build execution.
 - Passing security reports, code-owner checks, dependency scans, deploy previews, and AI review checks do not prove tests or builds ran.
 - Generic `CI` or `build` checks are not promoted when their summaries only mention preview, deployment, security, policy, or report gates.
