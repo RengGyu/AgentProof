@@ -767,3 +767,82 @@
 
 /* Keep the in-place regeneration choices keyboard/touch accessible without moving the reader. */
 .github-dashboard .dashboard-shelf-confirm button { min-height: 44px; }
+
+/* 2026-10-22 code-surface pass: identifiers read as code, references as file chips, cited code on the same dark
+   surface as the home sample. Same neutral palette and charcoal accent; presentation only, 44px targets kept. */
+.github-dashboard, .github-entry.github-front {
+  --ws-mono: ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --ws-code-bg: #1d2024; --ws-code-bar: #23272c; --ws-code-fg: #d5d8dd; --ws-code-muted: #868c95; --ws-code-line: #2c3036;
+}
+
+/* Identifiers: repository, PR number, version, time, check and fit states. */
+.github-dashboard .dashboard-topbar > .dashboard-repository-strip > summary > strong { font-family: var(--ws-mono); font-size: 13.5px; font-weight: 500; }
+.github-dashboard .dashboard-pr-number { font-family: var(--ws-mono); font-size: 12px; font-weight: 500; color: var(--workspace-muted); font-variant-numeric: tabular-nums; }
+.github-dashboard .dashboard-pr-state { font-family: var(--ws-mono); font-size: 11px; }
+.github-dashboard :is(.dashboard-version-tag, .dashboard-version-meta) { font-family: var(--ws-mono); font-variant-numeric: tabular-nums; }
+.github-dashboard .report-context { font-family: var(--ws-mono); font-size: 12.5px; }
+.github-dashboard .report-context h2 { font-family: var(--ws-mono); font-size: 12.5px; font-weight: 600; color: var(--workspace-ink); }
+.github-dashboard .dashboard-status { font-family: var(--ws-mono); font-size: 11.5px; font-weight: 500; letter-spacing: 0; }
+.github-dashboard .report-workspace .report-hierarchy .report-check-chips > li { max-width: none; font-size: 11.5px; line-height: 18px; }
+
+/* Section labels: small monospace captions, so headings stay the report's only large type. */
+.github-dashboard .report-hierarchy .report-section-label,
+.github-dashboard .report-workspace .report-hierarchy p.report-section-label { font-family: var(--ws-mono); font-size: 12px; font-weight: 500; line-height: 18px; letter-spacing: .01em; }
+.github-dashboard .report-hierarchy :is(.report-primary-changes, .report-scope-notes, .report-execution-records, .report-purpose-body > section) > h4 {
+  margin: 0 0 8px; color: var(--workspace-muted); font-family: var(--ws-mono); font-size: 11.5px; font-weight: 600; line-height: 18px; letter-spacing: .04em; text-transform: uppercase;
+}
+
+/* Claims: one diff-gutter rule per description; the description whose code is open keeps the charcoal rule. */
+.github-dashboard .report-workspace .report-claim { padding: 6px 12px 2px; border-radius: 0 4px 4px 0; box-shadow: inset 2px 0 0 var(--workspace-line); }
+.github-dashboard .report-workspace .report-claim:hover { box-shadow: inset 2px 0 0 var(--workspace-control); }
+.github-dashboard .report-workspace .report-claim.is-code-origin { background: var(--ws-selected); box-shadow: inset 3px 0 0 var(--workspace-accent); }
+.github-dashboard .report-hierarchy .report-primary-changes .report-claim + .report-claim,
+.github-dashboard .report-hierarchy .report-claim + .report-claim { margin-top: 10px; }
+
+/* References: file:line chips inside the unchanged 44px control. */
+.report-hierarchy .report-cited-refs { gap: 0; margin-top: 2px; }
+.report-hierarchy .report-ref-read, .report-hierarchy .report-ref-read:hover, .report-hierarchy .report-ref-read[aria-pressed="true"] { padding: 0; background: transparent; box-shadow: none; }
+.report-hierarchy :is(.report-ref-read, .report-purpose-ref-link, .report-ref-location) code {
+  padding: 2px 8px; border: 1px solid var(--workspace-line, #d4d7dc); border-radius: 4px; background: var(--workspace-panel, #fff);
+  color: var(--workspace-ink, #24272c); font-family: var(--ws-mono, monospace); font-size: 12px; line-height: 18px; text-decoration: none;
+}
+.report-hierarchy .report-purpose-ref-link { text-decoration: none; }
+.report-hierarchy :is(.report-ref-read, .report-purpose-ref-link):hover code { border-color: var(--workspace-control, #7a8490); background: var(--ws-nav, #eef0f2); }
+.report-hierarchy .report-ref-read[aria-pressed="true"] code { border-color: var(--workspace-accent, #33363b); background: var(--workspace-accent, #33363b); color: #fff; }
+.report-hierarchy .report-ref-side { font-family: var(--ws-mono, monospace); font-size: 11px; color: var(--workspace-muted, #5e6672); }
+.report-hierarchy .report-ref-github { width: 36px; min-width: 36px; height: 44px; }
+.report-hierarchy .report-ref-full summary { font-family: var(--ws-mono, monospace); font-size: 11px; }
+.report-hierarchy .report-ref-full[open] code { font-family: var(--ws-mono, monospace); font-size: 12px; color: var(--workspace-muted, #5e6672); }
+
+/* Cited-code location list: the selected location is the filled chip, as on the home sample. */
+.github-dashboard .report-code-ref { min-height: 40px; padding: 0 10px; gap: 8px; }
+.github-dashboard .report-code-ref code { font-family: var(--ws-mono); font-size: 12px; }
+.github-dashboard .report-code-ref span { font-family: var(--ws-mono); font-size: 11px; }
+.github-dashboard .report-code-ref[aria-pressed="true"] { border-color: var(--workspace-accent); background: var(--workspace-accent); box-shadow: none; color: #fff; }
+.github-dashboard .report-code-ref[aria-pressed="true"] :is(code, span) { color: #fff; }
+.github-dashboard .report-code-ref[aria-pressed="true"] span { opacity: .72; }
+.github-dashboard .report-code-meta { font-family: var(--ws-mono); font-size: 11.5px; }
+
+/* Code reader: dark surface with a numbered gutter; the cited range is lighter with a left rule. */
+.github-dashboard .report-code-panel { border-color: var(--ws-code-line); background: var(--ws-code-bg); color: var(--ws-code-fg); }
+.github-dashboard .report-code-panel header { border-bottom-color: var(--ws-code-line); background: var(--ws-code-bar); }
+.github-dashboard .report-code-panel header :is(strong, code) { color: #eceef1; font-family: var(--ws-mono); }
+.github-dashboard .report-code-panel header span { color: var(--ws-code-muted); font-family: var(--ws-mono); font-size: 11px; }
+.github-dashboard .report-code-panel .report-code-scroll { max-width: 100%; background: transparent; }
+.github-dashboard .report-code-panel .report-code-scroll pre { padding: 8px 0 12px; }
+.github-dashboard .report-code-panel .report-code-scroll pre code { color: var(--ws-code-fg); font: 12px/20px var(--ws-mono); tab-size: 2; }
+.github-dashboard .report-code-panel .report-code-number { min-width: 4ch; margin-right: 14px; padding: 0 10px 0 12px; box-shadow: inset -1px 0 0 var(--ws-code-line); color: #6b717a; }
+.github-dashboard .report-code-panel .report-code-line.is-reference { background: rgb(255 255 255 / 6%); box-shadow: inset 2px 0 0 #c9cdd3; }
+.github-dashboard .report-code-panel .report-code-line.is-reference .report-code-number { color: #c9cdd3; }
+.github-dashboard .report-code-panel :is(.report-code-scroll, .report-code-action):focus-visible { outline: 2px solid #e4e6ea; outline-offset: -2px; }
+.github-dashboard .report-code-panel > :is(p, div[role="alert"]) { color: var(--ws-code-fg); }
+.github-dashboard .report-code-panel > .report-code-note { border-top-color: var(--ws-code-line); color: var(--ws-code-muted); font-family: var(--ws-mono); }
+.github-dashboard .report-code-panel .report-code-action { border-color: #4a4f57; background: transparent; color: #eceef1; }
+
+/* Home sample: the same caption and identifier treatment as the workspace. */
+.github-front :is(.front-sample-pr, .front-sample-bar, .front-sample-meta dt) { font-family: var(--ws-mono); font-size: 11.5px; }
+.github-front .front-sample-claim .front-sample-label { font-family: var(--ws-mono); font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.github-front .front-sample-ref code { font-family: var(--ws-mono); }
+.github-front .front-code-body { font-family: var(--ws-mono); }
+.github-front .front-code-n { box-shadow: inset -1px 0 0 var(--front-code-line); margin-right: 12px; }
+.github-front .front-step-number { font-family: var(--ws-mono); font-size: 13px; }

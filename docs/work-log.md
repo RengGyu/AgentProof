@@ -1364,3 +1364,5 @@
 ### 2026-10-22 DeepSeek output allowance (local only)
 - Approved32768 combined reasoning/output for all common purpose stages; request/usage/admission use the same ceiling. Preserved model/high, timeouts, privacy, quote validation and budget caps.
 - Regression122pass (red9→green), type/buildpass; manual reserve-only SQL prepared at /private/tmp/diffevidence-deepseek-output-limit-20261022/update-deepseek-reserve.sql (FX1500:796.263KRW with50% headroom). DB not applied, no paid calls/deployment; actual completion remains unverified.
+
+- 2026-10-22: Code-surface UI pass (Claude, not deployed, CSS only, base f0ee9d81). Identifiers (repository, PR number, version/time, check/fit states, section captions) in monospace; claims as diff-gutter rows; file:line references as chips inside the unchanged 44px controls; cited-code reader on the home sample's dark surface with a numbered gutter and cited-range rule. Palette unchanged (neutral gray, charcoal accent; no blue/green/cream). Mock-API harness 1440/390 for list/report/details/code; typecheck pass; components 300/304 with the same 4 failures on the untouched base.
