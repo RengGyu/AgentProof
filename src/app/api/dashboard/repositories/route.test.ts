@@ -65,6 +65,7 @@ describe("GET /api/dashboard/repositories", () => {
         saveReportsEnabled: true,
         commentEnabled: false,
         llmAnalysisMode: "essential",
+        reportLanguage: "en",
         hybridPlannerConsentVersion: null,
         privateAnalysisConsentVersion: null,
         repositoryPrivate: false

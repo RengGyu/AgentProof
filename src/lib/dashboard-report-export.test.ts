@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DashboardReportDetail } from "./github-dashboard-view-model";
-import { dashboardReportsToMarkdown, dashboardReportToJson, dashboardReportToMarkdown } from "./dashboard-report-export";
+import { dashboardReportsToMarkdown, dashboardReportToJson, dashboardReportToMarkdown, selectedReportToText } from "./dashboard-report-export";
 import { sanitizeReportForShare } from "./report-share";
 import { expectNoSelectionSentinels, transientSelectionFixture } from "./general-pr-selection-sentinels.test-fixture";
 import { generateVerificationReportV2FromInput } from "./verifier";
@@ -241,7 +241,7 @@ describe("dashboard report export", () => {
   it("exports the same bounded fields as readable Markdown", () => {
     const markdown = dashboardReportToMarkdown(detail);
 
-    expect(markdown).toContain("# AgentProof evidence report");
+    expect(markdown).toContain("# DiffEvidence evidence report");
     expect(markdown).toContain("synthetic-org/agentproof-rendering-fixture");
     expect(markdown).toContain("**PR:** #424242");
     expect(markdown).toContain("Focused test evidence is missing.");
@@ -257,11 +257,11 @@ describe("dashboard report export", () => {
 
     const markdown = dashboardReportsToMarkdown([older, newer]);
 
-    expect(markdown).toContain("# AgentProof repository evidence reports");
+    expect(markdown).toContain("# DiffEvidence repository evidence reports");
     expect(markdown).toContain("**Repository:** synthetic-org/agentproof-rendering-fixture");
     expect(markdown).toContain("**Reports:** 2");
     expect(markdown.indexOf("**PR:** #28")).toBeLessThan(markdown.indexOf("**PR:** #12"));
-    expect(markdown.match(/# AgentProof evidence report/g)).toHaveLength(2);
+    expect(markdown.match(/# DiffEvidence evidence report/g)).toHaveLength(2);
     expect(markdown).not.toContain("private source must never be copied");
   });
 
@@ -357,4 +357,47 @@ describe("dashboard report export", () => {
 
     expect(markdown).toContain("Inspect first: src/repositories/search.ts");
   });
+});
+
+
+describe("selected report plain text", () => {
+  it("copies safe purpose descriptions and references from the selected saved version only", () => {
+    const selected = { ...detail, id: "selected-version", freshness: "stale" as const, copyEligible: false,
+      report: { ...detail.report, purposeReview: {
+        version: 1 as const, flow: "explore_final_v1" as const, headSha: detail.headSha, baseSha: "b".repeat(40),
+        clauses: [{ clauseId: "pc_"+"1".repeat(24), goalId: "pg_"+"1".repeat(24), purpose: "Preserve empty-state feedback", implementation: "supports" as const,
+          changeDescriptions: [{ text: "The changed handler retains empty-state feedback.", evidenceRefs: ["pe_"+"1".repeat(24)] }],
+          testDescriptions: [{ text: "The assertion checks the empty message.", evidenceRefs: ["pe_"+"1".repeat(24)] }] }],
+        references: [{ id: "pe_"+"1".repeat(24), path: "src/search.ts", side: "head" as const, revision: detail.headSha, startLine: 4, endLine: 9 }]
+      }, rawCode: "PRIVATE_SOURCE_SENTINEL", rationale: "PRIVATE_RATIONALE_SENTINEL", accessKey: "SECRET_ACCESS_SENTINEL",
+        purposeAssessment: { facts: { text: "PRIVATE_FACTS_SENTINEL" } } }
+    };
+    const copied = selectedReportToText(selected, "Stated purpose\nFits\nInspect first\nsrc/search.ts:4-9");
+    for (const value of ["PR #424242", "Preserve empty-state feedback", "Fits", "The changed handler", "The assertion checks", "search.ts:4-9", "CI passed", "Typecheck pending"]) expect(copied).toContain(value);
+    expect(copied).not.toMatch(/PRIVATE_|SECRET_ACCESS|accessKey|purposeAssessment|rawCode|selected-version/);
+    expect(copied).toContain("Model interpretation");
+    expect(copied).not.toMatch(/do not verify behavior or test execution|Evidence only|^Head:/m);
+  });
+
+  it("copies the existing report summary and paths without inventing absent purpose or execution results", () => {
+    const copied = selectedReportToText(detail, "Inspect first\nFocused test evidence is missing.");
+    expect(copied).toContain("Focused test evidence is missing.");
+    expect(copied).toContain("src/repositories/search.ts");
+    expect(copied).not.toMatch(/Stated purpose|Changed material fits|Tests passed|PRIVATE/);
+    const empty = selectedReportToText({ pullRequestNumber: 121, report: {} });
+    expect(empty).toContain("PR #121");
+    expect(empty).not.toMatch(/Unavailable|No explicit requirement|fulfilled|Fits|passed/);
+  });
+});
+
+it('keeps the frozen report language and complete safe reviewer content consistent across UI/copy/JSON/markdown',async()=>{
+ const {renderToStaticMarkup}=await import('react-dom/server'),{createElement}=await import('react'),{ReportTopSummary}=await import('../components/ReportTopSummary');
+ const id='pe_'+'1'.repeat(24);
+ const review={version:1 as const,flow:'explore_final_v1' as const,locale:'ko' as const,headSha:detail.headSha,baseSha:'b'.repeat(40),clauses:[{clauseId:'pc_'+'1'.repeat(24),goalId:'pg_'+'1'.repeat(24),purpose:'빈 검색 결과 안내 유지',conditions:['검색 결과가 없을 때'],exceptions:['연결 오류는 제외'],implementation:'supports' as const,changeDescriptions:[{text:'변경된 처리기는 빈 결과 안내를 유지합니다.',evidenceRefs:[id]}],testDescriptions:[{text:'정적 assertion은 빈 메시지를 확인합니다. 실행 결과는 관측하지 않았습니다.',evidenceRefs:[id]}],counterEvidenceRefs:[id]}],references:[{id,path:'src/search.ts',side:'head' as const,revision:detail.headSha,startLine:4,endLine:9}]};
+ const selected={...detail,report:{...detail.report,purposeAssessmentSummary:{version:1 as const,flow:'explore_final_v1' as const,scope:'stated_purpose_at_snapshot' as const,state:'limited' as const,overall:'partial' as const,limitations:[],goals:[{goalId:'pg_'+'1'.repeat(24),authority:'author_claim' as const,achievement:'partial' as const,assurance:'evidence_assessed' as const,implementation:'supports' as const,testRelation:'unknown' as const,execution:'not_observed' as const}]},purposeReview:review,purposeAssessment:{facts:{raw:'PRIVATE_RAW_SENTINEL'}},accessKey:'SECRET_ACCESS_SENTINEL'}};
+ const before=JSON.stringify(selected),html=renderToStaticMarkup(createElement(ReportTopSummary,{report:selected.report}));const copied=selectedReportToText(selected),markdown=dashboardReportToMarkdown(selected),json=JSON.parse(dashboardReportToJson(selected));
+ for(const text of ['빈 검색 결과 안내 유지','변경된 처리기는 빈 결과 안내를 유지합니다.','조건','예외','변경']){expect(html).toContain(text);expect(copied).toContain(text);expect(markdown).toContain(text);}
+ expect(copied).toContain('모델 해석');expect(copied).toContain('변경 요약');expect(copied).toContain('정적 테스트');expect(copied).not.toContain('소스 읽기와 정적 테스트는 동작이나 테스트 실행을 검증하지 않으며');expect(copied).not.toContain('Changed material fits');
+ expect(copied).toContain('search.ts:4-9');expect(copied).toContain('https://github.com/synthetic-org/agentproof-rendering-fixture/blob/');expect(markdown.match(/DiffEvidence evidence report/g)).toHaveLength(1);expect(json.purposeReview).toEqual(review);expect(JSON.stringify({copied,markdown,json})).not.toMatch(/PRIVATE_RAW|SECRET_ACCESS|accessKey|purposeAssessment/);expect(JSON.stringify(selected)).toBe(before);
+ const legacy={...selected,report:{...selected.report,purposeReview:{...review,locale:undefined}}};expect(selectedReportToText(legacy)).toContain('Change summary');expect(selectedReportToText(legacy)).toContain('Fits');expect(selectedReportToText(legacy)).toContain(review.clauses[0].purpose);
 });

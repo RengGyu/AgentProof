@@ -892,3 +892,8 @@ describe("GeneralPrSemanticInvocationReceiptV3", () => {
     expect(result.selectionManifest).toMatchObject({ version: 1, claimPacketCount: 1, evidencePacketCount: 1 });
   });
 });
+
+it('legacy semantic observer stays private-ineligible after dead retention flag removal',async()=>{
+ const request=input(),provider=stagedProvider();const result=await run({...request,repositoryPrivate:true},{privateRepository:true,privateRepositoryConsent:true,provider,readCurrentInput:async()=>request});
+ expect(result).toMatchObject({state:'unavailable',semanticFailureStage:'privacy'});expect(provider.observe).not.toHaveBeenCalled();
+});

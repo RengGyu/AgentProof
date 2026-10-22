@@ -65,7 +65,12 @@ it.each([undefined, { state: "authoritative" as const }])("opens saved dashboard
   const html = renderToStaticMarkup(<QuickSummaryPanel detail={detail} quickSummary={toQuickSummary(detail)} demoMode={false} showDetailedEvidence={true} onShowDetail={() => {}} />);
   expect(html).toContain('aria-label="Read code for src/reset.ts"');
   expect(html).not.toContain('href="https://github.com/owner/repo/blob/');
-  expect(html.indexOf('aria-label="Read code for src/reset.ts"')).toBeLessThan(html.indexOf("Copy report"));
+  // The summary copy is available before opening evidence. Source reading precedes
+  // the evidence export actions, not the independent summary copy.
+  const reader = html.slice(html.indexOf('id="report-evidence-detail"'));
+  expect(reader.indexOf('aria-label="Read code for src/reset.ts"')).toBeLessThan(reader.indexOf("Copy report"));
+  const actions = html.slice(html.indexOf('class="summary-actions"'), html.indexOf('id="report-evidence-detail"'));
+  expect(actions.indexOf("Hide evidence")).toBeLessThan(actions.indexOf("Copy selected report"));
   expect(html).toContain('<details class="dashboard-report-export"><summary>Export report</summary>');
   expect(render({ ...detail, id: undefined })).not.toContain('aria-label="Read code');
 });
@@ -82,4 +87,37 @@ it('keeps volume diagnostics in exports while presenting unresolved evidence as 
  expect(html).toContain('Inspect the linked source and code');
  expect(JSON.stringify(report)).toBe(before);
  for(const diagnostic of diagnostics)expect(reportToMarkdown(report)).toContain(diagnostic);
+});
+it("shows a saved purpose, its interpretation and its cited range once across the summary and opened evidence", () => {
+  const head = "533b43ad994ced329b6691d33c549e9c17b102de", ref = "pe_" + "1".repeat(24), goalId = "pg_" + "1".repeat(24);
+  const purpose = "Clarify in the README that inspecting static test assertions does not establish that a test ran.";
+  const change = "This README clarification states that execution status requires recorded check or log evidence.";
+  const detail = { id: "saved", repositoryFullName: "owner/repo", pullRequestNumber: 122, headSha: head, freshness: "current" as const, report: {
+    reportSchemaVersion: "verification-report.v2" as const, requirements: [], testing: { ciStatus: "passed", lintStatus: "unknown", typecheckStatus: "unknown" },
+    purposeAssessmentSummary: { version: 1, flow: "explore_final_v1", scope: "stated_purpose_at_snapshot", state: "limited", overall: "partial", limitations: [],
+      goals: [{ goalId, authority: "author_claim", achievement: "partial", assurance: "evidence_assessed", implementation: "supports", testRelation: "unknown", execution: "not_observed" }] },
+    purposeReview: { version: 1, flow: "explore_final_v1", headSha: head, baseSha: "c".repeat(40), references: [{ id: ref, path: "README.md", side: "head", revision: head, startLine: 109, endLine: 116 }],
+      clauses: [{ clauseId: "pc_" + "1".repeat(24), goalId, purpose, conditions: ["Execution status needs recorded check or log evidence."], implementation: "supports", changeDescriptions: [{ text: change, evidenceRefs: [ref] }], testDescriptions: [] }] } } } as unknown as DashboardReportDetail;
+  const html = renderToStaticMarkup(<QuickSummaryPanel detail={detail} quickSummary={toQuickSummary(detail)} demoMode={true} showDetailedEvidence={true} onShowDetail={() => {}} />);
+  for (const text of [purpose, change]) expect(html.split(text)).toHaveLength(2);
+  // The cited range is read once in the summary, plus once as its select button in the opened cited-code reader.
+  const reader = html.slice(html.indexOf('class="report-code-evidence"'));
+  expect(html.replace(/<[^>]+>/g, "").split("README.md:109-116")).toHaveLength(3);
+  expect(reader.replace(/<[^>]+>/g, "").split("README.md:109-116")).toHaveLength(2);
+  expect(html).toContain("Execution status needs recorded check or log evidence.");
+  expect(html).not.toContain("Inspect first");
+  // The exact revision stays in the source link, not in a revision dump or a full head SHA display.
+  expect(html).toContain("/blob/533b43ad994ced329b6691d33c549e9c17b102de/README.md#L109-L116");
+  expect(html.replace(/href="[^"]*"/g, "")).not.toContain("533b43ad994ced329b6691d33c549e9c17b102de");
+  expect(html).not.toMatch(/Show full revisions|Evidence only|human review required/);
+  expect(html).not.toContain('aria-label="Purpose evidence"');
+  const actions = html.slice(html.indexOf('class="summary-actions"'), html.indexOf('id="report-evidence-detail"'));
+  expect(actions.indexOf("dashboard-primary-action")).toBeLessThan(actions.indexOf("Copy report"));
+  expect(actions).toContain('class="dashboard-secondary-action dashboard-github-link"');
+  const ko = { ...detail, report: { ...detail.report, purposeReview: { ...(detail.report as any).purposeReview, locale: "ko" } } } as DashboardReportDetail;
+  const koHtml = renderToStaticMarkup(<QuickSummaryPanel detail={ko} quickSummary={toQuickSummary(ko)} demoMode={true} showDetailedEvidence={false} onShowDetail={() => {}} />);
+  for (const text of ["적합", "<h4>변경</h4>", purpose, change, "CI 통과"]) expect(koHtml).toContain(text);
+  // Report actions use the saved locale; model text is untouched.
+  expect(koHtml).toContain("보고서 복사");expect(koHtml).toContain("근거 코드");expect(koHtml).not.toContain("Copy report");expect(koHtml).not.toContain("Evidence &amp; code");
+  const koOpen=renderToStaticMarkup(<QuickSummaryPanel detail={ko} quickSummary={toQuickSummary(ko)} demoMode={false} showDetailedEvidence={true} onShowDetail={()=>{}}/>);for(const label of ["코드 닫기","설명으로","보고서 내보내기","JSON 복사"])expect(koOpen).toContain(label);expect(koOpen).toContain('class="report-materials"');
 });

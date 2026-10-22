@@ -1,8 +1,12 @@
+import { reportCopy } from '@/components/report-copy';
+import { formatPurposeReview } from './shared-report-copy';
+import {isPurposeReview} from './purpose-summary';
+import {purposeReferenceUrl} from './pr-evidence-review';
 import { buildDashboardPrEvidenceReview } from "./pr-evidence-review";
 import { redactSecrets } from "./redact";
 import { copyOrdinaryDocumentationSummary, presentOrdinaryDocumentationSummary } from "./general-pr-documentation-presentation";
 import { copyOrdinaryStaticSummary, presentOrdinaryStaticSummary } from "./general-pr-static-types-presentation";
-import { observedCheckResults, type DashboardReportDetail } from "./github-dashboard-view-model";
+import { observedCheckResults, toQuickSummary, type DashboardReportDetail } from "./github-dashboard-view-model";
 import { toDashboardRequirementViewModels } from "./dashboard-requirement-view-model";
 import { presentGeneralPrAssessmentSummary } from "./general-pr-assessment-presentation";
 import { deriveRequirementPresentationV2, isVerificationReportV2 } from "./requirement-presentation-v2";
@@ -21,6 +25,7 @@ export function dashboardReportToJson(detail: DashboardExportDetail): string {
 }
 
 export function dashboardReportToMarkdown(detail: DashboardExportDetail): string {
+  if(isPurposeReview(detail.report?.purposeReview)){assertCopyEligible(detail);return selectedReportToText(detail, '', 'markdown');}
   assertCopyEligible(detail);
   const exported = toDashboardReportExport(detail);
   const review = buildDashboardPrEvidenceReview(detail);
@@ -32,7 +37,7 @@ export function dashboardReportToMarkdown(detail: DashboardExportDetail): string
       return `- **${item.kind.toUpperCase()}** \`${label}\` — ${item.relation === "candidate" ? "Candidate link" : item.relation === "observed" ? "Observed evidence" : item.relation === "verified" ? "Verified relation" : "Collected change"}${item.candidateBasis ? ` — ${item.candidateBasis}` : ""}${url ? ` [Open evidence](${url})` : ""}${item.executionMeaning ? ` — ${redactSecrets(item.executionMeaning)}` : ""}`;
     });
     return [
-      "# AgentProof evidence report", "",
+      "# DiffEvidence evidence report", "",
       `**Repository:** ${exported.repository}`,
       `**PR:** #${exported.pull_request.number ?? "Unavailable"}`,
       `**Head SHA:** ${exported.pull_request.head_sha ?? "Unavailable"}`, "",
@@ -75,7 +80,7 @@ export function dashboardReportToMarkdown(detail: DashboardExportDetail): string
     ? presentGeneralPrAssessmentSummary(detail.report.generalPrAssessmentSummary)
     : undefined;
   const lines = [
-    "# AgentProof evidence report",
+    "# DiffEvidence evidence report",
     "",
     `**Repository:** ${exported.repository}`,
     `**PR:** #${exported.pull_request.number ?? "Unavailable"}`,
@@ -120,13 +125,60 @@ export function dashboardReportToMarkdown(detail: DashboardExportDetail): string
   return lines.join("\n");
 }
 
+/** Copies only reviewer-facing fields of the selected version; never loads or serializes its payload.
+ * summaryText comes only from the rendered ReportTopSummary, not the page or code viewer.
+ */
+export function selectedReportToText(detail: DashboardExportDetail, summaryText = "", format: 'text' | 'markdown' = 'text'): string {
+  const report = detail.report;
+  const review = buildDashboardPrEvidenceReview(detail);
+  const purpose = isPurposeReview(report?.purposeReview)?report.purposeReview:undefined;
+  const t = reportCopy(purpose?.locale);
+  const lines = [
+    `${format === 'markdown' ? '# ' : ''}DiffEvidence evidence report${detail.pullRequestNumber ? ` · PR #${detail.pullRequestNumber}` : ""}`,
+    ...(detail.repositoryFullName ? [detail.repositoryFullName] : []),
+    ...(!purpose && detail.headSha ? [`Head: ${detail.headSha}`] : []),
+    ...(detail.createdAt ? [`${purpose?.locale === "ko" ? "분석" : "Analyzed"}: ${detail.createdAt}`] : []),
+    toQuickSummary(detail).freshness,
+    ...(!isPurposeReview(report?.purposeReview) && summaryText.trim() ? [summaryText.trim()] : [])
+  ];
+  if (purpose?.clauses.length) {
+    lines.push('', formatPurposeReview(purpose, {format, part:'main', referenceUrl: ref => review ? purposeReferenceUrl(review, ref) : undefined}), '');
+  } else if (review?.purpose?.flow === "explore_final_v1") {
+    lines.push("Only the saved summary is available. Detailed observations and source quotations were not retained.");
+  }
+  if (review) {
+    const locations = (items: typeof review.changes) => items.map(item =>
+      `${item.kind === "code" ? "Code" : item.kind === "test" ? "Tests" : "Execution"}: ${item.label}${item.line ? ` · Line ${item.line}` : ""}${item.executionMeaning ? ` · ${item.executionMeaning}` : ""}`);
+    for (const objective of purpose?[]:review.objectives) {
+      lines.push(objective.text, ...locations([...(objective.firstInspection ? [objective.firstInspection] : []), ...objective.code, ...objective.tests, ...objective.execution, ...(objective.moreContext ?? [])]), objective.nextInspection);
+    }
+    if (!purpose && review.changes.length) lines.push("Collected changes", ...locations(review.changes));
+    if (!purpose&&review.mode === "change_summary") lines.push(review.nextInspection);
+  } else {
+    for (const item of toDashboardRequirementViewModels({ report, requirements: report?.requirements, semantic: report?.semantic, semanticAnalysis: report?.semanticAnalysis, verificationContract: report?.verificationContract })) {
+      lines.push(item.objectiveText ?? `Requirement ${item.requirementId}`, item.coverageLabel, item.explanation.text);
+      if (item.primaryGap) lines.push(item.primaryGap);
+    }
+    for (const item of report?.evidenceIndex ?? []) {
+      if (item.locator) lines.push(item.locator);
+    }
+  }
+  const checks = observedCheckResults(report?.testing);
+  if(purpose)lines.push('',(format==='markdown'?'### ':'')+t.executionRecords);
+  lines.push(...checks.map(item => `${item.label} ${purpose ? t.checkState[item.status] : item.status}`));
+  if (purpose && !checks.length) lines.push(t.noChecks);
+  if(purpose)lines.push('',formatPurposeReview(purpose,{format,part:'details',referenceUrl:ref=>review?purposeReferenceUrl(review,ref):undefined}));
+  if (!purpose) lines.push("Evidence only · human review required.");
+  return redactSecrets(lines.join("\n"));
+}
+
 export function dashboardReportsToMarkdown(details: DashboardExportDetail[]): string {
   details.forEach(assertCopyEligible);
   const ordered = [...details].sort((left, right) => (right.createdAt ?? "").localeCompare(left.createdAt ?? ""));
   if (ordered.length === 0) return "";
   const repository = safeText(ordered[0]?.repositoryFullName) ?? "Unavailable";
   return [
-    "# AgentProof repository evidence reports",
+    "# DiffEvidence repository evidence reports",
     "",
     `**Repository:** ${repository}`,
     `**Reports:** ${ordered.length}`,
@@ -187,6 +239,7 @@ function toDashboardReportExport(detail: DashboardExportDetail) {
   const v2Report = report && isVerificationReportV2(report) ? report : undefined;
   return {
     schema_version: EXPORT_SCHEMA_VERSION,
+    ...(isPurposeReview(report?.purposeReview)?{purposeReview:structuredClone(report.purposeReview)}:{}),
     ...(report?.reviewCandidates ? { review_candidates: structuredClone(report.reviewCandidates) } : {}),
     repository: safeText(detail.repositoryFullName) ?? "Unavailable",
     pull_request: {

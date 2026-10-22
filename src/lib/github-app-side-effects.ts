@@ -36,13 +36,16 @@ export async function createAutomationSavedReport(
     pullRequestNumber?: number;
     headSha?: string;
     validationInput?: PullRequestInput;
+    /** Server-owned retained workspace request, independent of automatic-save opt-in. */
+    workspaceManual?: boolean;
   }
 ): Promise<AutomationSavedReportResult | undefined> {
-  if (!/^(1|true|yes|on)$/i.test(process.env.AGENTPROOF_GITHUB_APP_SAVE_REPORTS?.trim() ?? "")) {
+  if (!options.workspaceManual && !/^(1|true|yes|on)$/i.test(process.env.AGENTPROOF_GITHUB_APP_SAVE_REPORTS?.trim() ?? "")) {
     return undefined;
   }
 
   const status = getSavedReportStoreStatus();
+  if(options.workspaceManual&&(!status.durable||!options.tenantId||!options.installationId||!options.repositoryId||!options.pullRequestNumber||!options.headSha))throw new Error('Workspace save binding required.');
   const saved = await createVerifiedSavedReport(report, {
     // Durable connected-PR reports use the same retained version history as
     // manual workspace generation. Unbound demo/share paths retain their TTL.

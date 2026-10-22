@@ -36,7 +36,7 @@ describe("reading workspace", () => {
 
   it("server-renders a sign-in action without marketing examples or a preview-mode bypass", () => {
     const html = renderToStaticMarkup(createElement(PublicGitHubEntry));
-    expect(html).toContain("Sign in to AgentProof");
+    expect(html).toContain("Sign in</button>");
     expect(html).toContain("Continue with GitHub");
     expect(html).toContain('aria-busy="false"');
     expect(html).not.toContain("requirement satisfaction, or merge readiness");

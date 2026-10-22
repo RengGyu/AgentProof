@@ -60,7 +60,7 @@ describe("dashboard activity", () => {
         repositoryFullName: "RengGyu/dongo",
         pullRequestNumber: 15,
         state: "Needs attention",
-        failure: { code: "github_fetch_failed" }
+        failure: { summary: "GitHub could not be reached. Try again shortly." }
       }),
       expect.objectContaining({
         id: "report:report_current",

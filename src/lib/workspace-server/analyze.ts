@@ -1,3 +1,7 @@
+import {withAnalysisDiagnostics,analysisDiagnostic,analysisHash,bindAnalysisDiagnosticTenant} from '@/lib/analysis-diagnostics';
+import {resolveReportLanguage,type ReportLanguage} from '@/lib/tenant-report-language';
+import {logPurposeFailure,purposeFailureDiagnostic} from '@/lib/purpose-failure';
+import {createRuntimePurposeOptions,requireCompletedPurpose,PurposeAnalysisError} from '@/lib/purpose-runtime';
 import { createReviewMeasurements, measureReviewAsync, measureReviewSync, recordReviewEvidence, type ReviewMeasurementContext } from '@/lib/review-navigation-diagnostics';
 import { buildPrEvidenceReview } from '@/lib/pr-evidence-review';
 import { resolveWorkspaceAccess, validWorkspaceMutation, type WorkspaceSource } from "./access";
@@ -55,10 +59,14 @@ interface GitHubEvidenceTiming extends GitHubEvidenceTimingSink {
 }
 
 export async function POST(request: Request, source: WorkspaceSource = "web", options: { retainReport?: boolean } = {}) {
+  return withAnalysisDiagnostics(request,()=>analyzeRequest(request,source,options));
+}
+async function analyzeRequest(request:Request,source:WorkspaceSource,options:{retainReport?:boolean}) {
   const timing = createAnalyzeTiming();
   const evidenceTiming = createGitHubEvidenceTiming();
   const operatorDiagnosticsRequested = request.headers.get(OPERATOR_DIAGNOSTIC_HEADER) === OPERATOR_DIAGNOSTIC_VERSION;
   let measurements: ReviewMeasurementContext | undefined;
+  let failureAnchor:{repositoryHash:string;pullRequestNumber:number}|undefined;
 
   try {
     let nativeAccess: TenantAuthAccessResult | undefined;
@@ -135,6 +143,7 @@ export async function POST(request: Request, source: WorkspaceSource = "web", op
     const observerModel = process.env.OPENAI_MODEL?.trim();
     const navigationProvider = resolveNavigationProvider(process.env);
     // Guard every live PR read. The durable login and transient GitHub token expire independently.
+    let reportLanguage: ReportLanguage = "en";
     let githubCredential: string | undefined;
     let workspaceIdentity: { tenantId: string; installationId: number; repositoryId: number; pullRequestNumber: number } | undefined;
     let privateGrant: { tenantId: string; repositoryFullName: string; installationId: number; repositoryId: number } | undefined;
@@ -149,14 +158,19 @@ export async function POST(request: Request, source: WorkspaceSource = "web", op
         return jsonNoStore({ error: "Sign in with GitHub to analyze a PR URL.", code: "github_login_required", hint: "After signing in, return to analysis and enter your PR URL. Demos and pasted evidence are available without signing in." }, 401, timing);
       }
       if (!validWorkspaceMutation(request, source)) return csrfFailureResponse();
+      if(access.tenantId)bindAnalysisDiagnosticTenant(access.tenantId);
       const credential = await resolveGitHubAnalysisCredential({
         prUrl: publicPrUrl,
         tenantId: access.tenantId!,
         memberId: access.memberId!,
-        cookieHeader: request.headers.get("cookie")
+        cookieHeader: request.headers.get("cookie"),
+        requireSave: options.retainReport === true
       });
       if (!credential.ok) return jsonNoStore({ error: credential.error, code: credential.code, hint: credential.hint }, credential.status, timing);
+      const failurePr=parseGitHubPullUrl(publicPrUrl)!;
+      failureAnchor={repositoryHash:analysisHash([access.tenantId,failurePr.owner.toLowerCase(),failurePr.repo.toLowerCase()]),pullRequestNumber:failurePr.number};
       githubCredential = credential.token;
+      reportLanguage = resolveReportLanguage(credential.reportLanguage);
       if (options.retainReport) {
         const parsed = parseGitHubPullUrl(publicPrUrl)!;
         if (credential.kind !== "installation" || !credential.installationId || !credential.repositoryId) {
@@ -176,7 +190,10 @@ export async function POST(request: Request, source: WorkspaceSource = "web", op
     timing.start("evidence");
     const input = await measureReviewAsync(measurements, 'initial_evidence', async () => body.demoScenario
       ? demoScenarios[body.demoScenario]
-      : await buildPullRequestInput(publicPrUrl ? { ...body, githubToken: githubCredential } : { ...body, githubToken: undefined }, evidenceTiming));
+      : publicPrUrl && policy.assessmentProjection === 'advisory' && ![body.prDescription,body.changedFiles,body.checks,body.logs].some(v=>v?.trim())
+        ? await buildGitHubPullRequestInput(publicPrUrl,githubCredential,body.taskText ?? '',evidenceTiming,{purposeEvidence:true})
+        : await buildPullRequestInput(publicPrUrl ? { ...body, githubToken: githubCredential } : { ...body, githubToken: undefined }, evidenceTiming));
+    if(!input)throw new PurposeAnalysisError();
     // Preserve the existing public-only detailed operator diagnostic boundary.
     if (input.repositoryPrivate !== false) measurements = undefined;
     const reportSpan = measurements?.trace.start('report', measurements.parentId);
@@ -185,6 +202,7 @@ export async function POST(request: Request, source: WorkspaceSource = "web", op
       return jsonNoStore({ error: "Private repository analysis is off until its code-analysis notice is accepted.", code: "github_private_consent_required", hint: "Open repository settings and turn on AgentProof analysis." }, 409, timing);
     }
 
+    analysisDiagnostic('input','success',()=>({hashes:{input:analysisHash(input),head:analysisHash(input.sourceProvenance?.headSha),base:analysisHash(input.sourceProvenance?.baseSha)},counts:{sources:input.changedFiles.length}}));
     timing.start("report");
     const semanticEligible = policy.semanticObservation === "eligible_public_pr" &&
       generalPrObservationService.isGeneralPrSemanticObserverEligibleV2(input) &&
@@ -195,6 +213,7 @@ export async function POST(request: Request, source: WorkspaceSource = "web", op
     const observationOptions: RunGeneralPrObservationNowOptionsV2 = {
       policy,
       input,
+      ...(publicPrUrl && policy.assessmentProjection === 'advisory' ? {purpose:createRuntimePurposeOptions(input,{env:process.env,requestCorrelation:request.headers.get('x-vercel-id')??request.headers.get('x-agentproof-analysis-key'),token:githubCredential,signal:request.signal,privateGrant,reportLanguage,readCurrentInput:()=>buildGitHubPullRequestInput(publicPrUrl,githubCredential,"",undefined,{expectedHeadSha:input.sourceProvenance?.headSha,expectedBaseSha:input.sourceProvenance?.baseSha,purposeEvidence:true})})} : {}),
       navigation: {
         model: navigationProvider.model,
         measurements: reportMeasurements,
@@ -257,6 +276,8 @@ export async function POST(request: Request, source: WorkspaceSource = "web", op
     );
     if (reportSpan) measurements!.trace.finish(reportSpan);
     const report = observed.report;
+    if(observationOptions.purpose)requireCompletedPurpose(report as VerificationReportV2);
+    if(privateGrant&&!await isPrivateAnalysisGrantCurrent(privateGrant))throw new PurposeAnalysisError(new Error('purpose_private_consent_required'));
 
     timing.start("validation");
     const validation = measureReviewSync(measurements, 'runtime_validation', () => resolveRuntimeReportValidation({
@@ -277,10 +298,12 @@ export async function POST(request: Request, source: WorkspaceSource = "web", op
       );
     }
 
+    if(observationOptions.purpose)requireCompletedPurpose(validation.report as VerificationReportV2);
+
     // Closed, text-free production breadcrumb for a failed reviewer path.
     // Never log the request, report, repository, model output, or credentials.
     const navigation = (validation.report as VerificationReportV2).reviewCandidates?.navigation;
-    if (publicPrUrl && input.repositoryPrivate === false && navigationEligible && !navigation?.goals.length) {
+    if (!observationOptions.purpose && publicPrUrl && input.repositoryPrivate === false && navigationEligible && !navigation?.goals.length) {
       const failure = navigation?.failures?.[0];
       const initialFreshness = navigation && getReviewNavigationDiagnostics(navigation)
         .flatMap((trace) => trace.lifecycle ?? [])
@@ -334,19 +357,34 @@ export async function POST(request: Request, source: WorkspaceSource = "web", op
       if (!currentAccess.authorized || currentAccess.tenantId !== workspaceIdentity.tenantId) {
         return jsonNoStore({ error: "Sign in again before generating a saved report.", code: "workspace_session_changed" }, 401, timing);
       }
+      if(privateGrant&&!await isPrivateAnalysisGrantCurrent({...privateGrant,requireSave:true}))throw new PurposeAnalysisError(new Error('purpose_private_consent_required'));
+      // Reuse the uncached credential/grant gate for public and private manual saves.
+      const currentCredential = await resolveGitHubAnalysisCredential({
+        prUrl: publicPrUrl!, tenantId: workspaceIdentity.tenantId, memberId: currentAccess.memberId!,
+        cookieHeader: request.headers.get("cookie"), requireSave: true
+      });
+      if (!currentCredential.ok) return jsonNoStore({ error: currentCredential.error, code: currentCredential.code, hint: currentCredential.hint }, currentCredential.status, timing);
+      if (currentCredential.kind !== "installation" || currentCredential.installationId !== workspaceIdentity.installationId ||
+          currentCredential.repositoryId !== workspaceIdentity.repositoryId || Boolean(currentCredential.privateAnalysisApproved) !== Boolean(privateGrant)) {
+        return jsonNoStore({ error: "The repository connection changed before saving. No report was saved.", code: "workspace_connection_required" }, 409, timing);
+      }
       // The durable projection intentionally omits source provenance. Keep the
       // validated snapshot binding in this transient, sanitized signed response
       // so the browser can check the report against the selected PR target.
       const responseReport = measureReviewSync(measurements, 'response_projection', () => prepareTenantDetailReportForStorage(validation.report, "verified_agentproof"));
+      analysisDiagnostic('projection','success',()=>({hashes:{projection:analysisHash(responseReport)}}));
       try {
+        analysisDiagnostic('store','start');
         const saved = await measureReviewAsync(measurements, 'storage', child => createVerifiedSavedReport(validation.report, {
           ...workspaceIdentity, headSha, retention: "until-deletion", validationInput: input
         }, child));
+        analysisDiagnostic('store','success',()=>({hashes:{report:analysisHash(saved.id),projection:analysisHash(saved.report)},reportCreatedAt:saved.createdAt}));
         return jsonNoStore({
           report: responseReport, target, ...operatorPayload(responseReport),
           persistence: { status: "saved", id: saved.id, createdAt: saved.createdAt }
         }, 200, timing, evidenceTiming);
       } catch {
+        analysisDiagnostic('store','failure');
         return jsonNoStore({
           report: responseReport, target, ...operatorPayload(responseReport),
           persistence: { status: "failed", message: "Report generated, but it could not be saved. Previous reports are unchanged. Try again." }
@@ -363,6 +401,9 @@ export async function POST(request: Request, source: WorkspaceSource = "web", op
       } : {})
     }, 200, timing, evidenceTiming);
   } catch (error) {
+    analysisDiagnostic('request','failure',()=>({failure:purposeFailureDiagnostic(error)}));
+    if(error instanceof PurposeAnalysisError) {logPurposeFailure(error,request.headers.get('x-vercel-id')??request.headers.get('x-agentproof-analysis-key'),failureAnchor);return jsonNoStore({error:error.message,code:error.code},503,timing);}
+    if (error instanceof PaidBudgetError)logPurposeFailure(error,request.headers.get('x-vercel-id')??request.headers.get('x-agentproof-analysis-key'),failureAnchor);
     if (error instanceof PaidBudgetError) return jsonNoStore({error:error.message,code:error.code}, error.code === "soft_stop" || error.code === "duplicate" ? 429 : 503, timing);
     const message = redactSecrets(error instanceof Error ? error.message : "Analysis failed");
     const guidance = analyzeFailureGuidance(error);
@@ -474,6 +515,14 @@ function jsonNoStore(
     headers["X-AgentProof-Evidence-Timing"] = evidenceTimingHeader;
   }
 
+  if(process.env.AGENTPROOF_ANALYSIS_DIAGNOSTICS==='1'){
+    const started=performance.now(),json=JSON.stringify(payload),bytes=Buffer.byteLength(json);
+    headers['Content-Type']='application/json';
+    headers['x-agentproof-diagnostic-bytes']=String(bytes);
+    analysisDiagnostic('response','start',()=>({counts:{status,bytes,elapsedMs:performance.now()-started}}));
+    return new NextResponse(json,{status,headers});
+  }
+  analysisDiagnostic('response','start',()=>({counts:{status}}));
   return NextResponse.json(payload, {
     status,
     headers

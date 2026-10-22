@@ -37,6 +37,8 @@ export interface ResolveAnalysisJobFreshnessInput {
   repositoryId?: unknown;
   pullRequestNumber?: unknown;
   reportHeadSha?: unknown;
+  /** Saved version time; older failures may not override a later same-head save. */
+  reportCreatedAt?: unknown;
   staleAt?: unknown;
 }
 
@@ -80,6 +82,8 @@ export interface EnqueueAnalysisJobInput {
   hybridPlannerRequested?: boolean;
   /** Automatic webhooks settle one report per head; other callers retain refresh semantics. */
   oncePerHead?: boolean;
+  /** Explicit retained workspace request; active/replayed work is never revised. */
+  manualRequest?: boolean;
   now?: Date;
 }
 
@@ -88,6 +92,8 @@ export interface AnalysisJobEnqueueResult {
   status: AnalysisJobStatus;
   store: "memory" | "supabase";
   durable: boolean;
+  revision?: number;
+  updatedAt?: string;
 }
 
 export interface AnalysisJobClaimOptions {
@@ -215,6 +221,7 @@ export interface AnalysisJobResultSummary {
   savedReport?: {
     privacy?: string;
     durability?: string;
+    id?: string;
   };
   comment?: {
     action?: string;
@@ -458,7 +465,7 @@ const TENANT_ANALYSIS_JOB_SELECT = [
   "result_summary"
 ].join(",");
 
-const FRESHNESS_ANALYSIS_JOB_SELECT = ["status", "head_sha", "created_at", "error_code", "error_summary"].join(",");
+const FRESHNESS_ANALYSIS_JOB_SELECT = ["status", "head_sha", "created_at", "updated_at", "completed_at", "error_code", "error_summary"].join(",");
 
 const FORBIDDEN_JOB_KEYS = [
   "access_token",
@@ -520,12 +527,13 @@ export async function enqueueAnalysisJob(
   const config = getAnalysisJobStoreConfig(env);
 
   if (config) {
-    const durableRow = await enqueueOrRefreshSupabaseAnalysisJob(config, row, input.oncePerHead === true);
+    const durableRow = await enqueueOrRefreshSupabaseAnalysisJob(config, row, input.oncePerHead === true, input.manualRequest === true);
     return {
       id: durableRow.id,
       status: durableRow.status,
       store: "supabase",
-      durable: true
+      durable: true,
+      ...(input.manualRequest ? {revision:durableRow.desired_revision,updatedAt:durableRow.updated_at} : {})
     };
   }
 
@@ -533,12 +541,13 @@ export async function enqueueAnalysisJob(
     throw new AnalysisJobQueueError("Analysis job durable store is not configured.");
   }
 
-  const memoryRow = enqueueOrRefreshMemoryAnalysisJob(row, input.oncePerHead === true);
+  const memoryRow = enqueueOrRefreshMemoryAnalysisJob(row, input.oncePerHead === true, input.manualRequest === true);
   return {
     id: memoryRow.id,
     status: memoryRow.status,
     store: "memory",
-    durable: false
+    durable: false,
+    ...(input.manualRequest ? {revision:memoryRow.desired_revision,updatedAt:memoryRow.updated_at} : {})
   };
 }
 
@@ -1271,6 +1280,22 @@ export async function listTenantAnalysisJobs(
   return rows.map(toTenantAnalysisJobSummary);
 }
 
+/** Authenticated workspace handlers must still recheck the bound current grant. */
+export async function readTenantRepositoryAnalysisJobs(input:{tenantId:string;repositoryId:number;id?:string;activeOnly?:boolean},env=process.env):Promise<AnalysisJobRow[]> {
+  const tenant=safeTenantId(input.tenantId),repo=safePositiveInteger(input.repositoryId);
+  if(!tenant||!repo||(input.id&&!safeAnalysisJobId(input.id)))throw new AnalysisJobQueueError('Invalid workspace job selector.');
+  const config=getAnalysisJobStoreConfig(env);
+  const matches=(row:AnalysisJobRow)=>row.tenant_id===tenant&&row.repository_id===repo&&(!input.id||row.id===input.id)&&(!input.activeOnly||['queued','processing','failed_retryable'].includes(row.status));
+  if(!config)return analysisJobQueueEnabled(env)&&truthy(env.AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY)?analysisJobStore().filter(matches).map(r=>({...r})):[];
+  const params=new URLSearchParams({tenant_id:`eq.${tenant}`,repository_id:`eq.${repo}`,select:ANALYSIS_JOB_SELECT,limit:input.id?'1':'50',order:'updated_at.desc'});
+  if(input.id)params.set('id',`eq.${input.id}`);
+  if(input.activeOnly){params.set('status','in.(queued,processing,failed_retryable)');params.set('is_historical','eq.false');}
+  const response=await fetch(`${config.url}/rest/v1/${encodeURIComponent(config.table)}?${params}`,{cache:'no-store',headers:supabaseAnalysisJobHeaders(config)});
+  if(!response.ok)throw new AnalysisJobQueueError('Workspace jobs unavailable.');
+  const rows:unknown=await response.json();if(!Array.isArray(rows))throw new AnalysisJobQueueError('Workspace job shape invalid.');
+  return rows.map(normalizeAnalysisJobRow).filter((r):r is AnalysisJobRow=>Boolean(r)&&matches(r!));
+}
+
 /**
  * Resolves a saved report against the newest canonical job for exactly one
  * tenant/repository/PR. The result deliberately contains no job identifier,
@@ -1289,6 +1314,8 @@ export async function resolveAnalysisJobFreshness(
   }
 
   const legacy = typeof input.staleAt === "string" && input.staleAt ? "stale" as const : "current" as const;
+  const reportTime = safeTimeMs(input.reportCreatedAt);
+  if (input.reportCreatedAt !== undefined && reportTime === null) return { freshness: "unknown", copyEligible: false };
   if (!analysisJobQueueEnabled(env)) return { freshness: legacy, copyEligible: legacy === "current" };
 
   const config = getAnalysisJobStoreConfig(env);
@@ -1299,6 +1326,20 @@ export async function resolveAnalysisJobFreshness(
   const latest = lookup.latest;
 
   if (!latest) return { freshness: legacy, copyEligible: legacy === "current" };
+  if (reportTime !== null) {
+    const createdTime = safeTimeMs(latest.created_at)!;
+    const updatedTime = safeTimeMs(latest.updated_at);
+    if (updatedTime === null || updatedTime < createdTime) return { freshness: "unknown", copyEligible: false };
+    const failed = latest.status === "failed_retryable" || latest.status === "failed_terminal";
+    const stateTime = latest.status === "completed" ? safeTimeMs(latest.completed_at) : updatedTime;
+    if (stateTime === null || stateTime < createdTime || stateTime > updatedTime) return { freshness: "unknown", copyEligible: false };
+    // Keep active work, different heads and canonical-job ordering protected.
+    // updated_at is the failure transition: a reused old job may fail after this save.
+    if (latest.head_sha === reportHeadSha && failed) {
+      if (stateTime < reportTime) return { freshness: legacy, copyEligible: legacy === "current" };
+      if (stateTime === reportTime) return { freshness: "unknown", copyEligible: false };
+    }
+  }
   if (latest.status === "queued" || latest.status === "processing") return { freshness: "refreshing", copyEligible: false };
   if (latest.status === "failed_retryable" || latest.status === "failed_terminal") {
     return {
@@ -1670,6 +1711,7 @@ async function assertTenantRepositoryGrantAllowsEnqueue(row: AnalysisJobRow, env
     repositoryFullName: row.repository_full_name
   }, env);
 
+  if (row.event === 'workspace_manual' && (!decision.required || decision.reason || decision.grant?.tenantId !== row.tenant_id || !decision.grant?.saveReportsEnabled)) throw new AnalysisJobQueueError("Workspace saved analysis grant is not active.");
   if (!decision.enabled || !decision.required) return;
 
   if (decision.reason || !decision.grant || !row.tenant_id || decision.grant.tenantId !== row.tenant_id) {
@@ -1680,9 +1722,10 @@ async function assertTenantRepositoryGrantAllowsEnqueue(row: AnalysisJobRow, env
 async function enqueueOrRefreshSupabaseAnalysisJob(
   config: AnalysisJobStoreConfig,
   row: AnalysisJobRow,
-  oncePerHead: boolean
-): Promise<Pick<AnalysisJobRow, "id" | "status">> {
-  const response = await fetch(`${config.url}/rest/v1/rpc/agentproof_enqueue_analysis_job`, {
+  oncePerHead: boolean,
+  manualRequest = false
+): Promise<AnalysisJobRow> {
+  const response = await fetch(`${config.url}/rest/v1/rpc/${manualRequest ? "agentproof_enqueue_workspace_analysis_job" : "agentproof_enqueue_analysis_job"}`, {
     method: "POST",
     cache: "no-store",
     headers: {
@@ -1704,14 +1747,20 @@ async function enqueueOrRefreshSupabaseAnalysisJob(
     throw new AnalysisJobQueueError("Analysis job store returned an invalid canonical row.");
   }
   assertAnalysisJobIsPrivate(durableRow);
-  return durableRow as Pick<AnalysisJobRow, "id" | "status">;
+  if (manualRequest) {
+    const receipt=normalizeAnalysisJobRow(durableRow);
+    if (!receipt || !receipt.desired_revision || receipt.tenant_id!==row.tenant_id || receipt.installation_id!==row.installation_id || receipt.repository_id!==row.repository_id || receipt.pull_request_number!==row.pull_request_number || receipt.head_sha!==row.head_sha || !Number.isFinite(Date.parse(receipt.updated_at))) throw new AnalysisJobQueueError("Manual analysis receipt is invalid.");
+    return receipt;
+  }
+  return durableRow as AnalysisJobRow;
 }
 
-function enqueueOrRefreshMemoryAnalysisJob(row: AnalysisJobRow, oncePerHead: boolean): AnalysisJobRow {
+function enqueueOrRefreshMemoryAnalysisJob(row: AnalysisJobRow, oncePerHead: boolean, manualRequest = false): AnalysisJobRow {
   const existing = analysisJobStore().find((job) =>
     job.canonical_key_hash === row.canonical_key_hash && job.is_historical !== true
   );
   if (existing) {
+    if (manualRequest && (existing.idempotency_key_hash === row.idempotency_key_hash || ["queued","processing","failed_retryable"].includes(existing.status))) return {...existing};
     if (oncePerHead && existing.status !== "queued") return { ...existing };
     const processing = existing.status === "processing";
     Object.assign(existing, {
@@ -1931,7 +1980,7 @@ async function listSupabaseTenantAnalysisJobs(
     .slice(0, limit);
 }
 
-type FreshnessAnalysisJobRow = Pick<AnalysisJobRow, "status" | "head_sha" | "created_at" | "error_code" | "error_summary">;
+type FreshnessAnalysisJobRow = Pick<AnalysisJobRow, "status" | "head_sha" | "created_at" | "error_code" | "error_summary"> & Partial<Pick<AnalysisJobRow, "updated_at" | "completed_at">>;
 
 async function getSupabaseLatestAnalysisJobForFreshness(
   config: AnalysisJobStoreConfig,
@@ -2895,6 +2944,7 @@ function sanitizeAnalysisJobResultSummary(summary: AnalysisJobResultSummary): An
     evidenceCoverage,
     savedReport: summary.savedReport
       ? {
+        ...(typeof summary.savedReport.id === 'string' && /^[a-zA-Z0-9_-]{1,180}$/.test(summary.savedReport.id) ? {id:summary.savedReport.id} : {}),
         privacy: summary.savedReport.privacy ? safeJobErrorCode(summary.savedReport.privacy) : undefined,
         durability: summary.savedReport.durability ? safeJobErrorCode(summary.savedReport.durability) : undefined
       }

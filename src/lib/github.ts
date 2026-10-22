@@ -1,3 +1,4 @@
+import { capturePurposeDiffIndex } from "./purpose-github";
 import { REVIEW_FILE_BYTES } from './review-snippets';
 import { createHash } from "crypto";
 import type { AnalyzeRequest, ChangedFile, CheckRun, ExecutionSuiteObservation, LogSnippet, PullRequestInput, SourceProvenance, WorkflowExecutionIdentity } from "./types";
@@ -101,6 +102,7 @@ export class GitHubPullRequestSourceChangedError extends Error {
 }
 
 export interface GitHubPullRequestSnapshotOptions {
+  purposeEvidence?: boolean;
   expectedHeadSha?: string;
   expectedBaseSha?: string;
   now?: () => Date;
@@ -550,6 +552,18 @@ async function fetchGitHubPullRequest(
     ...(resolvedHeadModules.length > 0 ? { resolvedHeadModules } : {}),
     limitations: normalizeGitHubEvidenceLimitations(limitations)
   };
+  if (snapshotOptions.purposeEvidence) {
+    // PR patches use merge-base coordinates, not the current base-branch tip.
+    let diffBaseSha: string | undefined;
+    try {
+      const comparison = await githubFetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}/compare/${initialBaseSha}...${initialHeadSha}?per_page=1`, headers);
+      if (comparison.ok) {
+        const body = await comparison.json();
+        if (body.base_commit?.sha === initialBaseSha && /^[a-f0-9]{40}$/.test(body.merge_base_commit?.sha ?? '')) diffBaseSha = body.merge_base_commit.sha;
+      }
+    } catch { /* Missing comparison stays explicit; do not bind old hunk coordinates to the base tip. */ }
+    capturePurposeDiffIndex(input, files, diffBaseSha ? {baseRefSha: initialBaseSha, diffBaseSha, headSha: initialHeadSha} : undefined);
+  }
   input.sourceProvenance = buildMetadataOnlyProvenance({
     origin: "github_snapshot",
     input,

@@ -11,6 +11,7 @@ export interface DashboardRepositoryGrant {
   saveReportsEnabled: boolean;
   commentEnabled: boolean;
   llmAnalysisMode?: "essential" | "enhanced";
+  reportLanguage?: import("./tenant-report-language").ReportLanguage;
   hybridPlannerConsentVersion?: "2026-08-12.v1" | null;
   privateAnalysisConsentVersion?: "2026-09-24.v1" | null;
   repositoryPrivate?: boolean;
@@ -64,6 +65,8 @@ export interface DashboardReportDetail extends Omit<DashboardSavedReport, "id" |
     authenticity?: import("./types").ReportAuthenticity;
     reviewCandidates?: import("./review-candidates").ReviewCandidatesV1;
     ordinaryDocumentationSummary?: import("./general-pr-documentation-presentation").OrdinaryDocumentationSummary;
+    purposeReview?: import("./purpose-contract").PurposeReview;
+  purposeAssessmentSummary?: import("./purpose-contract").PurposeAssessmentSummary;
     ordinaryStaticSummary?: import("./general-pr-static-types-presentation").OrdinaryStaticSummary;
   };
 }
@@ -203,4 +206,52 @@ function toEvidenceState(status: string | undefined, gapCount: number): QuickSum
 
 function safeLocator(value: string | undefined): string | undefined {
   return value && SAFE_LOCATOR.test(value) && !value.startsWith("/") && !value.includes("..") ? value : undefined;
+}
+
+// Keep private job codes/summaries in their existing store, not in reviewer-facing prose.
+const ANALYSIS_FAILURE_MESSAGES: Readonly<Record<string, string>> = {
+  "private-consent-required": "Private repository analysis is off until its code-analysis notice is accepted. Open repository settings to continue.",
+  github_private_consent_required: "Private repository analysis is off until its code-analysis notice is accepted. Open repository settings to continue.",
+  "analysis-disabled": "Analysis is off for this repository. Open repository settings to enable it.",
+  "grant-disabled": "Repository access is off. Check the repository connection in Settings.",
+  github_save_reports_disabled: "Saved reports are off for this repository. Open repository settings before generating a saved report.",
+  github_connection_required: "Check the repository connection in Settings before generating a saved report.",
+  github_install_required: "Connect this repository in Settings before generating a saved report.",
+  github_private_denied: "Private repository access is unavailable. Check repository access in Settings.",
+  github_reauth_required: "Sign in again before generating a saved report.",
+  workspace_connection_required: "Check the repository connection in Settings before generating a saved report.",
+  github_app_pr_head_changed: "The PR changed during analysis. Start a new analysis for its current version.",
+  github_fetch_failed: "GitHub could not be reached. Try again shortly.",
+  github_rate_limited: "GitHub is temporarily limiting requests. Wait before trying again.",
+  github_secondary_rate_limited: "GitHub is temporarily limiting requests. Wait before trying again.",
+  soft_stop: "The paid analysis limit has been reached. Wait before starting another analysis.",
+  hard_pause: "Paid analysis is temporarily paused. Existing saved reports remain available.",
+  duplicate: "Analysis is already in progress. Check saved reports before starting another.",
+  workspace_session_changed: "Sign in again before generating a saved report."
+};
+const ANALYSIS_FAILURE_DEFAULT = "Analysis did not finish. Existing saved reports remain available.";
+
+export function dashboardAnalysisFailureMessage(failure?: { code?: string; summary?: string }): string {
+  if (typeof failure?.code === "string" && Object.hasOwn(ANALYSIS_FAILURE_MESSAGES, failure.code)) return ANALYSIS_FAILURE_MESSAGES[failure.code];
+  // A projected DTO has no code; accept only exact messages produced here, including legacy reads.
+  if (!failure?.code && typeof failure?.summary === "string" && Object.values(ANALYSIS_FAILURE_MESSAGES).includes(failure.summary)) return failure.summary;
+  return ANALYSIS_FAILURE_DEFAULT;
+}
+
+/** Safe queue acknowledgement/status; no provider payload or internal error is public. */
+export interface DashboardAnalysisJob {
+  id: string; revision: number; updatedAt: string;
+  repositoryId: number; pullRequestNumber: number; headSha: string;
+  status: 'queued' | 'running' | 'saved' | 'failed' | 'unknown' | 'superseded';
+  reportId?: string;
+}
+export function isDashboardAnalysisJob(value: unknown): value is DashboardAnalysisJob {
+  if(!value || typeof value!=='object')return false;
+  const v=value as DashboardAnalysisJob;
+  return typeof v.id==='string' && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v.id) &&
+    Number.isSafeInteger(v.revision) && v.revision>0 && Number.isSafeInteger(v.repositoryId) && v.repositoryId>0 &&
+    Number.isSafeInteger(v.pullRequestNumber) && v.pullRequestNumber>0 && /^[a-f0-9]{40}$/i.test(v.headSha) &&
+    typeof v.updatedAt==='string' && Number.isFinite(Date.parse(v.updatedAt)) &&
+    ['queued','running','saved','failed','unknown','superseded'].includes(v.status) &&
+    (v.reportId===undefined || typeof v.reportId==='string' && /^[a-zA-Z0-9_-]{1,180}$/.test(v.reportId));
 }

@@ -18,6 +18,22 @@ describe("/api/tenants/repositories", () => {
     clearTenantAuthSessionsForTests();
   });
 
+  it("persists en/ko report language on the existing repository setting and rejects unsupported values", async () => {
+    stubSettingsEnv();
+    await createTenantRepositoryGrant({tenantId:"tenant_a",installationId:321,repositoryId:100,repositoryFullName:"RengGyu/AgentProof"});
+    const headers={"x-agentproof-beta-invite-token":"tenant-a-invite-token"};
+    const read=async()=> (await (await GET(new Request("http://localhost/api/tenants/repositories?tenantId=tenant_a",{headers}))).json()).repositories[0];
+    expect((await read()).reportLanguage).toBe("en");
+    for(const language of ["ko","en"]){
+      const response=await PATCH(new Request("http://localhost/api/tenants/repositories",{method:"PATCH",headers,body:JSON.stringify({tenantId:"tenant_a",installationId:321,repositoryId:100,settings:{reportLanguage:language}})}));
+      expect(response.status).toBe(200);expect((await response.json()).repository.reportLanguage).toBe(language);expect((await read()).reportLanguage).toBe(language);
+    }
+    for(const language of ["ja","KO",null,true]){
+      const response=await PATCH(new Request("http://localhost/api/tenants/repositories",{method:"PATCH",headers,body:JSON.stringify({tenantId:"tenant_a",installationId:321,repositoryId:100,settings:{reportLanguage:language}})}));
+      expect(response.status).toBe(422);expect((await read()).reportLanguage).toBe("en");
+    }
+  });
+
   it("requires tenant control plane before reading repository verification settings", async () => {
     stubInviteEnv();
 
@@ -113,6 +129,7 @@ describe("/api/tenants/repositories", () => {
           commentEnabled: false,
           slackNotificationsEnabled: true,
           llmAnalysisMode: "essential",
+          reportLanguage: "en",
           hybridPlannerConsentVersion: null,
           privateAnalysisConsentVersion: null,
           repositoryPrivate: false
@@ -239,6 +256,7 @@ describe("/api/tenants/repositories", () => {
         commentEnabled: false,
         slackNotificationsEnabled: false,
         llmAnalysisMode: "enhanced",
+        reportLanguage: "en",
         hybridPlannerConsentVersion: null,
         privateAnalysisConsentVersion: null,
         repositoryPrivate: false
@@ -644,7 +662,7 @@ describe("/api/tenants/repositories", () => {
     expect(unknown.status).toBe(422);
     expect(nonBoolean.status).toBe(422);
     await expect(unknown.json()).resolves.toEqual({
-      error: "Repository settings may only update known boolean verification settings.",
+      error: "Repository settings contain an unsupported field or value.",
       code: "tenant_repository_settings_invalid"
     });
   });

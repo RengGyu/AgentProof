@@ -21,7 +21,7 @@ async function signIn() {
 }
 export default function DeleteAccountPage() {
   return <main style={{ maxWidth: 680, margin: "48px auto", padding: 24 }}>
-    <a href="/dashboard">AgentProof</a>
+    <a href="/dashboard">DiffEvidence</a>
     <AccountDeletionPanel request={request} signIn={signIn} />
   </main>;
 }

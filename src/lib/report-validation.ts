@@ -1,3 +1,4 @@
+import { isPurposeSummary, isPurposeReviewForSummary } from "./purpose-summary";
 import { reviewCandidateErrors } from "./review-candidates";
 import { createHash } from "crypto";
 import { isOrdinaryDocumentationSummary } from "./general-pr-documentation-presentation";
@@ -213,6 +214,7 @@ export interface ReportValidationOptions {
   requireFullProvenance?: boolean;
   requireSourceProvenance?: boolean;
   receiptValidationContext?: VerificationValidationContextV2;
+  purposeAssessmentValidator?: (report: VerificationReport) => boolean;
   ordinaryOutcomeValidator?: (report: VerificationReport) => boolean;
 }
 
@@ -490,7 +492,7 @@ export function validateVerificationReport(report: unknown, options: ReportValid
     ],
     "report",
     errors,
-    ["analysisContext", "authenticity", "semantic", "semanticAnalysis", "planner", ...(isV2 ? ["reportSchemaVersion", "reviewCandidates", "verificationContract", "generalPrAssessment", "generalPrAssessmentSummary", "ordinaryDocumentationSummary", "ordinaryStaticSummary", "ordinaryRequirementOutcomes"] : [])]
+    ["analysisContext", "authenticity", "semantic", "semanticAnalysis", "planner", ...(isV2 ? ["reportSchemaVersion", "reviewCandidates", "verificationContract", "generalPrAssessment", "generalPrAssessmentSummary", "ordinaryDocumentationSummary", "ordinaryStaticSummary", "ordinaryRequirementOutcomes", "purposeAssessment", "purposeAssessmentSummary", "purposeReview"] : [])]
   );
 
   validateString(report.analysisId, "analysisId", LIMITS.analysisId, errors);
@@ -524,6 +526,9 @@ export function validateVerificationReport(report: unknown, options: ReportValid
   validateGeneralPrAssessment(report.generalPrAssessmentSummary, evidenceIds, requirementIds, report.requirements, report.source, mode, "summary", errors);
   if (report.ordinaryDocumentationSummary !== undefined && !isOrdinaryDocumentationSummary(report.ordinaryDocumentationSummary)) errors.push("Invalid scoped documentation summary.");
   if (report.ordinaryStaticSummary !== undefined && !isOrdinaryStaticSummary(report.ordinaryStaticSummary)) errors.push("Invalid scoped static summary.");
+  if (report.purposeReview !== undefined && !isPurposeReviewForSummary(report.purposeReview,report.purposeAssessmentSummary)) errors.push("Invalid purpose reviewer projection.");
+  if (report.purposeAssessmentSummary !== undefined && !isPurposeSummary(report.purposeAssessmentSummary)) errors.push("Invalid purpose assessment summary.");
+  if (report.purposeAssessment !== undefined && (mode !== "v2_full" || options.purposeAssessmentValidator?.(report as unknown as VerificationReport) !== true)) errors.push("Purpose assessment requires transient exact source and sent evidence validation.");
   validateAuthenticity(report.authenticity, errors);
   if (mode === "full" || mode === "v2_full") {
     validateFailedCheckProofIsolation(report, errors);

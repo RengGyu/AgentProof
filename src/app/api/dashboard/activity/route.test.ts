@@ -122,7 +122,7 @@ describe("GET /api/dashboard/activity", () => {
       expect.objectContaining({
         kind: "analysis_needs_attention",
         pullRequestNumber: 30,
-        failure: { code: "github_fetch_failed", summary: "GitHub request could not be completed." }
+        failure: { summary: "GitHub could not be reached. Try again shortly." }
       })
     ]));
     expect(serialized).not.toContain("tenant_a");

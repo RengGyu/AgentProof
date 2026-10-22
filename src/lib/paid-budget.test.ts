@@ -22,13 +22,13 @@ describe('estimated cost accounting', () => {
  });
 });
 
-function storeMock(deny?: string) {
+function storeMock(deny?: string, budgetConfig: typeof config = config) {
  vi.stubEnv('AGENTPROOF_CONTROL_PLANE_SUPABASE_URL','https://budget.invalid');
  vi.stubEnv('AGENTPROOF_CONTROL_PLANE_SUPABASE_SERVICE_ROLE_KEY','fake-key');
  const actions: Record<string, unknown>[]=[];
  vi.stubGlobal('fetch',vi.fn(async (_url,init)=>{
   const body=JSON.parse(String(init?.body));actions.push(body);
-  if(body.p_action==='config')return Response.json({allowed:true,config});
+  if(body.p_action==='config')return Response.json({allowed:true,config:budgetConfig});
   if(deny && body.p_action==='reserve')return Response.json({allowed:false,reason:deny});
   return Response.json({allowed:true});
  }));
@@ -192,4 +192,17 @@ it('surfaces a swallowed budget denial before publication',async()=>{
  }).catch(()=>undefined);
  expect(publicationError).toBeInstanceOf(PaidBudgetError);
  expect(publicationError).toMatchObject({code:'soft_stop'});
+});
+
+it.each([
+ {output:6001,reserve:'796.263',allowed:true},
+ {output:32768,reserve:'796.263',allowed:true},
+ {output:32769,reserve:'796.263',allowed:false},
+ {output:32768,reserve:'530.841',allowed:false}
+])('enforces DeepSeek admission output$output and reserve$reserve without weakening the budget boundary',async({output,reserve,allowed})=>{
+ const actions=storeMock(undefined,{...config,krwPerUsd:'1500',prices:{'deepseek/deepseek-flash':{inputUsdPerMillion:'0.3',outputUsdPerMillion:'1.2',callReserveKrw:reserve,source:'https://api-docs.deepseek.com/quick_start/pricing/'}}} as any);
+ const invoke=vi.fn(async()=>({ok:true}));
+ const result=withPaidAnalysis('expanded-deepseek-admission',()=>paidProviderCall({provider:'deepseek',model:'deepseek-flash',admission:{input:1048576,output},invoke,usage:()=>({input:100,output:20})}));
+ if(allowed){expect(await result).toEqual({ok:true});expect(invoke).toHaveBeenCalledOnce();expect(actions.find(a=>a.p_action==='reserve')).toMatchObject({p_reserve:796263});expect(actions.find(a=>a.p_action==='settle')).toMatchObject({p_charge:81});}
+ else{await expect(result).rejects.toBeInstanceOf(PaidBudgetError);expect(invoke).not.toHaveBeenCalled();expect(actions.some(a=>a.p_action==='reserve')).toBe(false);}
 });

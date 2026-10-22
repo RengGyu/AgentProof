@@ -171,7 +171,6 @@ export interface RunGeneralPrSemanticObserverOptionsV2 {
   providerAvailable: boolean;
   privateRepository?: boolean;
   privateRepositoryConsent?: boolean;
-  providerRetentionApproved?: boolean;
   timeoutMs?: number;
   readCurrentInput: () => Promise<PullRequestInput | null>;
   modelProfile: GeneralPrSemanticObserverModelProfileV2;
@@ -372,9 +371,7 @@ export async function runGeneralPrSemanticObserverV2(
 
   if (options.mode === "disabled") return finish("disabled", null, "not_run");
   if (!options.providerAvailable || !options.provider) return finish("unavailable", null, "not_run", "not_run", "configuration");
-  if (options.privateRepository !== false && (
-    options.privateRepository !== true || !options.privateRepositoryConsent || !options.providerRetentionApproved
-  )) return finish("unavailable", null, "not_run", "not_run", "privacy");
+  if (options.privateRepository !== false) return finish("unavailable", null, "not_run", "not_run", "privacy");
 
   const packageResult = buildClaimPackageResult(options.input, options.seed, options.modelProfile, timeoutMs);
   claimPackage = packageResult.semanticPackage;

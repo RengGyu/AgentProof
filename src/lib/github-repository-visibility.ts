@@ -11,7 +11,8 @@ export async function isGitHubRepositoryPublic(repositoryFullName: string, insta
 /** Tri-state visibility for private-only features; uncertainty never means private. */
 export async function readGitHubRepositoryPrivate(
   repositoryFullName: string,
-  installationToken: string
+  installationToken: string,
+  options: { repositoryId?: number; signal?: AbortSignal } = {}
 ): Promise<boolean | null> {
   if (!SAFE_REPOSITORY_FULL_NAME.test(repositoryFullName) || !installationToken) return null;
 
@@ -22,10 +23,13 @@ export async function readGitHubRepositoryPrivate(
         Authorization: `Bearer ${installationToken}`,
         "X-GitHub-Api-Version": "2022-11-28"
       },
-      cache: "no-store"
+      cache: "no-store",
+      signal: options.signal,
+      redirect: "error"
     });
     if (!response.ok) return null;
     const payload = await response.json().catch(() => null);
+    if (options.repositoryId !== undefined && (!payload || payload.id !== options.repositoryId || payload.full_name?.toLowerCase() !== repositoryFullName.toLowerCase())) return null;
     const value = payload && typeof payload === "object" && !Array.isArray(payload)
       ? (payload as { private?: unknown }).private
       : undefined;

@@ -43,3 +43,10 @@ it('rejects origin/cookie bearing native calls and keeps web source and CSRF bou
  const raw=web.sessionCookie.split(';')[0].split('=')[1];token=`apm_${raw}`;
  expect((await repositories(request('repositories'))).status).toBe(401);
 });
+it('persists the same en/ko report setting and rejects an unsupported locale through the native boundary',async()=>{
+ const body={installationId:321,repositoryId:100,settings:{reportLanguage:'ko'}};
+ expect((await settings(request('repository-settings','PATCH',body))).status).toBe(200);
+ expect((await (await repositories(request('repositories'))).json()).repositories[0].reportLanguage).toBe('ko');
+ expect((await settings(request('repository-settings','PATCH',{...body,settings:{reportLanguage:'ja'}}))).status).toBe(422);
+ expect((await (await repositories(request('repositories'))).json()).repositories[0].reportLanguage).toBe('ko');
+});

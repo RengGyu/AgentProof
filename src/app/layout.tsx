@@ -3,7 +3,7 @@ import "./globals.css";
 import "./reading-workspace.css";
 
 export const metadata: Metadata = {
-  title: "AgentProof",
+  title: "DiffEvidence",
   description: "Evidence-based verification reports for AI-generated pull requests"
 };
 

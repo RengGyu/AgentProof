@@ -65,6 +65,18 @@ The task card activates one mode with `MODE: SILVER_ASTRA_A`,
 
 ## Model routing: Luna simple implementation, Sol 6.1 complex implementation and bundled review
 
+- Change an agent's model or reasoning effort only when the user explicitly
+  instructs that change. A general request to implement, review, test, deploy,
+  or continue is not permission to change models.
+- Never select Astra or send work to an existing Astra-configured agent unless
+  the user explicitly authorizes Astra for that task. Reusing an agent does
+  not bypass this rule. Routing defaults, old task names, historical settings,
+  task complexity, or model availability do not authorize Astra use.
+- Before delegation, check the agent's actual model and reasoning effort;
+  do not infer them from its display name. If they differ from the authorized
+  assignment, stop and report the mismatch rather than silently changing or
+  using them. These explicit-user-authorization rules override any conflicting
+  model-routing defaults or policy recommendations.
 - The user-facing main task uses `gpt-5.6-sol` with `high` reasoning. It owns
   intent interpretation, work classification, dispatch, and the final
   user-facing report.

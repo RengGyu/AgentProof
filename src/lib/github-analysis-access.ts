@@ -1,3 +1,4 @@
+import { resolveReportLanguage, type ReportLanguage } from "./tenant-report-language";
 import { createGitHubInstallationAccessToken } from "./github-app";
 import { listTenantGitHubInstallationStatuses } from "./github-installations";
 import { getGitHubUserCredentialForSession } from "./tenant-auth";
@@ -11,7 +12,7 @@ type InstallationStatus = { installationId: number; status: "active" | "suspende
 type GitHubFetch = (url: string, init: RequestInit) => Promise<Response>;
 
 export type GitHubAnalysisCredential =
-  | { ok: true; token: string; kind: "installation" | "user"; privateAnalysisApproved?: true; installationId?: number; repositoryId?: number }
+  | { ok: true; token: string; kind: "installation" | "user"; reportLanguage?: ReportLanguage; privateAnalysisApproved?: true; installationId?: number; repositoryId?: number }
   | { ok: false; status: 401 | 403 | 409 | 503; code: string; error: string; hint: string };
 
 interface Dependencies {
@@ -27,6 +28,7 @@ export async function resolveGitHubAnalysisCredential(input: {
   tenantId: string;
   memberId: string;
   cookieHeader?: string | null;
+  requireSave?: boolean;
   dependencies?: Dependencies;
 }): Promise<GitHubAnalysisCredential> {
   const parsed = parseGitHubPullUrl(input.prUrl);
@@ -58,6 +60,9 @@ export async function resolveGitHubAnalysisCredential(input: {
     if (selected.repositoryPrivate === true && selected.privateAnalysisConsentVersion !== PRIVATE_ANALYSIS_CONSENT_VERSION) {
       return failure(409, "github_private_consent_required", "Private repository analysis is off until its code-analysis notice is accepted.", "Open repository settings and turn on AgentProof analysis.");
     }
+    if (input.requireSave && !selected.saveReportsEnabled) {
+      return failure(409, "github_save_reports_disabled", "Saved reports are off for this repository.", "Turn on Saved reports in repository settings before generating a saved report.");
+    }
     try {
       const statuses = await dependencies.listStatuses([selected.installationId]);
       if (!statuses.some((status) => status.installationId === selected.installationId && status.status === "active")) {
@@ -84,7 +89,7 @@ export async function resolveGitHubAnalysisCredential(input: {
       if (repository.private === false && selected.repositoryPrivate === true) {
         return failure(409, "github_connection_required", "Repository visibility changed.", "Reconnect this repository from the dashboard.");
       }
-      return { ok: true, token, kind: "installation", installationId: selected.installationId, repositoryId: selected.repositoryId, ...(selected.repositoryPrivate === true ? { privateAnalysisApproved: true as const } : {}) };
+      return { ok: true, token, kind: "installation", reportLanguage: resolveReportLanguage(selected.reportLanguage), installationId: selected.installationId, repositoryId: selected.repositoryId, ...(selected.repositoryPrivate === true ? { privateAnalysisApproved: true as const } : {}) };
     } catch {
       return failure(503, "github_installation_unavailable", "GitHub App access is temporarily unavailable.", "Retry after the installation is available.");
     }
@@ -149,14 +154,14 @@ export async function resolveGitHubAnalysisCredential(input: {
 }
 
 /** Uncached gate for each private model/read phase. A prior token never grants lasting authority. */
-export async function isPrivateAnalysisGrantCurrent(input: { tenantId: string; repositoryFullName: string; installationId: number; repositoryId: number }): Promise<boolean> {
+export async function isPrivateAnalysisGrantCurrent(input: { tenantId: string; repositoryFullName: string; installationId: number; repositoryId: number; requireSave?: boolean }, env = process.env): Promise<boolean> {
   try {
-    const grants = await listTenantRepositoryGrants({ tenantId: input.tenantId });
+    const grants = await listTenantRepositoryGrants({ tenantId: input.tenantId }, env);
     const matches = grants.filter(grant => grant.tenantId === input.tenantId && grant.installationId === input.installationId && grant.repositoryId === input.repositoryId && grant.repositoryFullName.toLowerCase() === input.repositoryFullName.toLowerCase());
     if (matches.length !== 1) return false;
     const grant = matches[0];
-    if (!grant.enabled || !grant.analysisEnabled || grant.repositoryPrivate !== true || grant.privateAnalysisConsentVersion !== PRIVATE_ANALYSIS_CONSENT_VERSION) return false;
-    const statuses = await listTenantGitHubInstallationStatuses({ tenantId: input.tenantId, installationIds: [input.installationId] });
+    if (!grant.enabled || !grant.analysisEnabled || (input.requireSave && !grant.saveReportsEnabled) || grant.repositoryPrivate !== true || grant.privateAnalysisConsentVersion !== PRIVATE_ANALYSIS_CONSENT_VERSION) return false;
+    const statuses = await listTenantGitHubInstallationStatuses({ tenantId: input.tenantId, installationIds: [input.installationId] }, env);
     return statuses.some(status => status.installationId === input.installationId && status.status === "active");
   } catch { return false; }
 }

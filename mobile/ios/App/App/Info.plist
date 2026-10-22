@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-        <string>AgentProof</string>
+        <string>DiffEvidence</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

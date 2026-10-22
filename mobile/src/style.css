@@ -1,10 +1,13 @@
 /* The product screens use the same stylesheet as mobile web. Only native chrome
    and safe-area spacing live here. */
-html { background: #f7f8fb; }
-.native-shell { min-height: 100dvh; padding: env(safe-area-inset-top) env(safe-area-inset-right) calc(16px + env(safe-area-inset-bottom)) env(safe-area-inset-left); }
+html { background: #f4f4f3; }
+.native-shell { --bg:#f4f4f3; --panel:#fff; --panel-muted:#f4f4f3; --ink:#1d1c1a; --muted:#5c5a56; --line:#d5d2cd; --strong:#1d1c1a; --strong-ink:#fff; min-height: 100dvh; padding: env(safe-area-inset-top) env(safe-area-inset-right) calc(16px + env(safe-area-inset-bottom)) env(safe-area-inset-left); }
 .native-shell .github-dashboard { min-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
 .native-message { max-width: 1180px; margin: 12px auto; padding: 12px 18px; color: var(--ink); background: var(--panel-muted); overflow-wrap: anywhere; }
 .native-navigation { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; padding: 12px 18px; border-bottom: 1px solid var(--line); }
 .native-shell .account-deletion-panel { margin: 24px auto; }
 .native-shell select { max-width: 100%; }
 .native-shell .dashboard-section { min-width: 0; }
+
+.native-push-settings { display:flex; gap:12px; align-items:center; flex-wrap:wrap; padding:12px 18px; border-bottom:1px solid var(--line,#d5d2cd); }
+.native-push-settings button { min-height:44px; }

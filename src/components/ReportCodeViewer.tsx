@@ -1,4 +1,6 @@
 "use client";
+import {reportCopy} from "./report-copy";
+import type {ReportLanguage} from "@/lib/tenant-report-language";
 import { useEffect, useState } from "react";
 import type { PrEvidenceReviewItem } from "@/lib/pr-evidence-review";
 import { reportCodeReference, type ReportCodeExcerpt } from "@/lib/report-code-reference";
@@ -10,8 +12,11 @@ const codeCache = new Map<string, ReportCodeExcerpt>();
 const CODE_CACHE_LIMIT = 40;
 export function clearReportCodeCache() { codeCache.clear(); }
 
-export function ReportCodeViewer({ item, reportId, runtime = webWorkspaceClient }: { item: PrEvidenceReviewItem; reportId: string; runtime?: WorkspaceClient }) {
-  const [open, setOpen] = useState(false);
+/** range: a cited line range inside the same exact-revision file; it only changes highlighting, never what the server reads. */
+/** paneOwned: a parent code pane owns the single close control, so this viewer stays open without its own toggle. */
+export function ReportCodeViewer({ item, reportId, runtime = webWorkspaceClient, initiallyOpen = false, range, locale, paneOwned = false }: { item: PrEvidenceReviewItem; reportId: string; runtime?: WorkspaceClient; initiallyOpen?: boolean; locale?: ReportLanguage; range?: { startLine: number; endLine: number }; paneOwned?: boolean }) {
+  const t = reportCopy(locale);
+  const [open, setOpen] = useState(initiallyOpen || paneOwned);
   const [retry, setRetry] = useState(0);
   const [result, setResult] = useState<{ key: string; code?: ReportCodeExcerpt; error?: string } | null>(null);
   const reference = reportCodeReference(item);
@@ -41,12 +46,15 @@ export function ReportCodeViewer({ item, reportId, runtime = webWorkspaceClient 
   }, [open, key, reportId, reference, item.url, runtime]);
   const cachedCode = codeCache.get(cacheKey);
   const current = cachedCode ? { key, code: cachedCode, error: undefined } : result?.key === key ? result : null;
+  const highlighted = (line: number) => range ? line >= range.startLine && line <= range.endLine : line === current?.code?.focusLine;
+  const rangeOutside = Boolean(range && current?.code?.lines.length && !current.code.lines.some(line => highlighted(line.number)));
   return <div className="report-code-viewer">
-    <button className="report-code-action" aria-label={`${open ? "Close" : "Read"} code for ${item.label}`} aria-expanded={open} onClick={() => setOpen(value => !value)}>{open ? "Close code" : "Read code"}</button>
+    {paneOwned ? null : <button className="report-code-action" aria-label={t.codeAction(open,item.label)} aria-expanded={open} onClick={() => setOpen(value => !value)}>{open ? t.closeCode : t.readCode}</button>}
     {open ? <section className="report-code-panel" aria-label={`Referenced code in ${item.label}`}>
-      {!current ? <p role="status">Loading referenced code…</p> : current.error ? <div role="alert"><p>{current.error}</p><button className="report-code-action" aria-label="Retry referenced code" onClick={() => setRetry(value => value + 1)}>Retry</button></div> : current.code ? <>
-        <header><code>{current.code.path}</code><span>Revision {current.code.revision.slice(0, 12)}{current.code.focusLine ? ` · line ${current.code.focusLine}` : ""} · excerpt only, secrets redacted</span></header>
-        {current.code.lines.length ? <div className="report-code-scroll" tabIndex={0} role="region" aria-label={`Code lines from ${current.code.path}`}><pre><code>{current.code.lines.map(line => <span className={`report-code-line${line.number === current.code!.focusLine ? " is-reference" : ""}`} key={line.number}><span className="report-code-number" aria-label={`Line ${line.number}`}>{line.number}</span><span>{line.text || " "}</span>{"\n"}</span>)}</code></pre></div> : <p>This file is empty at the recorded revision.</p>}
+      {!current ? <p role="status">{t.loadingCode}</p> : current.error ? <div role="alert"><p>{current.error}</p><button className="report-code-action" aria-label={locale==='ko'?"참조 코드 다시 읽기":"Retry referenced code"} onClick={() => setRetry(value => value + 1)}>{t.retryCode}</button></div> : current.code ? <>
+        <header><code>{current.code.path}</code><span>Revision {current.code.revision.slice(0, 12)}{range ? ` · lines ${range.startLine}–${range.endLine}` : current.code.focusLine ? ` · line ${current.code.focusLine}` : ""} · excerpt only, secrets redacted</span></header>
+        {current.code.lines.length ? <div className="report-code-scroll" tabIndex={0} role="region" aria-label={`Code lines from ${current.code.path}`}><pre><code>{current.code.lines.map(line => <span className={`report-code-line${highlighted(line.number) ? " is-reference" : ""}`} key={line.number}><span className="report-code-number" aria-label={`Line ${line.number}`}>{line.number}</span><span>{line.text || " "}</span>{"\n"}</span>)}</code></pre></div> : <p>This file is empty at the recorded revision.</p>}
+        {rangeOutside ? <p className="report-code-note">Cited lines {range!.startLine}–{range!.endLine} are outside this excerpt; open them on GitHub.</p> : null}
         {current.code.truncated ? <p className="report-code-note">{current.code.totalLines} lines in the file.</p> : null}
       </> : null}
     </section> : null}

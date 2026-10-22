@@ -1,3 +1,12 @@
+/** Repository preference and immutable report metadata; never translate stored reports. */
+export type ReportLanguage = "en" | "ko";
+export function isReportLanguage(value: unknown): value is ReportLanguage { return value === "en" || value === "ko"; }
+export function resolveReportLanguage(value: unknown): ReportLanguage {
+  if (value === undefined) return "en";
+  if (!isReportLanguage(value)) throw new Error("report_language_invalid");
+  return value;
+}
+
 import type { ProofGapKind, ReportAnalysisContext, VerificationReport } from "./types";
 
 export type TenantReportAnalysisContext = ReportAnalysisContext;

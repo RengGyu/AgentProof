@@ -2,15 +2,22 @@
    in the existing components and view models; this layer never hides them. */
 .github-entry,
 .github-dashboard {
-  --workspace-ink: #24352d;
-  --workspace-muted: #617168;
-  --workspace-line: #dce4de;
-  --workspace-canvas: #f5f7f5;
+  /* DiffEvidence graphite: neutral canvas, white working surfaces and charcoal text taken from the logo.
+     No brand hue: actions, focus, links and checked controls are graphite; the logo's taupe marks selection only. */
+  --workspace-ink: #1d1c1a;
+  --workspace-muted: #5c5a56;
+  --workspace-line: #e2e1de;
+  --workspace-control: #84817c; /* control boundaries: >= 3:1 on canvas and panel */
+  --workspace-sunken: #edecea;
+  --workspace-canvas: #f4f4f3;
   --workspace-panel: #ffffff;
-  --workspace-navy: #20372c;
+  --workspace-navy: #1d1c1a;
+  --workspace-action: #1d1c1a;
+  --workspace-action-hover: #34322f;
+  --workspace-accent: #7b7168; /* logo taupe: selected-row edge, never text */
   /* Keep legacy token names so all existing controls share the same accent. */
-  --workspace-violet: #285b46;
-  --workspace-violet-soft: #edf4ef;
+  --workspace-violet: #1d1c1a;
+  --workspace-violet-soft: var(--workspace-sunken);
   --workspace-amber: #8a5a12;
   --workspace-amber-soft: #fcf7eb;
   --workspace-green: #256747;
@@ -38,17 +45,19 @@
 .github-dashboard .dashboard-brand { color: var(--workspace-ink); gap: 12px; font-weight: 700; }
 .github-entry .dashboard-brand small,
 .github-dashboard .dashboard-brand small { color: var(--workspace-muted); font-size: 11px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+/* The supplied logo is the mark itself: no tile, no tint behind it. */
 .github-entry .dashboard-brand-mark,
 .github-dashboard .dashboard-brand-mark,
-.github-dashboard .github-sign-in-mark { background: var(--workspace-violet); border-radius: 10px; box-shadow: none; }
+.github-dashboard .github-sign-in-mark { width: auto; height: auto; background: transparent; border-radius: 0; box-shadow: none; }
+.diffevidence-mark { display: block; flex: none; }
 
 .github-entry .dashboard-primary-action,
 .github-dashboard .dashboard-primary-action {
   min-height: 44px;
   padding: 11px 18px;
-  border: 1px solid var(--workspace-violet);
+  border: 1px solid var(--workspace-action);
   border-radius: 9px;
-  background: var(--workspace-violet);
+  background: var(--workspace-action);
   box-shadow: none;
   color: #fff;
   font-size: 14px;
@@ -56,10 +65,11 @@
   line-height: 1.5;
 }
 .github-entry .dashboard-primary-action:hover:not(:disabled),
-.github-dashboard .dashboard-primary-action:hover:not(:disabled) { background: #204b39; border-color: #204b39; }
+.github-dashboard .dashboard-primary-action:hover:not(:disabled) { background: var(--workspace-action-hover); border-color: var(--workspace-action-hover); }
 .github-entry button:disabled,
 .github-dashboard button:disabled { cursor: not-allowed; }
 .github-dashboard :is(.dashboard-secondary-action, .dashboard-text-action, .dashboard-icon-button, .dashboard-disabled-action) {
+  border-color: var(--workspace-control);
   min-height: 44px;
   border-radius: 9px;
   box-shadow: none;
@@ -69,10 +79,14 @@
 }
 .github-dashboard :is(.dashboard-secondary-action, .dashboard-text-action) { padding: 10px 15px; }
 .github-dashboard .dashboard-icon-button { width: 44px; height: 44px; flex: 0 0 44px; }
+/* Topbar tools stay quiet until used: no outline at rest, a neutral fill on hover and while a panel they own is open. */
+.github-dashboard .dashboard-top-actions .dashboard-icon-button { border-color: transparent; background: transparent; color: var(--workspace-muted); }
+.github-dashboard .dashboard-top-actions .dashboard-icon-button:hover:not(:disabled) { border-color: transparent; background: var(--workspace-sunken); color: var(--workspace-ink); }
+.github-dashboard .dashboard-top-actions .dashboard-icon-button[aria-expanded="true"] { border-color: var(--workspace-line); background: var(--workspace-sunken); color: var(--workspace-ink); }
 .github-dashboard :is(.dashboard-secondary-action, .dashboard-text-action, .dashboard-icon-button, .dashboard-list-row):hover:not(:disabled) {
-  color: var(--workspace-violet);
-  border-color: #9ab3a2;
-  background: #f0f5f1;
+  color: var(--workspace-ink);
+  border-color: var(--workspace-muted);
+  background: var(--workspace-sunken);
 }
 
 /* Sign-in is a destination, not a landing-page campaign. */
@@ -126,7 +140,7 @@
 .github-dashboard .repository-tab { min-height: 0; padding: 14px 16px; gap: 8px; border-radius: 10px; }
 .github-dashboard .repository-tab .repository-tab-name { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
 .github-dashboard :is(.repository-tab small, .dashboard-list-row small) { font-size: 12px; line-height: 1.5; }
-.github-dashboard .repository-tab.active { background: var(--workspace-violet-soft); border-color: #9ab3a2; }
+.github-dashboard .repository-tab.active { background: var(--workspace-violet-soft); border-color: var(--workspace-line); }
 .github-dashboard .dashboard-list-row { min-height: 64px; padding: 16px; gap: 14px; font-weight: 550; }
 .github-dashboard .dashboard-activity-row > span:nth-child(2) { gap: 8px; }
 .github-dashboard .dashboard-activity-row > span:nth-child(2) :is(strong, small) { white-space: normal; overflow-wrap: anywhere; }
@@ -139,16 +153,16 @@
 .github-dashboard .report-row > span:nth-child(2) small { font-size: 12px; white-space: normal; overflow-wrap: anywhere; line-height: 1.65; }
 .github-dashboard .report-row-meta { grid-column: 2; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 10px; }
 .github-dashboard .report-row-meta small { font-size: 12px; }
-.github-dashboard .report-row-icon { background: #edf3ee; color: var(--workspace-violet); }
+.github-dashboard .report-row-icon { background: transparent; color: var(--workspace-muted); }
 .github-dashboard .report-row:hover:not(:disabled),
-.github-dashboard .report-row.active { border-color: #99b19f; background: var(--workspace-violet-soft); }
+.github-dashboard .report-row.active { border-color: var(--workspace-line); background: var(--workspace-sunken); }
 .github-dashboard .status-token { min-height: 28px; padding: 5px 9px; gap: 6px; border-color: transparent; font-size: 12px; font-weight: 550; line-height: 1.4; white-space: normal; }
 .github-dashboard .status-token svg { flex: 0 0 auto; }
 .github-dashboard .summary-priority { font-size: 13px; line-height: 1.6; }
 .github-dashboard .dashboard-selected-report { min-width: 0; scroll-margin-top: 24px; }
-.github-dashboard .quick-summary { min-width: 0; margin: 0; padding: 32px; border-radius: 14px; }
-.github-dashboard .quick-summary-header { gap: 20px; align-items: flex-start; }
-.github-dashboard .quick-summary-header h2 { margin: 0; font-size: 28px; font-weight: 600; letter-spacing: -.025em; line-height: 1.3; }
+.github-dashboard .quick-summary { min-width: 0; margin: 0; padding: 24px 32px 32px; border-radius: 14px; }
+.github-dashboard .quick-summary-header { gap: 12px; align-items: center; margin-bottom: 16px; }
+.github-dashboard .quick-summary-header h2 { margin: 0; color: var(--workspace-muted); font-size: 14px; font-weight: 600; letter-spacing: 0; line-height: 1.5; font-variant-numeric: tabular-nums; }
 .github-dashboard .summary-badges { align-items: center; gap: 10px; }
 .github-dashboard .summary-status-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 28px; margin-top: 28px; }
 .github-dashboard .summary-status-grid > div { min-height: 0; padding: 16px 0; border: 0; border-bottom: 1px solid var(--workspace-line); border-radius: 0; background: transparent; overflow: visible; }
@@ -188,7 +202,7 @@
 .github-dashboard .pr-evidence-objective h3 { margin: 10px 0 24px; font-size: 21px; font-weight: 600; line-height: 1.6; }
 .github-dashboard .pr-evidence-groups { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; }
 .github-dashboard .pr-evidence-group { min-width: 0; padding: 22px 0; border: 0; border-bottom: 1px solid var(--workspace-line); border-radius: 0; background: transparent; }
-.github-dashboard .pr-evidence-group.inspect-first { padding: 24px; border: 1px solid #cfddd2; border-radius: 10px; background: #f4f8f5; }
+.github-dashboard .pr-evidence-group.inspect-first { padding: 24px; border: 1px solid var(--workspace-line); border-radius: 10px; background: #f7f8fa; }
 .github-dashboard .pr-evidence-group h4 { margin: 0 0 16px; font-size: 15px; font-weight: 600; }
 .github-dashboard .pr-evidence-group ul { display: grid; gap: 24px; padding: 0; list-style: none; }
 .github-dashboard .pr-evidence-group li { min-width: 0; padding: 0; background: transparent; }
@@ -204,8 +218,8 @@
 
 /* Settings/consent stay explicit, in the normal reading flow. */
 .github-dashboard .settings-panel { max-width: 880px; margin-top: 16px; padding-top: 20px; }
-.github-dashboard .settings-panel > .dashboard-section:first-child { margin-top: 0; padding: 0 0 24px; border: 0; border-bottom: 1px solid var(--workspace-line); border-radius: 0; background: transparent; }
-.github-dashboard .settings-panel > .dashboard-section:first-child + .dashboard-section-heading { margin-top: 24px; }
+.github-dashboard .settings-panel > :is(.dashboard-section:first-child, .settings-back + .dashboard-section) { margin-top: 0; padding: 0 0 24px; border: 0; border-bottom: 1px solid var(--workspace-line); border-radius: 0; background: transparent; }
+.github-dashboard .settings-panel > :is(.dashboard-section:first-child, .settings-back + .dashboard-section) + .dashboard-section-heading { margin-top: 24px; }
 .github-dashboard .dashboard-toggle-row { min-height: 88px; gap: 24px; padding: 24px 0; }
 .github-dashboard .dashboard-toggle-row span { min-width: 0; gap: 8px; }
 .github-dashboard .dashboard-toggle-row strong { font-size: 14px; font-weight: 600; line-height: 1.6; }
@@ -249,7 +263,7 @@
   .github-dashboard .dashboard-inbox,
   .github-dashboard .dashboard-workspace { padding: 24px 20px; margin-top: 28px; }
   .github-dashboard .settings-panel { margin-top: 12px; padding-top: 18px; }
-  .github-dashboard .settings-panel > .dashboard-section:first-child { margin-top: 0; padding: 0 0 20px; }
+  .github-dashboard .settings-panel > :is(.dashboard-section:first-child, .settings-back + .dashboard-section) { margin-top: 0; padding: 0 0 20px; }
   .github-dashboard .dashboard-workspace:not(.settings-panel) { padding: 0; }
   .github-dashboard .dashboard-repository-strip { padding: 0; }
   .github-dashboard .dashboard-repository-strip > summary { flex-wrap: wrap; padding: 20px; gap: 8px 12px; }
@@ -260,14 +274,14 @@
   .github-dashboard .pr-evidence-groups { grid-template-columns: minmax(0, 1fr); }
   .github-dashboard .dashboard-report-layout { margin-top: 24px; gap: 24px; }
   .github-dashboard .quick-summary { padding: 24px 20px; }
-  .github-dashboard .quick-summary-header { flex-direction: column; gap: 16px; }
+  .github-dashboard .quick-summary-header { flex-direction: row; flex-wrap: wrap; gap: 8px 12px; }
   .github-dashboard .summary-badges { justify-content: flex-start; gap: 12px; }
   .github-dashboard .summary-status-grid > div { padding: 18px 0; }
   .github-dashboard .summary-status-grid strong { font-size: 15px; line-height: 1.75; }
   .github-dashboard .summary-callout { padding: 20px; grid-template-columns: minmax(0, 1fr); gap: 12px; }
   .github-dashboard .summary-callout p:not(.dashboard-eyebrow) { font-size: 16px; line-height: 1.8; }
-  .github-dashboard .summary-actions { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
-  .github-dashboard .summary-actions > * { width: 100%; min-height: 48px; }
+  .github-dashboard .summary-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .github-dashboard .summary-actions > * { min-height: 44px; justify-content: center; }
   .github-dashboard .detailed-evidence > .dashboard-section-heading { display: block; }
   .github-dashboard .detailed-evidence-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 18px; }
   .github-dashboard .detailed-evidence-actions > button,
@@ -323,7 +337,7 @@
   left: 11px;
   width: 22px;
   height: 22px;
-  border: 1.5px solid #8a9d91;
+  border: 1.5px solid var(--workspace-control);
   border-radius: 5px;
   background: #fff;
 }
@@ -348,3 +362,408 @@
   .github-dashboard .dashboard-toggle-row input::before,
   .github-dashboard .dashboard-toggle-row input::after { display: none; }
 }
+
+/* 2026-10-16 quiet document workspace: the report is the one surface; navigation, inbox and settings read as flat lists */
+.github-dashboard { --ui-line: var(--workspace-line); --ui-hover: var(--workspace-sunken); --ui-selected: #ffffff; }
+.github-dashboard :is(h2, h3) { text-wrap: balance; }
+.github-dashboard :is(.report-purpose-text, .report-purpose-change, .report-purpose-extra dd, .report-purpose-note, .report-checks-note, .purpose-clause p, .dashboard-empty, .dashboard-boundary) { text-wrap: pretty; }
+.github-dashboard :is(.report-row small, .mono, code, .summary-status-grid strong) { font-variant-numeric: tabular-nums; }
+.github-dashboard :is(.dashboard-primary-action, .dashboard-secondary-action, .dashboard-text-action, .dashboard-icon-button, .report-row, .dashboard-list-row, .repository-tab, .dashboard-language-option, .dashboard-report-picker, summary) { touch-action: manipulation; -webkit-tap-highlight-color: transparent; transition: background-color .15s ease, border-color .15s ease, color .15s ease, box-shadow .15s ease, transform .1s ease; }
+.github-dashboard :is(.dashboard-primary-action, .dashboard-secondary-action, .dashboard-text-action, .dashboard-icon-button):active:not(:disabled) { transform: translateY(1px); }
+/* Repository strip: a quiet row, not a card */
+.github-dashboard .dashboard-repository-strip { margin-top: 6px; padding: 0; border: 0; border-bottom: 1px solid var(--ui-line); border-radius: 0; background: transparent; box-shadow: none; }
+.github-dashboard .dashboard-repository-strip > summary { min-height: 48px; padding: 0 2px; }
+/* Saved report list: flat rows; the open report gets a neutral surface and a thin brand edge, not a tinted card */
+.github-dashboard .dashboard-workspace:not(.settings-panel) { margin-top: 8px; padding-top: 12px; }
+/* Wide split: the report pane shares the PR list box's top offset and height (both var(--pane-height)), so their edges line up. */
+@media (min-width: 1180px) { .github-dashboard .is-split .dashboard-report-reader { margin-top: 24px; padding-top: 0; } }
+.github-dashboard .dashboard-report-layout { margin-top: 16px; }
+.github-dashboard .report-row { min-height: 0; padding: 10px 12px; border-color: transparent; border-bottom-color: var(--ui-line); border-radius: 8px; background: transparent; }
+.github-dashboard .report-row:hover:not(:disabled) { background: var(--ui-hover); }
+.github-dashboard .report-row.active { border-color: var(--ui-line); background: var(--ui-selected); box-shadow: inset 2px 0 var(--workspace-accent); }
+.github-dashboard .report-row > span:nth-child(2) { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 10px; }
+.github-dashboard .report-row-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 4px; }
+/* Cited ranges: file name leads, directory is quiet metadata, the line range stays whole */
+.github-dashboard .report-purpose-ref { font-weight: 600; }
+.github-dashboard .report-purpose-ref-dir { color: var(--workspace-muted); font-weight: 400; overflow-wrap: anywhere; }
+.github-dashboard .report-purpose-ref-file { overflow-wrap: anywhere; }
+.github-dashboard .report-purpose-ref-range { white-space: nowrap; }
+@media (max-width: 720px) { .github-dashboard .report-purpose-ref-dir { display: block; font-size: 12px; line-height: 1.5; } }
+/* The report: one bordered surface without shadow */
+.github-dashboard .quick-summary.compact-report { border: 1px solid var(--ui-line); border-radius: 12px; box-shadow: none; }
+/* Inbox: one panel with divided rows instead of cards inside a card */
+.github-dashboard .dashboard-inbox { padding: 6px 20px 10px; border-radius: 12px; box-shadow: none; }
+.github-dashboard .dashboard-inbox .installation-list { display: grid; gap: 0; }
+.github-dashboard .dashboard-inbox .dashboard-activity-row { min-height: 56px; padding: 12px 8px 12px 18px; border: 0; border-bottom: 1px solid var(--ui-line); border-radius: 0; background: transparent; }
+.github-dashboard .dashboard-inbox .dashboard-activity-row:last-child { border-bottom: 0; }
+.github-dashboard .dashboard-inbox .dashboard-activity-row:hover { background: var(--ui-hover); }
+.github-dashboard .dashboard-inbox .dashboard-activity-row.is-unread { background: transparent; }
+.github-dashboard .dashboard-inbox .dashboard-activity-row.is-unread::before { left: 4px; }
+/* Settings: neutral repository rows and a full-size account action */
+.github-dashboard .repository-tab { box-shadow: none; }
+.github-dashboard .repository-tab.active { border-color: var(--ui-line); background: var(--ui-selected); box-shadow: inset 2px 0 var(--workspace-accent); }
+.github-dashboard .dashboard-account-settings { align-items: center; }
+.github-dashboard .dashboard-account-settings a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 4px; color: var(--st-fail); font-size: 14px; text-decoration: underline; text-decoration-color: currentColor; text-underline-offset: 3px; }
+@media (max-width: 720px) {
+  /* Mobile density: fewer stacked boxes before the report content */
+  .github-dashboard .dashboard-repository-strip > summary { padding: 6px 0; min-height: 48px; }
+  .github-dashboard .dashboard-repository-strip > :not(summary) { margin: 0 0 20px; }
+  .github-dashboard .dashboard-section, .github-dashboard .dashboard-inbox { margin-top: 16px; }
+  .github-dashboard .dashboard-report-layout { margin-top: 12px; gap: 12px; }
+  .github-dashboard .dashboard-report-picker { min-height: 48px; padding: 8px 2px; border: 0; border-bottom: 1px solid var(--ui-line); border-radius: 0; background: transparent; }
+  .github-dashboard .quick-summary.compact-report { padding: 20px 16px; }
+  .github-dashboard .dashboard-inbox { padding: 4px 14px 8px; }
+  .github-dashboard .dashboard-inbox .dashboard-activity-row { padding: 12px 4px 12px 16px; }
+  .github-dashboard .report-row { padding: 10px 8px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .github-dashboard :is(.dashboard-primary-action, .dashboard-secondary-action, .dashboard-text-action, .dashboard-icon-button, .report-row, .dashboard-list-row, .repository-tab, .dashboard-language-option, .dashboard-report-picker, summary) { transition: none; }
+  .github-dashboard :is(.dashboard-primary-action, .dashboard-secondary-action, .dashboard-text-action, .dashboard-icon-button):active:not(:disabled) { transform: none; }
+}
+
+/* Report hierarchy: quiet overview, claim-level evidence, then optional details. */
+.report-hierarchy.report-top-summary { display: block; min-width: 0; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--workspace-ink, #1d1c1a); }
+.report-hierarchy .report-overview { padding: 0; background: transparent; border-radius: 0; }
+.report-hierarchy :is(h3, h4, p, ul) { margin: 0; }
+.report-hierarchy.report-top-summary h3 { font-size: 23px; font-weight: 600; line-height: 1.35; letter-spacing: -.02em; overflow-wrap: anywhere; }
+.report-hierarchy h4 { margin: 0 0 6px; font-size: 14px; font-weight: 600; line-height: 1.5; }
+.report-hierarchy p, .report-hierarchy li { max-width: 70ch; font-size: 16px; font-weight: 400; line-height: 1.6; overflow-wrap: anywhere; }
+.report-hierarchy .report-section-label { margin-bottom: 6px; font-size: 12px; font-weight: 600; color: var(--workspace-muted, #5c5a56); }
+.report-hierarchy .report-overview-purpose + .report-overview-purpose { margin-top: 28px; padding-top: 28px; border-top: 1px solid var(--workspace-line, #e2e1de); }
+.report-hierarchy .report-overview-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.report-hierarchy .report-summary-evidence { margin-top: 4px; }
+.report-hierarchy :is(.report-scope-notes, .report-execution-records) { margin-top: 24px; }
+.report-hierarchy .report-claims { background: var(--workspace-panel, #fff); }
+.report-hierarchy .report-purpose-body { padding: 28px 0; border-bottom: 1px solid var(--workspace-line, #e2e1de); }
+.report-hierarchy .report-purpose-body > section + section, .report-hierarchy .report-purpose-body > h3 + section { margin-top: 24px; }
+.report-hierarchy .report-intent-scope { display: grid; gap: 4px; margin: 0; }
+.report-hierarchy .report-intent-scope > div { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr); gap: 12px; }
+.report-hierarchy .report-intent-scope dt { color: var(--workspace-muted, #5c5a56); font-size: 13px; font-weight: 600; line-height: 1.65; }
+.report-hierarchy .report-intent-scope dd { margin: 0; }
+.report-hierarchy .report-intent-scope ul { margin: 0; padding-left: 18px; }
+.report-hierarchy .report-purpose-body > .report-intent-scope + section { margin-top: 24px; }
+.report-hierarchy .report-claim + .report-claim { margin-top: 20px; }
+.report-hierarchy .report-cited-refs { list-style: none; padding: 0; margin: 6px 0 0; display: grid; gap: 2px; }
+.report-hierarchy .report-cited-refs > li { display: flex; flex-wrap: wrap; align-items: center; gap: 0 4px; min-width: 0; }
+.report-hierarchy :is(.report-purpose-ref-link, .report-ref-location) { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; min-height: 44px; padding: 6px 0; color: var(--workspace-ink, #1d1c1a); }
+.report-hierarchy .report-purpose-ref-link { text-decoration: underline; text-underline-offset: 3px; }
+.report-hierarchy .report-cited-refs code { font-size: 12.5px; font-weight: 400; white-space: normal; overflow-wrap: anywhere; }
+.report-hierarchy .report-ref-side { color: var(--workspace-muted, #5c5a56); font-size: 12px; }
+.report-hierarchy details.report-ref-full { min-width: 0; border: 0; padding: 0; background: transparent; }
+.report-hierarchy .report-ref-full summary { display: inline-flex; align-items: center; min-width: 44px; min-height: 44px; font-size: 12px; color: var(--workspace-muted, #5c5a56); cursor: pointer; }
+.report-hierarchy .report-ref-full[open] { flex-basis: 100%; }
+.report-hierarchy .report-ref-full[open] code { display: block; padding-bottom: 12px; }
+.report-hierarchy :is(a, summary, button):focus-visible { outline: 2px solid var(--workspace-ink, #1d1c1a); outline-offset: 3px; }
+.report-hierarchy .report-ref-code { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--workspace-muted); cursor: pointer; }
+.report-hierarchy .report-ref-code:hover { background: var(--workspace-sunken); color: var(--workspace-ink); }
+/* Cited code reader (Evidence & code): location list, then the selected exact-revision excerpt with the cited lines marked. */
+.github-dashboard .report-code-evidence { margin: 4px 0 16px; }
+.github-dashboard .report-code-evidence > h3 { margin: 0 0 8px; font-size: 15px; font-weight: 600; }
+.github-dashboard .report-code-refs { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.github-dashboard .report-code-ref { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; max-width: 100%; padding: 0 12px; border: 1px solid var(--workspace-line); border-radius: 8px; background: var(--workspace-panel); color: var(--workspace-ink); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.github-dashboard .report-code-ref code { font-size: 12px; overflow-wrap: anywhere; }
+.github-dashboard .report-code-ref span { color: var(--workspace-muted); font-size: 12px; }
+.github-dashboard .report-code-ref[aria-pressed="true"] { border-color: var(--workspace-ink); background: var(--workspace-sunken); box-shadow: inset 3px 0 0 var(--workspace-accent); }
+.github-dashboard .report-code-ref:focus-visible { outline: 2px solid var(--workspace-ink); outline-offset: 2px; }
+.github-dashboard .report-code-selected { margin-top: 12px; }
+.github-dashboard .report-code-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 0; font-size: 12px; color: var(--workspace-muted); }
+.github-dashboard .report-code-meta code { color: var(--workspace-ink); overflow-wrap: anywhere; }
+.github-dashboard .report-code-meta a { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; color: var(--workspace-ink); }
+.github-dashboard .report-code-action { color: var(--workspace-ink); }
+.github-dashboard :is(.report-code-action, .report-code-scroll):focus-visible { outline-color: var(--workspace-ink); }
+.github-dashboard .report-code-line.is-reference { background: var(--workspace-sunken); box-shadow: inset 3px 0 0 var(--workspace-accent); }
+/* Icon-only navigation: the logo and the settings/back controls keep a 44px target and an accessible name. */
+.github-entry .dashboard-brand, .github-dashboard .dashboard-brand { justify-content: center; min-width: 44px; min-height: 44px; }
+.github-dashboard .settings-panel > .settings-back { margin-bottom: 8px; }
+.github-dashboard .quick-summary.compact-report { display: block; background: var(--workspace-panel); }
+.github-dashboard .report-hierarchy .summary-actions { display: flex; flex-wrap: wrap; margin: 20px 0 0; gap: 12px; }
+.github-dashboard .report-hierarchy .summary-actions > *, .github-dashboard .summary-actions > * { min-height: 44px; }
+@media (max-width: 720px) {
+  .report-hierarchy.report-top-summary h3 { font-size: 20px; }
+  .report-hierarchy .report-purpose-body { padding: 24px 0; }
+}
+/* Owner report exports keep the same touch target as the saved dashboard reader. */
+.report .report-actions .button { min-width: 44px; min-height: 44px; }
+
+/* Core behavior leads; preserved scope and supporting material remain available in details. */
+.report-hierarchy .report-primary-changes { margin-top: 16px; }
+.report-hierarchy .report-primary-changes .report-claim + .report-claim { margin-top: 16px; }
+.report-hierarchy .report-fit-status { margin-top: 12px; }
+.report-hierarchy .report-purpose-details { margin-top: 16px; }
+.report-hierarchy .report-purpose-details > summary { min-height: 44px; display: list-item; align-content: center; cursor: pointer; padding: 10px 0; }
+.report-hierarchy .report-purpose-details .report-intent-scope { margin-top: 20px; }
+
+/* 2026-10-20 reading workspace: light lists, one white report surface, one code reading area. */
+@media (max-width: 700px) {
+  /* The report is a full-width sheet: one 20px inset from the page edge, not page + card padding. */
+  .github-dashboard .quick-summary.compact-report { width: auto; max-width: none; margin-inline: -20px; padding: 20px; border-right: 0; border-left: 0; border-radius: 0; }
+  /* Code reading leads on its own row; copy and GitHub share the next row and wrap when a language needs more room. */
+  .github-dashboard .compact-report .summary-actions > :is(.dashboard-primary-action, .dashboard-secondary-action) { width: auto; min-width: max-content; }
+  .github-dashboard .compact-report .summary-actions > .dashboard-secondary-action { flex: 1 1 0; }
+  .github-dashboard .compact-report .summary-actions > .dashboard-primary-action { flex: 1 1 100%; }
+}
+/* Cited code: quiet location choices, then one bordered reading area with its location header on top. */
+.github-dashboard .report-code-ref { border-color: var(--workspace-line); background: transparent; }
+.github-dashboard .report-code-ref:hover { background: var(--workspace-sunken); }
+.github-dashboard .report-code-ref[aria-pressed="true"] { border-color: var(--workspace-control); background: var(--workspace-sunken); }
+.github-dashboard .report-code-panel { margin-top: 8px; padding: 0; border: 1px solid var(--workspace-line); border-radius: 8px; overflow: hidden; background: var(--workspace-panel); }
+.github-dashboard .report-code-panel header { gap: 2px; margin: 0; padding: 10px 14px; border-bottom: 1px solid var(--workspace-line); background: var(--workspace-canvas); }
+.github-dashboard .report-code-panel header code { font-size: 12.5px; line-height: 1.5; }
+.github-dashboard .report-code-panel .report-code-scroll { margin: 0; border: 0; border-radius: 0; }
+.github-dashboard .report-code-panel > :is(p, div[role="alert"]) { margin: 0; padding: 12px 14px; }
+.github-dashboard .report-code-panel > .report-code-note { padding-top: 8px; border-top: 1px solid var(--workspace-line); }
+/* Settings: repository choices are rows inside the existing section. */
+.github-dashboard .settings-panel .repository-tabs { gap: 0; border-top: 1px solid var(--workspace-line); }
+.github-dashboard .settings-panel .repository-tab { border: 0; border-bottom: 1px solid var(--workspace-line); border-radius: 0; }
+/* Inbox: unread rows keep the dot and a heavier title; read rows step back. */
+.github-dashboard .dashboard-inbox .dashboard-activity-row.is-read strong { font-weight: 500; }
+.github-dashboard .dashboard-inbox .dashboard-activity-row.is-unread strong { font-weight: 650; }
+
+/* 2026-10-20 review workspace: PR navigation + one report surface; a cited location opens description + code.
+   Cool gray canvas, white reading surfaces, soft charcoal for action, selection and focus (no blue, no green). */
+.github-dashboard {
+  --workspace-ink: #24272c; --workspace-muted: #5e6672; --workspace-line: #d4d7dc; --workspace-control: #7a8490;
+  --workspace-canvas: #f5f6f8; --workspace-sunken: #eef0f2; --workspace-panel: #ffffff;
+  --workspace-action: #33363b; --workspace-action-hover: #24272c; --workspace-accent: #33363b;
+  --workspace-violet: #33363b; --workspace-violet-soft: #e5e7eb; --workspace-navy: #24272c;
+  --ws-nav: #eef0f2; --ws-selected: #e5e7eb;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+}
+.github-dashboard :is(button, a, summary) { transition: color 120ms ease-out, background-color 120ms ease-out, border-color 120ms ease-out; }
+.github-dashboard :is(button, a, summary, input):focus-visible { outline: 2px solid var(--workspace-accent); outline-offset: 2px; }
+.github-dashboard :is(.dashboard-primary-action, .dashboard-secondary-action, .dashboard-text-action, .dashboard-icon-button) { border-radius: 6px; }
+.github-dashboard .dashboard-secondary-action { border-color: var(--workspace-control); background: var(--workspace-panel); }
+
+/* Topbar: logo, repository choice and the existing tools in one row; the repository picker opens below it. */
+.github-dashboard .dashboard-topbar { position: relative; min-height: 64px; gap: 16px; border-bottom: 1px solid var(--workspace-line); }
+.github-dashboard .dashboard-topbar > .dashboard-repository-strip { flex: 0 1 auto; min-width: 0; margin: 0 auto 0 8px; border: 0; background: transparent; }
+.github-dashboard .dashboard-topbar > .dashboard-repository-strip > summary { min-height: 44px; padding: 0 8px; gap: 8px; border: 0; border-radius: 6px; font-size: 14px; }
+.github-dashboard .dashboard-topbar > .dashboard-repository-strip > summary:hover { background: var(--ws-nav); }
+.github-dashboard .dashboard-topbar > .dashboard-repository-strip[open] > summary { margin: 0; border: 0; }
+.github-dashboard .dashboard-topbar > .dashboard-repository-strip > :not(summary) { position: absolute; z-index: 20; top: 100%; right: 0; left: 0; margin: 0; padding: 16px 20px 20px; border: 1px solid var(--workspace-line); border-radius: 8px; background: var(--workspace-panel); }
+
+/* PR navigation: one light column; the selected PR keeps its saved versions and generation controls in place. */
+.github-dashboard .dashboard-pr-browser .dashboard-pr-workspace { border-color: var(--workspace-line); border-radius: 8px; background: var(--ws-nav); }
+.github-dashboard .dashboard-pr-index { padding: 14px 10px; }
+.github-dashboard .dashboard-pr-index .dashboard-section-heading { top: -14px; margin: -14px -10px 8px; padding: 14px 14px 8px; background: var(--ws-nav); }
+.github-dashboard .dashboard-pr-index .dashboard-section-heading h3 { font-size: 15px; font-weight: 650; letter-spacing: 0; }
+.github-dashboard .dashboard-pr-index .dashboard-pr-title { padding: 8px 10px; border-radius: 6px; font-size: 14px; line-height: 21px; }
+.github-dashboard .dashboard-pr-index .dashboard-pr-title strong { font-size: 14px; font-weight: 500; line-height: 21px; }
+.github-dashboard .dashboard-pr-index .dashboard-pr-title:hover { background: var(--ws-selected); }
+.github-dashboard .dashboard-pr-index .dashboard-pr-row.selected .dashboard-pr-title { background: var(--ws-selected); box-shadow: inset 3px 0 0 var(--workspace-accent); }
+.github-dashboard .dashboard-pr-index .dashboard-pr-row.selected .dashboard-pr-title strong { font-weight: 600; color: var(--workspace-ink); }
+.github-dashboard .dashboard-pr-shelf { display: grid; gap: 8px; margin: 2px 0 8px; padding: 4px 4px 4px 13px; }
+.github-dashboard .dashboard-pr-versions { border-top: 1px solid var(--workspace-line); }
+.github-dashboard .dashboard-pr-versions > summary { display: list-item; min-height: 44px; padding: 11px 4px; font-size: 13px; font-weight: 600; line-height: 20px; cursor: pointer; }
+.github-dashboard .dashboard-pr-versions[open] > summary { margin-bottom: 4px; }
+.github-dashboard .dashboard-pr-shelf .dashboard-shelf-heading h4 { font-size: 14px; font-weight: 600; }
+.github-dashboard .dashboard-pr-shelf .dashboard-shelf-generate { margin-top: 8px; }
+.github-dashboard .dashboard-pr-shelf .dashboard-version-list { margin-top: 8px; background: var(--workspace-panel); }
+.github-dashboard .dashboard-version-card[aria-current="true"] { background: var(--ws-selected); box-shadow: inset 3px 0 0 var(--workspace-accent); }
+.github-dashboard .dashboard-version-card[aria-current="true"] .dashboard-version-tag { background: var(--workspace-accent); }
+
+/* Report: a compact context row, then one reading surface. */
+.github-dashboard .quick-summary.compact-report { border-color: var(--workspace-line); border-radius: 8px; }
+.github-dashboard .report-context { flex-wrap: wrap; justify-content: flex-start; gap: 6px 10px; margin-bottom: 14px; color: var(--workspace-muted); font-size: 13px; line-height: 20px; }
+.github-dashboard .report-context h2 { font-size: 13px; line-height: 20px; }
+.github-dashboard .report-context .dashboard-version-tag { background: var(--ws-nav); color: var(--workspace-ink); }
+.github-dashboard .report-context .report-context-time { font-variant-numeric: tabular-nums; }
+.github-dashboard .report-context .summary-badges { margin-left: auto; }
+.github-dashboard .report-context .dashboard-version-banner { display: inline-flex; margin: 0; padding: 0 0 0 6px; background: transparent; color: var(--st-wait); font-size: 13px; }
+.github-dashboard .report-context .dashboard-version-banner .dashboard-text-action { min-height: 44px; color: var(--workspace-accent); }
+.github-dashboard .report-workspace .report-hierarchy.report-top-summary h3 { font-size: 24px; font-weight: 650; line-height: 32px; }
+.github-dashboard .report-workspace .report-hierarchy :is(p, li) { font-size: 16px; line-height: 26px; }
+.github-dashboard .report-workspace .report-hierarchy:lang(ko) :is(p, li) { line-height: 28px; }
+.github-dashboard .report-workspace .report-hierarchy :is(p, li) { max-width: 46rem; }
+.github-dashboard .report-toolbar { margin: 12px 0 8px; gap: 8px; }
+.github-dashboard .report-workspace .report-claim { margin-inline: -12px; padding: 4px 12px; border-radius: 4px; }
+.github-dashboard .report-workspace .report-claim.is-code-origin { background: var(--ws-selected); box-shadow: inset 3px 0 0 var(--workspace-accent); }
+/* Evidence row: a readable location's label opens the code; GitHub and the full path stay separate controls. */
+.report-hierarchy .report-ref-read { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 44px; padding: 0 6px; border: 0; border-radius: 4px; background: transparent; color: var(--workspace-accent, #33363b); font: inherit; cursor: pointer; }
+.report-hierarchy .report-ref-read code { font-size: 13px; line-height: 21px; text-decoration: underline; text-underline-offset: 3px; }
+.report-hierarchy .report-ref-read:hover { background: var(--ws-selected, #e5e7eb); }
+.report-hierarchy .report-ref-read[aria-pressed="true"] { background: var(--ws-selected, #e5e7eb); box-shadow: inset 0 -2px 0 var(--workspace-accent, #33363b); }
+.report-hierarchy .report-ref-github { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 4px; color: var(--workspace-muted, #5e6672); }
+.report-hierarchy .report-ref-github:hover { background: var(--ws-nav, #eef0f2); color: var(--workspace-ink, #24272c); }
+.github-dashboard .report-materials { margin-top: 24px; border-top: 1px solid var(--workspace-line); }
+.github-dashboard .report-materials > summary { min-height: 48px; padding: 12px 0; font-size: 14px; font-weight: 600; cursor: pointer; }
+
+/* Code pane: one pane; location bar, then the exact-revision excerpt. */
+.github-dashboard .report-code-pane { min-width: 0; outline-offset: -2px; }
+.github-dashboard .report-code-pane-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+.github-dashboard .report-code-origin { margin: 0 0 16px; padding: 10px 14px; border-left: 3px solid var(--workspace-accent); border-radius: 4px; background: var(--ws-selected); }
+.github-dashboard .report-code-origin p { margin: 0; font-size: 15px; line-height: 24px; }
+.github-dashboard .report-code-origin .report-code-origin-label { margin-bottom: 4px; color: var(--workspace-muted); font-size: 12px; font-weight: 600; }
+.github-dashboard .report-code-pane .report-code-evidence { margin: 0; }
+.github-dashboard .report-code-ref[aria-pressed="true"] { border-color: var(--workspace-accent); background: var(--ws-selected); box-shadow: inset 3px 0 0 var(--workspace-accent); }
+.github-dashboard .report-code-ref { border-radius: 4px; }
+.github-dashboard .report-code-line.is-reference { background: var(--ws-selected); box-shadow: inset 3px 0 0 var(--workspace-accent); }
+.github-dashboard .report-code-panel { border-radius: 8px; }
+
+/* Narrow (default): the code view replaces the description; the description stays mounted and keeps its scroll. */
+.github-dashboard .report-workspace.is-code-open > .report-workspace-main { display: none; }
+.github-dashboard .report-workspace .report-when-narrow { display: inline-flex; align-items: center; gap: 6px; }
+.github-dashboard .report-workspace .report-when-wide, .github-dashboard .report-workspace .report-code-prlist { display: none; }
+/* Wide: description and code side by side inside the report area, measured on the report itself. */
+.github-dashboard .dashboard-report-reader { container: report-reader / inline-size; }
+@container report-reader (min-width: 1160px) {
+  .github-dashboard .report-workspace.is-code-open { display: grid; grid-template-columns: 42rem minmax(26rem, 1fr); gap: 24px; align-items: start; }
+  .github-dashboard .report-workspace.is-code-open > :is(.quick-summary-header, .dashboard-notice) { grid-column: 1 / -1; }
+  .github-dashboard .report-workspace.is-code-open > .report-workspace-main { display: block; min-width: 0; }
+  .github-dashboard .report-workspace.is-code-open > .report-code-pane { position: sticky; top: 0; max-height: calc(var(--pane-height) - 2px); overflow: auto; padding: 0 0 16px 24px; border-left: 1px solid var(--workspace-line); }
+  .github-dashboard .report-workspace .report-when-narrow, .github-dashboard .report-workspace .report-code-origin { display: none; }
+  .github-dashboard .report-workspace .report-when-wide, .github-dashboard .report-workspace .report-code-prlist { display: inline-flex; }
+}
+@media (max-width: 700px) {
+  .github-dashboard .dashboard-topbar { flex-wrap: wrap; }
+  .github-dashboard .dashboard-topbar > .dashboard-repository-strip { order: 3; flex-basis: 100%; margin: 0; }
+  .github-dashboard .report-workspace .report-hierarchy.report-top-summary h3 { font-size: 21px; line-height: 29px; }
+  .github-dashboard .dashboard-pr-browser .dashboard-pr-workspace { padding: 0; }
+}
+@media (min-width: 1180px) {
+  /* Navigation hidden while description + code are open: the report takes the whole row. */
+  .github-dashboard .dashboard-history-layout.is-split.is-code-open { grid-template-columns: minmax(0, 1fr); }
+}
+/* The compact topbar frees height: the fixed reading panes grow while the page itself still fits the viewport. */
+.github-dashboard { --pane-height: clamp(460px, calc(100vh - 180px), 900px); }
+
+/* 2026-10-21 home: product value and sign-in, one fictional sample (report beside its code), and how to start.
+   Neutral cool gray/white, soft charcoal actions, one dark code surface for depth. No blue, no green brand, no cream. */
+.github-entry.github-front {
+  --workspace-ink: #24272c; --workspace-muted: #5e6672; --workspace-line: #dcdfe4; --workspace-control: #7a8490;
+  --workspace-canvas: #f5f6f8; --workspace-panel: #ffffff; --workspace-action: #33363b; --workspace-action-hover: #24272c; --workspace-accent: #33363b;
+  --front-code-bg: #1d2024; --front-code-fg: #d5d8dd; --front-code-muted: #868c95; --front-code-line: #2c3036;
+  display: block; padding: 0 clamp(20px, 5vw, 56px); background: var(--workspace-canvas); color: var(--workspace-ink);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+}
+.github-front > * { max-width: 1200px; margin-inline: auto; }
+.github-front :is(button, a):focus-visible { outline: 2px solid var(--workspace-accent); outline-offset: 2px; }
+.github-front :is(button, a) { transition: color 120ms ease-out, background-color 120ms ease-out, border-color 120ms ease-out, box-shadow 120ms ease-out; }
+.github-front .github-entry-header { display: flex; align-items: center; justify-content: space-between; width: auto; min-height: 72px; padding: 0; border-bottom: 1px solid var(--workspace-line); }
+.github-front .dashboard-brand { display: inline-flex; align-items: center; min-height: 44px; }
+.github-front .front-header-actions { display: flex; align-items: center; gap: 8px; }
+.github-front :is(.front-header-signin, .front-footer-signin) { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px; border: 1px solid #c9cdd3; border-radius: 6px; background: var(--workspace-panel); color: var(--workspace-ink); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.github-front :is(.front-header-signin, .front-footer-signin):hover:not(:disabled) { border-color: var(--workspace-control); background: #f0f2f4; }
+.github-front .github-entry-demo-link { min-height: 44px; padding: 0 8px; }
+
+.github-front .front-hero { display: grid; grid-template-columns: minmax(0, .82fr) minmax(0, 1.18fr); gap: 64px; align-items: center; padding: 72px 0 84px; }
+.github-front h1 { max-width: 12.5em; margin: 0; font-size: 52px; font-weight: 650; line-height: 58px; letter-spacing: -.035em; text-wrap: balance; }
+.github-front .front-lede { max-width: 30rem; margin: 20px 0 0; color: var(--workspace-muted); font-size: 18px; line-height: 29px; text-wrap: pretty; }
+.github-front .front-cta { display: grid; justify-items: start; gap: 12px; margin-top: 32px; }
+.github-front .front-primary { display: inline-flex; align-items: center; gap: 10px; min-height: 52px; padding: 0 22px; border: 1px solid var(--workspace-action); border-radius: 6px; background: var(--workspace-action); color: #fff; font-size: 15px; font-weight: 600; box-shadow: 0 1px 2px rgb(17 20 24 / 12%); }
+.github-front .front-primary:hover:not(:disabled) { background: var(--workspace-action-hover); border-color: var(--workspace-action-hover); }
+.github-front .front-primary:active:not(:disabled) { transform: translateY(1px); }
+.github-front .front-cta-status { margin: 0; padding: 10px 14px; border-left: 3px solid var(--st-fail, #a8393b); border-radius: 4px; background: #fbf1f0; color: var(--workspace-ink); font-size: 14px; }
+
+/* Sample window: the report and the code it cites, side by side. */
+.github-front .front-sample { margin: 0; border: 1px solid var(--workspace-line); border-radius: 10px; background: var(--workspace-panel); overflow: hidden; box-shadow: 0 1px 2px rgb(17 20 24 / 5%), 0 24px 48px -24px rgb(17 20 24 / 28%); }
+.github-front .front-sample-bar { display: flex; align-items: center; gap: 12px; min-height: 40px; padding: 0 14px; border-bottom: 1px solid var(--workspace-line); background: #f0f2f4; color: var(--workspace-muted); font-size: 12px; font-weight: 500; }
+.github-front .front-sample-dots { display: inline-flex; gap: 6px; }
+.github-front .front-sample-dots i { width: 9px; height: 9px; border-radius: 50%; background: #cfd3d8; }
+.github-front .front-sample-panes { display: grid; grid-template-columns: minmax(0, .84fr) minmax(0, 1.16fr); }
+.github-front .front-sample-report { display: flex; flex-direction: column; padding: 20px 20px 0; min-width: 0; }
+.github-front .front-sample-pr { margin: 0; color: var(--workspace-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.github-front .front-sample-title { margin: 4px 0 14px; font-size: 19px; font-weight: 650; line-height: 26px; letter-spacing: -.01em; }
+.github-front .front-sample-claim { margin: 0 -10px 6px; padding: 10px 10px 2px; border-radius: 6px; box-shadow: inset 2px 0 0 transparent; }
+.github-front .front-sample-claim.is-selected { background: #f3f4f6; box-shadow: inset 2px 0 0 var(--workspace-action); }
+.github-front .front-sample-claim p { margin: 0; font-size: 14.5px; line-height: 22px; }
+.github-front .front-sample-claim .front-sample-label { margin-bottom: 4px; color: var(--workspace-muted); font-size: 12px; font-weight: 600; line-height: 18px; }
+.github-front .front-sample-ref { display: inline-flex; align-items: center; min-height: 44px; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.github-front .front-sample-ref code { padding: 4px 9px; border: 1px solid #cfd3d8; border-radius: 4px; background: var(--workspace-panel); color: var(--workspace-ink); font-size: 12px; line-height: 18px; }
+.github-front .front-sample-ref:hover code { border-color: var(--workspace-control); }
+.github-front .front-sample-ref[aria-pressed="true"] code { border-color: var(--workspace-action); background: var(--workspace-action); color: #fff; }
+.github-front .front-sample-meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: auto -20px 0; padding-top: 0; border-top: 1px solid var(--workspace-line); }
+.github-front .front-sample-claim + .front-sample-meta, .github-front .front-sample-claim:last-of-type { margin-bottom: 12px; }
+.github-front .front-sample-meta div { padding: 12px 20px 14px; }
+.github-front .front-sample-meta div + div { border-left: 1px solid var(--workspace-line); }
+.github-front .front-sample-meta dt { color: var(--workspace-muted); font-size: 12px; line-height: 18px; }
+.github-front .front-sample-meta dd { display: flex; align-items: center; gap: 6px; margin: 2px 0 0; font-size: 14px; font-weight: 600; }
+.github-front .front-ci-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--st-ok, #2f6f4f); }
+.github-front .front-sample-code { display: flex; flex-direction: column; min-width: 0; background: var(--front-code-bg); color: var(--front-code-fg); }
+.github-front .front-code-head { display: flex; align-items: baseline; gap: 10px; margin: 0; padding: 12px 16px; border-bottom: 1px solid var(--front-code-line); color: var(--front-code-muted); font-size: 12px; }
+.github-front .front-code-head code { color: #eceef1; font-size: 12.5px; }
+.github-front .front-code-body { flex: 1; margin: 0; padding: 10px 0 16px; overflow-x: auto; background: transparent; font: 12px/21px "SFMono-Regular", Consolas, "Liberation Mono", monospace; tab-size: 2; }
+.github-front .front-code-body:focus-visible { outline: 2px solid #e4e6ea; outline-offset: -2px; }
+.github-front .front-code-body code { display: block; min-width: max-content; white-space: pre; font: inherit; color: inherit; }
+.github-front .front-code-line { display: block; padding-right: 12px; }
+.github-front .front-code-line.is-cited { background: rgb(255 255 255 / 5.5%); box-shadow: inset 2px 0 0 #c9cdd3; }
+.github-front .front-code-n { display: inline-block; width: 38px; padding-right: 12px; color: var(--front-code-muted); text-align: right; user-select: none; }
+.github-front .tok-keyword { color: #f2f3f5; font-weight: 600; }
+.github-front .tok-string { color: #b9c0ca; }
+.github-front .tok-comment { color: #868c95; font-style: italic; }
+.github-front .tok-number { color: #e3e5e9; }
+@keyframes front-swap { from { opacity: .35; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+.github-front .front-code-body.is-switched { animation: front-swap 160ms ease-out; }
+
+/* Get started: three steps on one line. */
+.github-front .front-steps { padding: 56px 0 64px; border-top: 1px solid var(--workspace-line); }
+.github-front .front-steps h2 { margin: 0 0 28px; font-size: 22px; font-weight: 650; line-height: 30px; letter-spacing: -.015em; }
+.github-front .front-steps ol { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; margin: 0; padding: 0; list-style: none; }
+.github-front .front-steps li { position: relative; display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 14px; align-items: start; }
+.github-front .front-steps li:not(:last-child)::after { content: ""; position: absolute; top: 16px; left: 46px; right: -12px; height: 1px; background: var(--workspace-line); z-index: 0; }
+.github-front .front-steps li > :last-child { position: relative; z-index: 1; padding-right: 12px; background: var(--workspace-canvas); }
+.github-front .front-step-number { position: relative; z-index: 1; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--workspace-action); color: #fff; font-size: 14px; font-weight: 650; }
+.github-front .front-steps p { margin: 5px 0 0; font-size: 16px; font-weight: 600; line-height: 22px; }
+.github-front .front-steps .front-step-note { margin-top: 4px; color: var(--workspace-muted); font-size: 14px; font-weight: 400; line-height: 21px; }
+.github-front .front-footer { display: flex; align-items: center; gap: 10px; min-height: 88px; border-top: 1px solid var(--workspace-line); color: var(--workspace-muted); font-size: 14px; font-weight: 600; }
+.github-front .front-footer-signin { margin-left: auto; }
+@media (max-width: 1024px) {
+  .github-front .front-hero { grid-template-columns: minmax(0, 1fr); gap: 44px; padding: 48px 0 56px; }
+}
+@media (max-width: 760px) {
+  .github-front .front-hero { padding: 36px 0 44px; gap: 36px; }
+  .github-front h1 { font-size: 34px; line-height: 40px; letter-spacing: -.03em; }
+  .github-front .front-lede { font-size: 16.5px; line-height: 26px; }
+  .github-front .front-primary { width: 100%; justify-content: center; }
+  .github-front .front-sample-panes { grid-template-columns: minmax(0, 1fr); }
+  .github-front .front-sample-report { padding: 16px 16px 0; }
+  .github-front .front-code-body { font-size: 11.5px; line-height: 20px; }
+  .github-front .front-sample-meta { margin-inline: -16px; }
+  .github-front .front-sample-meta div { padding: 12px 16px 14px; }
+  .github-front .front-steps ol { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .github-front .front-steps li:not(:last-child)::after { top: 40px; bottom: -14px; left: 16px; right: auto; width: 1px; height: auto; }
+  .github-front .front-steps li > :last-child { background: transparent; }
+}
+@media (prefers-reduced-motion: reduce) { .github-front * { transition: none !important; animation: none !important; } }
+
+/* Signed-out workspace card: same surfaces as the front door. */
+.github-dashboard.github-sign-in { gap: 12px; border-color: var(--workspace-line); border-radius: 8px; }
+.github-dashboard.github-sign-in h2 { margin: 6px 0 0; font-size: 24px; font-weight: 650; line-height: 32px; }
+.github-dashboard.github-sign-in > p:not(.dashboard-boundary) { margin: 0; color: var(--workspace-muted); font-size: 15px; line-height: 24px; }
+.github-dashboard.github-sign-in .dashboard-primary-action { display: inline-flex; align-items: center; gap: 10px; margin-top: 8px; }
+.github-dashboard.github-sign-in .dashboard-boundary { margin-top: 12px; font-size: 13px; line-height: 20px; }
+
+/* First connection guide and access notices: one panel, one current step with its real action. */
+.github-dashboard .dashboard-connect-guide { max-width: 760px; margin: 32px 0 0; padding: 28px 32px 12px; border: 1px solid var(--workspace-line); border-radius: 8px; background: var(--workspace-panel); }
+.github-dashboard .dashboard-connect-guide h2 { margin: 4px 0 8px; font-size: 22px; font-weight: 650; line-height: 30px; letter-spacing: -.015em; }
+.github-dashboard .connect-steps { margin: 0; padding: 0; list-style: none; }
+.github-dashboard .connect-steps > li { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 14px; padding: 18px 0; border-top: 1px solid var(--workspace-line); }
+.github-dashboard .connect-steps h3 { margin: 4px 0 4px; font-size: 16px; font-weight: 600; line-height: 24px; }
+.github-dashboard .connect-steps p { margin: 0; max-width: 40rem; color: var(--workspace-muted); font-size: 15px; line-height: 24px; }
+.github-dashboard .connect-step-mark { display: grid; place-items: center; width: 30px; height: 30px; border: 1.5px solid var(--workspace-control); border-radius: 50%; color: var(--workspace-muted); font-size: 14px; font-weight: 650; }
+.github-dashboard .connect-steps > li.is-done .connect-step-mark { border-color: transparent; color: var(--workspace-accent); }
+.github-dashboard .connect-steps > li.is-current .connect-step-mark { border-color: var(--workspace-accent); background: var(--workspace-accent); color: #fff; }
+.github-dashboard .connect-steps > li.is-current h3 { color: var(--workspace-ink); }
+.github-dashboard .connect-steps .dashboard-primary-action { display: inline-flex; align-items: center; gap: 8px; margin-top: 14px; }
+.github-dashboard .dashboard-reauth { margin-top: 16px; padding: 12px 16px; border: 0; border-left: 3px solid var(--workspace-accent); border-radius: 4px; background: var(--ws-selected); color: var(--workspace-ink); font-size: 14px; line-height: 22px; }
+.github-dashboard .dashboard-reauth .dashboard-text-action { min-height: 44px; color: var(--workspace-accent); font-weight: 600; }
+@media (max-width: 700px) {
+  .github-dashboard .dashboard-connect-guide { margin-top: 20px; padding: 20px 18px 6px; }
+  .github-dashboard .connect-steps .dashboard-primary-action { width: 100%; justify-content: center; }
+}
+/* The installation choice and repository picker continue the guide: same width and panel. */
+.github-dashboard .dashboard-connect-guide ~ .dashboard-repository-picker { max-width: 760px; margin-top: 16px; padding: 24px 32px; border: 1px solid var(--workspace-line); border-radius: 8px; background: var(--workspace-panel); }
+.github-dashboard .dashboard-connect-guide ~ .dashboard-repository-picker .dashboard-section-heading h3 { font-size: 18px; line-height: 26px; }
+.github-dashboard .dashboard-connect-guide ~ .analysis-choice-dialog { max-width: 760px; }
+.github-dashboard .analysis-choice-dialog:focus { outline: 2px solid var(--workspace-accent); outline-offset: 2px; }
+.github-dashboard .connect-step-action { margin: 0; }
+.github-dashboard .dashboard-inline-toggle { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; }
+.github-dashboard .dashboard-inline-toggle input { width: 18px; height: 18px; margin: 0; accent-color: var(--workspace-accent); }
+@media (max-width: 700px) { .github-dashboard .dashboard-connect-guide ~ .dashboard-repository-picker { padding: 18px; } }
+/* Settings: private analysis consent detail lives in one disclosure (open only while consent is needed). */
+.github-dashboard .settings-private { margin-top: 4px; border-bottom: 1px solid var(--workspace-line); }
+.github-dashboard .settings-private-details > summary { display: list-item; min-height: 44px; padding: 12px 0; color: var(--workspace-muted); font-size: 13px; font-weight: 600; line-height: 20px; cursor: pointer; }
+.github-dashboard .settings-private-details > p { max-width: 46rem; margin: 0 0 14px; color: var(--workspace-muted); font-size: 13px; line-height: 20px; }
+
+/* Keep the in-place regeneration choices keyboard/touch accessible without moving the reader. */
+.github-dashboard .dashboard-shelf-confirm button { min-height: 44px; }

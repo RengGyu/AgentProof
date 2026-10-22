@@ -1,4 +1,9 @@
-import { withPaidAnalysis, assertPaidAnalysisAllowed } from "./paid-budget";
+import {listTenantGitHubInstallationStatuses} from "./github-installations";
+import { scheduleMobileAnalysisFailed } from './mobile-push';
+import {resolveReportLanguage,type ReportLanguage} from './tenant-report-language';
+import {logPurposeFailure} from './purpose-failure';
+import {createRuntimePurposeOptions,requireCompletedPurpose,PurposeAnalysisError} from './purpose-runtime';
+import { withPaidAnalysis, assertPaidAnalysisAllowed, PaidBudgetError } from "./paid-budget";
 import { resolveNavigationProvider } from "./gemini-navigation";
 import { isPrivateAnalysisGrantCurrent } from "./github-analysis-access";
 import {
@@ -121,6 +126,7 @@ export interface AnalysisWorkerPreflightResult {
     slackSummary?: boolean;
   };
   llmAnalysisMode?: "essential" | "enhanced";
+  reportLanguage?: ReportLanguage;
   hybridPilotControlled?: boolean;
   privateAnalysisApproved?: boolean;
   privateTenantId?: string;
@@ -260,6 +266,12 @@ export async function preflightClaimedAnalysisJob(
       repositoryFullName: job.repository_full_name
     }, env);
 
+    if (job.event === 'workspace_manual' && (!grant.required || !grant.grant || grant.grant.tenantId !== job.tenant_id || !grant.grant.saveReportsEnabled || !(await listTenantGitHubInstallationStatuses({tenantId:job.tenant_id!,installationIds:[job.installation_id]},env)).some(i=>i.installationId===job.installation_id&&i.status==='active'))) {
+      const code=grant.grant&&!grant.grant.saveReportsEnabled?'github_save_reports_disabled':'github_app_grant_denied';
+      await failAnalysisJob({id:job.id,claimGeneration:job.claim_generation??undefined,retryable:false,code,summary:'Saved analysis access changed.',now:options.now},env);
+      return {status:'failed_terminal',reason:code};
+    }
+
     if (grant.required && !grant.grant) {
       const reason = tenantGrantPublicReason(grant.reason);
       await failAnalysisJob({
@@ -327,6 +339,7 @@ export async function preflightClaimedAnalysisJob(
         job,
         sideEffects,
         llmAnalysisMode: grant.grant.llmAnalysisMode,
+        reportLanguage: resolveReportLanguage(job.event==='workspace_manual'?job.action:grant.grant.reportLanguage),
         hybridPilotControlled: true,
         privateAnalysisApproved: grant.grant.repositoryPrivate === true && grant.grant.privateAnalysisConsentVersion === "2026-09-24.v1",
         privateTenantId: grant.grant.tenantId
@@ -452,6 +465,7 @@ async function runPreflightedAnalysisJob(
         ?? (await isGitHubRepositoryPublic(job.repository_full_name, token) ? "enhanced" : "essential");
       const input = await buildGitHubPullRequestInput(job.pull_request_url, token, "", undefined, {
         expectedHeadSha: job.head_sha,
+        purposeEvidence:resolveGeneralPrAssessmentRuntimePolicyV1(env.AGENTPROOF_GENERAL_PR_OBSERVATION_MODE).assessmentProjection === 'advisory',
         now: () => options.now ?? new Date()
       });
 
@@ -500,6 +514,7 @@ async function runPreflightedAnalysisJob(
       const generalPrObservation = await generalPrObservationService.runGeneralPrObservationNowV2({
         policy: generalPrPolicy,
         input,
+        ...(generalPrPolicy.assessmentProjection === 'advisory' ? {purpose:createRuntimePurposeOptions(input,{env,token,requestCorrelation:job.id,reportLanguage:resolveReportLanguage(job.event==='workspace_manual'?job.action:preflight.reportLanguage),...(input.repositoryPrivate===true&&preflight.privateTenantId&&job.repository_id?{privateGrant:{tenantId:preflight.privateTenantId,repositoryFullName:job.repository_full_name,installationId:job.installation_id,repositoryId:job.repository_id}}:{}),readCurrentInput:()=>buildGitHubPullRequestInput(job.pull_request_url,token,"",undefined,{expectedHeadSha:input.sourceProvenance?.headSha,expectedBaseSha:input.sourceProvenance?.baseSha,purposeEvidence:true})})} : {}),
         navigation: {
           model: navigationProvider.model,
           ...(navigationEligible && navigationProvider.provider ? {
@@ -543,6 +558,7 @@ async function runPreflightedAnalysisJob(
         } : {})
       });
       const deterministicReport = generalPrObservation.report;
+      if(generalPrPolicy.assessmentProjection === "advisory")requireCompletedPurpose(deterministicReport as import("./types").VerificationReportV2);
       if (input.repositoryPrivate === true) {
         let currentGrant;
         try {
@@ -559,7 +575,7 @@ async function runPreflightedAnalysisJob(
         }
       }
       const protocol = resolveHybridWorkerProtocol(job, preflight.hybridPilotControlled === true);
-      const semanticResult = generalPrPolicy.assessmentProjection === "advisory" && (deterministicReport as import("./types").VerificationReportV2).reviewCandidates?.navigation
+      const semanticResult = generalPrPolicy.assessmentProjection === "advisory" && ((deterministicReport as import("./types").VerificationReportV2).purposeReview || (deterministicReport as import("./types").VerificationReportV2).reviewCandidates?.navigation)
         ? { status: "ready" as const, report: deterministicReport }
         : protocol === "legacy"
         ? await advanceQueuedSemanticAnalysis(
@@ -617,6 +633,7 @@ async function runPreflightedAnalysisJob(
           `Generated report failed runtime validation: ${runtimeReport.errors.join("; ")}`
         );
       }
+      if(generalPrPolicy.assessmentProjection==='advisory')requireCompletedPurpose(runtimeReport.report as import('./types').VerificationReportV2);
       assertPaidAnalysisAllowed();
       let report = runtimeReport.report;
 
@@ -643,14 +660,17 @@ async function runPreflightedAnalysisJob(
         ? { saveReport: false, comment: false, slackSummary: false }
         : sideEffects;
       const sideEffectsBeforeSave = await revalidateWorkerSideEffects(job, publishableSideEffects, env);
+      if(job.event==='workspace_manual'&&!sideEffectsBeforeSave.saveReport)throw new AnalysisWorkerTerminalError('github_save_reports_disabled','Saved reports are off.');
       await sealCurrentAnalysisJobRevision(job, env, options.now);
       let saved: Awaited<ReturnType<typeof createAutomationSavedReport>> | undefined;
       if (sideEffectsBeforeSave.saveReport) {
+        if(input.repositoryPrivate===true&&!await isPrivateAnalysisGrantCurrent({tenantId:preflight.privateTenantId!,repositoryFullName:job.repository_full_name,installationId:job.installation_id,repositoryId:job.repository_id!,requireSave:true},env))throw new AnalysisWorkerTerminalError('private-consent-required','Private repository access changed before saving.');
         await assertWorkerTenantDeletionNotActive(job, env);
         report = requirePublishableGeneratedReport(input, report);
         saved = await createAutomationSavedReport(report, {
           requestUrl: options.requestUrl,
           validationInput: input,
+          ...(job.event==='workspace_manual'?{workspaceManual:true}:{}),
           ...(job.tenant_id && job.installation_id && job.repository_id ? {
             tenantId: job.tenant_id,
             installationId: job.installation_id,
@@ -705,6 +725,7 @@ async function runPreflightedAnalysisJob(
         priority: report.summary.priority,
         evidenceCoverage: report.summary.evidenceCoverage,
         savedReport: saved ? {
+          id: saved.id,
           privacy: saved.privacy,
           durability: saved.durability
         } : undefined,
@@ -743,6 +764,7 @@ async function runPreflightedAnalysisJob(
       };
     });
   } catch (error) {
+    if(error instanceof PurposeAnalysisError||error instanceof PaidBudgetError)logPurposeFailure(error,job.id);
     const failure = classifyWorkerFailure(error);
     if (error instanceof AnalysisWorkerLeaseLostError) {
       return {
@@ -768,6 +790,7 @@ async function runPreflightedAnalysisJob(
         sideEffects
       };
     }
+    if (job.tenant_id && job.repository_id) scheduleMobileAnalysisFailed({tenantId:job.tenant_id,jobId:job.id,repositoryId:job.repository_id});
     await recordWorkerAudit("github_app_analysis_failed", "failed", job, {
       statusCode: failure.retryable ? 503 : 422,
       code: failure.code
@@ -1496,6 +1519,8 @@ async function revalidateWorkerSideEffects(
       repositoryFullName: job.repository_full_name
     }, env);
 
+    if (job.event === 'workspace_manual' && (!grant.required || !grant.grant || grant.grant.tenantId !== job.tenant_id || !(await listTenantGitHubInstallationStatuses({tenantId:job.tenant_id!,installationIds:[job.installation_id]},env)).some(i=>i.installationId===job.installation_id&&i.status==='active'))) throw new AnalysisWorkerTerminalError('github_app_grant_denied','Saved analysis access changed.');
+
     if (grant.required && !grant.grant) {
       const code = grant.reason ?? "github_app_grant_denied";
       throw new AnalysisWorkerTerminalError(code, tenantGrantPublicReason(grant.reason));
@@ -1623,6 +1648,9 @@ async function recordWorkerAudit(
 
 function classifyWorkerFailure(error: unknown): { retryable: boolean; code: string; summary: string } {
   const summary = redactSecrets(error instanceof Error ? error.message : "Analysis worker failed.");
+
+  if(error instanceof PaidBudgetError)return {retryable:false,code:error.code,summary:error.message};
+  if(error instanceof PurposeAnalysisError)return {retryable:false,code:error.code,summary:error.message};
 
   if (error instanceof AnalysisWorkerTerminalError) {
     return { retryable: false, code: error.code, summary };

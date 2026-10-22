@@ -1,5 +1,4 @@
-import { POST as analyze } from "@/lib/workspace-server/analyze";
-
-export function POST(request: Request) {
-  return analyze(request, "web", { retainReport: true });
-}
+import {POST as enqueue,GET as status} from "@/lib/workspace-server/queued-analysis";
+export const maxDuration = 300;
+export function POST(request:Request){return enqueue(request,"web");}
+export function GET(request:Request){return status(request,"web");}

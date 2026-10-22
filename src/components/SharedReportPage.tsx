@@ -33,14 +33,14 @@ export function SharedReportPage() {
           <div className="brand-mark" aria-hidden="true">
             <ShieldCheck size={18} />
           </div>
-          <span>AgentProof</span>
+          <span>DiffEvidence</span>
         </div>
       </header>
       <div className="shared-layout">
         {report ? (
           <>
             <div className="notice" role="status">
-              Imported / unverified portable summary. It is not a server-verified AgentProof artifact and omits raw evidence.
+              Imported / unverified portable summary. It is not a server-verified DiffEvidence artifact and omits raw evidence.
             </div>
             <ReportView report={report} mode="summary" />
           </>

@@ -7,9 +7,14 @@ import {
 } from "./github-onboarding-client";
 
 describe("github onboarding client errors", () => {
-  it("shows a recognized safe onboarding failure code", () => {
+  it("maps recognized onboarding failures to actions without internal codes", () => {
     expect(githubOnboardingStartFailureMessage("github_onboarding_state_store_unavailable"))
-      .toBe("GitHub App installation could not start (github_onboarding_state_store_unavailable).");
+      .toBe("GitHub installation is temporarily unavailable. Try again later.");
+  });
+
+  it("keeps safe next actions for invalid and unavailable onboarding", () => {
+    expect(githubOnboardingStartFailureMessage("github_onboarding_request_invalid")).toBe("Start again from Add repositories.");
+    expect(githubOnboardingStartFailureMessage("github_onboarding_not_configured")).toBe("GitHub installation is temporarily unavailable. Try again later.");
   });
 
   it("does not render an arbitrary server error code", () => {

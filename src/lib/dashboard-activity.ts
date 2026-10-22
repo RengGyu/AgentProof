@@ -1,4 +1,5 @@
 import type { TenantAnalysisJobSummary } from "./analysis-jobs";
+import { dashboardAnalysisFailureMessage } from "./github-dashboard-view-model";
 import type { DashboardSavedReport } from "./github-dashboard-view-model";
 
 export type DashboardActivityKind =
@@ -90,8 +91,7 @@ function jobEvent(
     ...((job.status === "failed_retryable" || job.status === "failed_terminal") && (job.errorCode || job.errorSummary)
       ? {
         failure: {
-          ...(job.errorCode ? { code: job.errorCode } : {}),
-          ...(job.errorSummary ? { summary: job.errorSummary } : {})
+          summary: dashboardAnalysisFailureMessage({ code: job.errorCode })
         }
       }
       : {})

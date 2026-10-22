@@ -818,7 +818,7 @@ describe("tenant control plane helpers", () => {
       }
     ]);
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://agentproof-test.supabase.co/rest/v1/tenant_repository_grants_test?tenant_id=eq.tenant_test&select=tenant_id,installation_id,repository_id,repository_full_name,repository_is_private,enabled,analysis_enabled,comment_enabled,save_reports_enabled,slack_notifications_enabled,llm_analysis_mode,hybrid_planner_consent_version,private_analysis_consent_version&order=repository_full_name.asc&limit=500",
+      "https://agentproof-test.supabase.co/rest/v1/tenant_repository_grants_test?tenant_id=eq.tenant_test&select=tenant_id,installation_id,repository_id,repository_full_name,repository_is_private,enabled,analysis_enabled,comment_enabled,save_reports_enabled,slack_notifications_enabled,llm_analysis_mode,report_language,hybrid_planner_consent_version,private_analysis_consent_version&order=repository_full_name.asc&limit=500",
       expect.objectContaining({ method: "GET" })
     );
   });
@@ -938,7 +938,7 @@ describe("tenant control plane helpers", () => {
 
     expect(result.updatedCount).toBe(1);
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://agentproof-test.supabase.co/rest/v1/tenant_repository_grants_test?installation_id=eq.321&select=tenant_id,installation_id,repository_id,repository_full_name,repository_is_private,enabled,analysis_enabled,comment_enabled,save_reports_enabled,slack_notifications_enabled,llm_analysis_mode,hybrid_planner_consent_version,private_analysis_consent_version",
+      "https://agentproof-test.supabase.co/rest/v1/tenant_repository_grants_test?installation_id=eq.321&select=tenant_id,installation_id,repository_id,repository_full_name,repository_is_private,enabled,analysis_enabled,comment_enabled,save_reports_enabled,slack_notifications_enabled,llm_analysis_mode,report_language,hybrid_planner_consent_version,private_analysis_consent_version",
       expect.objectContaining({ method: "PATCH" })
     );
     expect(body).toMatchObject({
@@ -969,7 +969,7 @@ describe("tenant control plane helpers", () => {
       grants: []
     });
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://agentproof-test.supabase.co/rest/v1/agentproof_tenant_repository_grants?installation_id=eq.321&repository_id=in.(100,101)&select=tenant_id,installation_id,repository_id,repository_full_name,repository_is_private,enabled,analysis_enabled,comment_enabled,save_reports_enabled,slack_notifications_enabled,llm_analysis_mode,hybrid_planner_consent_version,private_analysis_consent_version",
+      "https://agentproof-test.supabase.co/rest/v1/agentproof_tenant_repository_grants?installation_id=eq.321&repository_id=in.(100,101)&select=tenant_id,installation_id,repository_id,repository_full_name,repository_is_private,enabled,analysis_enabled,comment_enabled,save_reports_enabled,slack_notifications_enabled,llm_analysis_mode,report_language,hybrid_planner_consent_version,private_analysis_consent_version",
       expect.objectContaining({ method: "PATCH" })
     );
   });
@@ -1116,3 +1116,19 @@ function durablePrivateGrantRow(overrides: Record<string, unknown> = {}) {
     ...overrides
   };
 }
+
+it('round-trips repository report language through the canonical atomic RPC without touching consent or other flags',async()=>{
+ const row={tenant_id:'tenant_test',installation_id:321,repository_id:100,repository_full_name:'owner/repo',enabled:true,analysis_enabled:true,comment_enabled:false,save_reports_enabled:true,slack_notifications_enabled:false,repository_is_private:true,private_analysis_consent_version:'2026-09-24.v1',report_language:'en'};
+ const requests:any[]=[];vi.stubGlobal('fetch',vi.fn(async(url:any,init:any)=>{if(String(url).includes('deletion_state'))return new Response(null,{headers:{'content-range':'*/0'}});if(init?.method==='POST'){const body=JSON.parse(init.body);requests.push(body);row.report_language=body.p_report_language??row.report_language;}return Response.json([row]);}));
+ const env={AGENTPROOF_CONTROL_PLANE_SUPABASE_URL:'https://language.fixture',AGENTPROOF_CONTROL_PLANE_SUPABASE_SERVICE_ROLE_KEY:'fixture-secret'} as unknown as NodeJS.ProcessEnv;
+ const updated=await updateTenantRepositoryGrantSettings({tenantId:'tenant_test',installationId:321,repositoryId:100,reportLanguage:'ko'} as any,env);
+ expect(updated).toMatchObject({reportLanguage:'ko',privateAnalysisConsentVersion:'2026-09-24.v1',analysisEnabled:true,saveReportsEnabled:true});expect(requests).toHaveLength(1);expect(requests[0]).toMatchObject({p_report_language:'ko',p_private_analysis_consent_requested:null,p_analysis_enabled:null,p_save_reports_enabled:null});
+ expect((await listTenantRepositoryGrants({tenantId:'tenant_test'},env))[0].reportLanguage).toBe('ko');
+ await expect(updateTenantRepositoryGrantSettings({tenantId:'tenant_test',installationId:321,repositoryId:100,reportLanguage:'ja'} as any,env)).rejects.toThrow();expect(requests).toHaveLength(1);
+});
+it('the locale migration keeps the existing atomic consent and privilege contract',()=>{
+ const sql=readFileSync('supabase/migrations/202610150001_repository_report_language.sql','utf8');const previous=readFileSync('supabase/migrations/202609240002_private_analysis_consent.sql','utf8');
+ const unchanged=sql.replace(/      report_language = coalesce\(p_report_language, existing.report_language\),\n/,'');
+ const start=previous.indexOf('  effective_mode := coalesce'),end=previous.indexOf('end;\n$$;')+4;
+ expect(unchanged).toContain(previous.slice(start,end));expect(sql).toContain("check (report_language in ('en', 'ko'))");expect(sql).toContain("report_language text not null default 'en'");expect(sql).toContain('from public, anon, authenticated;');expect(sql).toContain('to service_role;');
+});

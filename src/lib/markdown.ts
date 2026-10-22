@@ -1,3 +1,6 @@
+import { reportCopy } from '@/components/report-copy';
+import { formatPurposeReview } from './shared-report-copy';
+import { purposeReferenceUrl } from './pr-evidence-review';
 import { getExecutionEvidenceItems, statusFromEvidenceSummary } from "./execution-evidence";
 import { presentGeneralPrAssessmentSummary } from "./general-pr-assessment-presentation";
 import { presentOrdinaryDocumentationSummary } from "./general-pr-documentation-presentation";
@@ -287,6 +290,21 @@ function reportToReviewMarkdown(
   options: { includeMarker?: boolean; full?: boolean }
 ): string {
   const executionEvidence = getExecutionEvidenceItems(report.evidenceIndex, 5);
+  // Owner copy/download includes tenant prose; automatic GitHub comments keep their existing safe projection.
+  if (options.full && review.purposeReview) {
+    const t = reportCopy(review.purposeReview.locale), checks = observedCheckResults(report.testing);
+    return neutralizeGitHubMentions([
+      '# DiffEvidence evidence report', '',
+      `**PR:** ${safeInlineText(report.source.title)}`, '',
+      formatPurposeReview(review.purposeReview, {format: 'markdown', part:'main', referenceUrl: ref => purposeReferenceUrl(review, ref)}), '',
+      '### ' + t.executionRecords, '',
+      ...checks.map(item => `- ${item.label} ${t.checkState[item.status]}`),
+      ...executionEvidence.map(item => formatExecutionEvidenceLine(item, {locationLimit: 6})),
+      ...(!checks.length && !executionEvidence.length ? ['- ' + t.noChecks] : []), '',
+      formatPurposeReview(review.purposeReview,{format:'markdown',part:'details',referenceUrl:ref=>purposeReferenceUrl(review,ref)})
+    ].join('\n'));
+  }
+
   const itemLines = (items: PrEvidenceReviewItem[]) => items.map((item) => {
     const url = item.url && redactSecrets(item.url) === item.url
       ? item.url.replace(/\(/g, "%28").replace(/\)/g, "%29")

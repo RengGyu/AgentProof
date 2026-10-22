@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { resolveGitHubAnalysisCredential } from "./github-analysis-access";
+import { isPrivateAnalysisGrantCurrent, resolveGitHubAnalysisCredential } from "./github-analysis-access";
 
 const tenantId = "gh_123";
 const prUrl = "https://github.com/owner/repo/pull/7";
@@ -24,7 +24,7 @@ describe("GitHub PR analysis credential routing", () => {
       readOAuth: () => null,
       fetchGitHub
     } });
-    expect(result).toEqual({ ok: true, token: installationToken, kind: "installation", installationId: 42, repositoryId: 9, ...(repositoryPrivate ? { privateAnalysisApproved: true } : {}) });
+    expect(result).toEqual({ ok: true, token: installationToken, kind: "installation", reportLanguage: "en", installationId: 42, repositoryId: 9, ...(repositoryPrivate ? { privateAnalysisApproved: true } : {}) });
     expect(issueToken).toHaveBeenCalledExactlyOnceWith(42);
     expect(fetchGitHub).toHaveBeenCalledWith("https://api.github.com/repos/owner/repo", expect.objectContaining({
       headers: expect.objectContaining({ Authorization: `Bearer ${installationToken}` })
@@ -167,4 +167,23 @@ describe("GitHub PR analysis credential routing", () => {
     expect(result.ok === false ? result.hint : "").toContain("Check the URL");
     expect(JSON.stringify(result)).not.toContain(oauthToken);
   });
+});
+
+it('current private grant is bound to tenant/install/repo, persisted v1 and active installation; save OFF denies only storage',async()=>{
+ const {createTenantRepositoryGrant,clearTenantRepositoryGrantsForTests,updateTenantRepositoryGrantSettings}=await import('./tenant-control-plane');const {upsertTenantGitHubInstallation,clearTenantGitHubInstallationsForTests}=await import('./github-installations');
+ const env={NODE_ENV:'test',AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY:'true',AGENTPROOF_GITHUB_INSTALLATIONS_ALLOW_MEMORY:'true'} as NodeJS.ProcessEnv;
+ const identity={tenantId,installationId:42,repositoryId:9,repositoryFullName:'owner/repo'};
+ try{
+  await createTenantRepositoryGrant({...grant,repositoryPrivate:true,analysisEnabled:false},env);await upsertTenantGitHubInstallation({tenantId,installationId:42,status:'active'},env);
+  expect(await isPrivateAnalysisGrantCurrent(identity,env)).toBe(false);
+  await expect(updateTenantRepositoryGrantSettings({...identity,analysisEnabled:true},env)).rejects.toThrow('consent');
+  await updateTenantRepositoryGrantSettings({...identity,analysisEnabled:true,privateAnalysisConsentVersion:'2026-09-24.v1'},env);
+  expect(await isPrivateAnalysisGrantCurrent(identity,env)).toBe(true);
+  for(const wrong of [{tenantId:'other'},{installationId:43},{repositoryId:10},{repositoryFullName:'owner/other'}])expect(await isPrivateAnalysisGrantCurrent({...identity,...wrong},env)).toBe(false);
+  expect(await isPrivateAnalysisGrantCurrent({...identity,requireSave:true},env)).toBe(false);
+  await updateTenantRepositoryGrantSettings({...identity,saveReportsEnabled:true},env);expect(await isPrivateAnalysisGrantCurrent({...identity,requireSave:true},env)).toBe(true);
+  await updateTenantRepositoryGrantSettings({...identity,analysisEnabled:false},env);expect(await isPrivateAnalysisGrantCurrent(identity,env)).toBe(false);
+  await updateTenantRepositoryGrantSettings({...identity,analysisEnabled:true},env);expect(await isPrivateAnalysisGrantCurrent(identity,env)).toBe(true);
+  await updateTenantRepositoryGrantSettings({...identity,privateAnalysisConsentVersion:null},env);expect(await isPrivateAnalysisGrantCurrent(identity,env)).toBe(false);
+ }finally{clearTenantRepositoryGrantsForTests();clearTenantGitHubInstallationsForTests();}
 });

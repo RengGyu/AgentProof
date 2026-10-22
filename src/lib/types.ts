@@ -790,6 +790,9 @@ export type GeneralPrAssessmentSummaryV1 = Omit<GeneralPrAssessmentV1, "targets"
 
 /** A newly generated strict-contract report. Legacy v1 reports never gain this field. */
 export interface VerificationReportV2 extends VerificationReport {
+  purposeAssessment?: import("./purpose-contract").PurposeAssessment;
+  purposeReview?: import("./purpose-contract").PurposeReview;
+  purposeAssessmentSummary?: import("./purpose-contract").PurposeAssessmentSummary;
   reportSchemaVersion: "verification-report.v2";
   verificationContract: import("./verification-contract-v2").VerificationContractReportV2;
   /** Private target records, retained only where their source bindings are authorized. */

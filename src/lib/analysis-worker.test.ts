@@ -1,3 +1,4 @@
+import {purposeRuntimeFetch} from './test-support/purpose-runtime-fixture';
 // Downstream unit fixtures isolate budget; paid-budget*.test.ts checks the real boundary.
 vi.mock('@/lib/paid-budget', async importOriginal => ({
   ...await importOriginal<typeof import('@/lib/paid-budget')>(),
@@ -2010,81 +2011,26 @@ describe("analysis worker preflight", () => {
     }
   });
 
-  it("runs advisory observations without retaining private bundles in a worker result", async () => {
-    stubReadyWorkerEnv({ grant: { saveReportsEnabled: false, commentEnabled: false } });
-    vi.stubEnv("AGENTPROOF_GENERAL_PR_OBSERVATION_MODE", "advisory");
-    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
-    vi.stubEnv("OPENAI_MODEL", "gpt-test");
-    const observationSpy = vi.spyOn(generalPrObservationService, "runGeneralPrObservationNowV2");
-    const githubFetch = mockWorkerFetch({ repositoryPrivate: false, pullRequestBody: "Internal cleanup only." });
-    const fetchMock = vi.fn((url: string | URL | Request, init?: RequestInit) => {
-      if (String(url) === "https://api.openai.com/v1/responses") {
-        return Promise.resolve(Response.json({ output_text: JSON.stringify(validGeneralPrObserverCandidate(init)) }));
-      }
-      return githubFetch(url, init);
-    });
-    vi.stubGlobal("fetch", fetchMock);
-    await enqueueAnalysisJob(jobInput({ saveReport: false, comment: false }));
-
+  it("runs mandatory DeepSeek purpose in the worker without a second legacy analysis or private diagnostics",async()=>{
+    stubReadyWorkerEnv({grant:{saveReportsEnabled:false,commentEnabled:false}});vi.stubEnv('AGENTPROOF_GENERAL_PR_OBSERVATION_MODE','advisory');vi.stubEnv('OPENAI_API_KEY','test-openai-key');vi.stubEnv('DEEPSEEK_API_KEY','test-deepseek-key');vi.stubEnv('OPENAI_MODEL','unrelated-legacy-model');
+    // Worker fixtures isolate the durable ledger; the authenticated-entry and provider tests use its real boundary.
+    const scope=vi.spyOn(paidBudget,'assertPaidAnalysisScope').mockImplementation(()=>{}),observation=vi.spyOn(generalPrObservationService,'runGeneralPrObservationNowV2');const requests:any[]=[];
+    vi.stubGlobal('fetch',purposeRuntimeFetch(mockWorkerFetch({repositoryPrivate:false,pullRequestBody:'Retain pending work.'}),'RengGyu/AgentProof','src/app/api/github/webhook/route.ts',{onRequest:(body,count)=>requests.push({body,count})}));
+    await enqueueAnalysisJob(jobInput({saveReport:false,comment:false}));
     try {
-      const result = await runNextAnalysisJob({
-        requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run",
-        now: new Date("2026-06-30T00:01:00Z")
-      });
-      const serialized = JSON.stringify({ result, job: getAnalysisJobsForTests()[0] });
-
-      expect(result.status, JSON.stringify(result)).toBe("completed");
-      expect(observationSpy).toHaveBeenCalledWith(expect.objectContaining({
-        policy: expect.objectContaining({
-          semanticObservation: "eligible_public_pr",
-          assessmentProjection: "advisory"
-        }),
-        input: expect.objectContaining({ taskText: "" }),
-        semantic: expect.objectContaining({ providerAvailable: true, privateRepository: false })
-      }));
-      const observerCalls = fetchMock.mock.calls.filter(([url]) => String(url) === "https://api.openai.com/v1/responses");
-      expect(observerCalls).toHaveLength(2);
-      expect(observerCalls.map(([, init]) => {
-        const body = JSON.parse(String(init?.body));
-        return JSON.parse(body.input[1].content[0].text).stage;
-      })).toEqual(["intent", "ranking"]);
-      expect(serialized).not.toContain("ledgerDigest");
-      expect(serialized).not.toContain("generalPrObservation");
-      const observationResult = await observationSpy.mock.results.at(-1)?.value;
-      expect(observationResult?.report.reviewCandidates?.navigation).toMatchObject({model:"gpt-test",state:"partial",goals:[expect.objectContaining({summary:"Review internal cleanup",authority:"pr_author_claim"})]});
-      expect(observationResult?.bundle?.relationLevelCounts.verified).toBe(0);
-    } finally {
-      observationSpy.mockRestore();
-    }
+      const result=await runNextAnalysisJob({requestUrl:'https://agentproof.test/api/ops/analysis-jobs/run',now:new Date('2026-06-30T00:01:00Z')});const failure=await Promise.resolve(observation.mock.results.at(-1)?.value).catch(e=>e.cause?.message);expect(result.status,JSON.stringify({result,failure,stages:requests.map(r=>JSON.parse(r.body.input[1].content).stage)})).toBe('completed');
+      expect(observation).toHaveBeenCalledWith(expect.objectContaining({purpose:expect.objectContaining({mode:'advisory',flow:'explore_final_v1'})}));
+      expect(requests.filter(r=>!r.count).map(r=>JSON.parse(r.body.input[1].content).stage)).toEqual(['purpose','locate','locate','assess']);
+      const value=await observation.mock.results.at(-1)?.value;expect(value?.report.purposeReview?.clauses[0].purpose).toBe('Retain pending work');expect(JSON.stringify(result)).not.toMatch(/pending = retain|test-openai-key|readOutcomes|traceDigest/);
+    }finally{scope.mockRestore();observation.mockRestore();}
   });
-
-  it("keeps a post-initial GitHub refresh failure private to the worker observation bundle", async () => {
-    stubReadyWorkerEnv({ grant: { saveReportsEnabled: false, commentEnabled: false } });
-    vi.stubEnv("AGENTPROOF_GENERAL_PR_OBSERVATION_MODE", "advisory");
-    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
-    vi.stubEnv("OPENAI_MODEL", "gpt-test");
-    const observationSpy = vi.spyOn(generalPrObservationService, "runGeneralPrObservationNowV2");
-    const githubFetch = mockWorkerFetch({ repositoryPrivate: false, pullRequestBody: "Internal cleanup only." });
-    let pullReads = 0;
-    const fetchMock = vi.fn((url: string | URL | Request, init?: RequestInit) => {
-      if (String(url) === "https://api.openai.com/v1/responses") return Promise.resolve(Response.json({ output_text: "{}" }));
-      if (String(url) === "https://api.github.com/repos/RengGyu/AgentProof/pulls/7" && ++pullReads === 3) return Promise.resolve(new Response("missing", { status: 404 }));
-      return githubFetch(url, init);
-    });
-    vi.stubGlobal("fetch", fetchMock);
-    await enqueueAnalysisJob(jobInput({ saveReport: false, comment: false }));
-    try {
-      const result = await runNextAnalysisJob({ requestUrl: "https://agentproof.test/api/ops/analysis-jobs/run", now: new Date("2026-06-30T00:01:00Z") });
-      const observationResult = await observationSpy.mock.results.at(-1)?.value;
-      const serialized = JSON.stringify({ result, job: getAnalysisJobsForTests()[0], audits: getAuditEventsForTests() });
-
-      expect(result.status).toBe("completed");
-      expect(observationResult?.report.reviewCandidates?.navigation?.limitations).toContain("freshness_access_changed");
-      expect(fetchMock.mock.calls.filter(([url]) => String(url) === "https://api.openai.com/v1/responses")).toHaveLength(0);
-      expect(serialized).not.toContain("fetch_failed");
-    } finally {
-      observationSpy.mockRestore();
-    }
+  it("fails terminal without storing a success when purpose freshness collection fails",async()=>{
+    stubReadyWorkerEnv({grant:{saveReportsEnabled:false,commentEnabled:false}});vi.stubEnv('AGENTPROOF_GENERAL_PR_OBSERVATION_MODE','advisory');vi.stubEnv('OPENAI_API_KEY','test-openai-key');vi.stubEnv('DEEPSEEK_API_KEY','test-deepseek-key');
+    const scope=vi.spyOn(paidBudget,'assertPaidAnalysisScope').mockImplementation(()=>{});let reads=0;const github=mockWorkerFetch({repositoryPrivate:false,pullRequestBody:'Retain pending work.'});
+    const original:typeof fetch=async(url,init)=>{if(String(url)==='https://api.github.com/repos/RengGyu/AgentProof/pulls/7'&&++reads>=3)return new Response('missing',{status:404});return github(url,init);};
+    vi.stubGlobal('fetch',purposeRuntimeFetch(original,'RengGyu/AgentProof','src/app/api/github/webhook/route.ts'));
+    await enqueueAnalysisJob(jobInput({saveReport:false,comment:false}));
+    try{expect(await runNextAnalysisJob({requestUrl:'https://agentproof.test/api/ops/analysis-jobs/run',now:new Date('2026-06-30T00:01:00Z')})).toMatchObject({status:'failed_terminal',reason:'purpose_unavailable'});expect(getAnalysisJobsForTests()[0].error_code).toBe('purpose_unavailable');}finally{scope.mockRestore();}
   });
 
   it("fails closed when the PR base changes after collection and before publication", async () => {
@@ -3066,6 +3012,7 @@ type WorkerGrantRecord = {
   saveReportsEnabled: boolean;
   slackNotificationsEnabled: boolean;
   llmAnalysisMode: "essential" | "enhanced";
+  reportLanguage?: "en"|"ko";
   hybridPlannerConsentVersion?: "2026-08-12.v1";
   privateAnalysisConsentVersion?: "2026-09-24.v1";
   repositoryPrivate?: boolean;
@@ -3360,12 +3307,26 @@ function validSemanticCandidateForInput(input: {
   };
 }
 
-it('runs Google navigation in the worker without an OpenAI key',async()=>{
- stubReadyWorkerEnv({grant:{saveReportsEnabled:false,commentEnabled:false}});
- vi.stubEnv('AGENTPROOF_GENERAL_PR_OBSERVATION_MODE','advisory');vi.stubEnv('GEMINI_API_KEY','test-google-key');vi.stubEnv('AGENTPROOF_LLM_MODEL','gemini-worker');vi.stubEnv('OPENAI_API_KEY','');vi.stubEnv('OPENAI_MODEL','');
- const googleRequests:Array<{url:string;model:string}>=[];
- const observation=vi.spyOn(generalPrObservationService,'runGeneralPrObservationNowV2');const githubFetch=mockWorkerFetch({repositoryPrivate:false,pullRequestBody:'Internal cleanup only.'});vi.stubGlobal('fetch',async(url:string|URL|Request,init?:RequestInit)=>{if(String(url).includes('generativelanguage.googleapis.com/')){const body=JSON.parse(String(init?.body));googleRequests.push({url:String(url),model:String(url).match(/models\/([^:]+):generateContent/)?.[1]??''});const q=JSON.parse(body.contents[0].parts[0].text);const result=q.stage==='intent'?{goals:[{summary:'Inspect internal cleanup',emphasis:'primary',sourceRefs:[q.sources[0].spans[0].id],facets:[],openQuestions:[]}],unprocessed:[]}:{rankings:[],readPaths:[]};return Response.json({modelVersion:'gemini-test-version',usageMetadata:{promptTokenCount:100,candidatesTokenCount:30},candidates:[{content:{role:'model',parts:[{text:JSON.stringify(result)}]},finishReason:'STOP'}]});}return githubFetch(url,init);});
+it('does not substitute Google navigation or retry when mandatory Luna credentials are unavailable',async()=>{
+ stubReadyWorkerEnv({grant:{saveReportsEnabled:false,commentEnabled:false}});vi.stubEnv('AGENTPROOF_GENERAL_PR_OBSERVATION_MODE','advisory');vi.stubEnv('GEMINI_API_KEY','test-google-key');vi.stubEnv('OPENAI_API_KEY','');
+ const github=mockWorkerFetch({repositoryPrivate:false,pullRequestBody:'Retain pending work.'}),fetchMock=vi.fn(github);vi.stubGlobal('fetch',fetchMock);await enqueueAnalysisJob(jobInput({saveReport:false,comment:false}));
+ const result=await runNextAnalysisJob({requestUrl:'https://agentproof.test/api/ops/analysis-jobs/run',now:new Date('2026-06-30T00:01:00Z')});expect(result).toMatchObject({status:'failed_terminal',reason:'purpose_unavailable'});expect(fetchMock.mock.calls.some(([u])=>/openai|generativelanguage/.test(String(u)))).toBe(false);
+});
+it('halts queued purpose on unknown paid usage instead of scheduling another generation',async()=>{
+ stubReadyWorkerEnv({grant:{saveReportsEnabled:false,commentEnabled:false}});vi.stubEnv('AGENTPROOF_GENERAL_PR_OBSERVATION_MODE','advisory');vi.stubEnv('OPENAI_API_KEY','test-openai-key');vi.stubEnv('DEEPSEEK_API_KEY','test-deepseek-key');const scope=vi.spyOn(paidBudget,'assertPaidAnalysisScope').mockImplementation(()=>{}),requests:any[]=[];
+ vi.stubGlobal('fetch',purposeRuntimeFetch(mockWorkerFetch({repositoryPrivate:false,pullRequestBody:'Retain pending work.'}),'RengGyu/AgentProof','src/app/api/github/webhook/route.ts',{failure:'usage',onRequest:(body,count)=>requests.push({body,count})}));await enqueueAnalysisJob(jobInput({saveReport:false,comment:false}));
+ try{expect(await runNextAnalysisJob({requestUrl:'https://agentproof.test/api/ops/analysis-jobs/run',now:new Date('2026-06-30T00:01:00Z')})).toMatchObject({status:'failed_terminal',reason:'purpose_usage_unconfirmed'});expect(requests.filter(r=>!r.count)).toHaveLength(1);expect(getAnalysisJobsForTests()[0].status).toBe('failed_terminal');}finally{scope.mockRestore();}
+});
+
+it('queued private purpose reuses the same persisted grant and installation instead of a retention flag',async()=>{
+ stubReadyWorkerEnv({grant:{saveReportsEnabled:false,commentEnabled:false,repositoryPrivate:true,privateAnalysisConsentVersion:'2026-09-24.v1',reportLanguage:'ko'}});vi.stubEnv('AGENTPROOF_GENERAL_PR_OBSERVATION_MODE','advisory');vi.stubEnv('OPENAI_API_KEY','test-openai-key');vi.stubEnv('DEEPSEEK_API_KEY','test-deepseek-key');
+ vi.stubEnv('AGENTPROOF_TENANT_GRANTS_ALLOW_MEMORY','true');vi.stubEnv('AGENTPROOF_GITHUB_INSTALLATIONS_ALLOW_MEMORY','true');
+ await createTenantRepositoryGrant(grantRecord({saveReportsEnabled:false,commentEnabled:false,repositoryPrivate:true,privateAnalysisConsentVersion:'2026-09-24.v1',reportLanguage:'ko'}));
+ const {upsertTenantGitHubInstallation,clearTenantGitHubInstallationsForTests}=await import('./github-installations');await upsertTenantGitHubInstallation({tenantId:'tenant_a',installationId:321,status:'active'});
+ const scope=vi.spyOn(paidBudget,'assertPaidAnalysisScope').mockImplementation(()=>{}),requests:any[]=[],observe=vi.spyOn(generalPrObservationService,'runGeneralPrObservationNowV2');
+ const fixture=purposeRuntimeFetch(mockWorkerFetch({repositoryPrivate:true,pullRequestBody:'Retain pending work.'}),'RengGyu/AgentProof','src/app/api/github/webhook/route.ts',{privateRepository:true,onRequest:(body,count)=>requests.push({body,count})});
+ vi.stubGlobal('fetch',async(u:RequestInfo|URL,i?:RequestInit)=>String(u)==='https://api.github.com/repos/RengGyu/AgentProof'?Response.json({id:100,private:true,full_name:'RengGyu/AgentProof'}):fixture(u,i));
  await enqueueAnalysisJob(jobInput({saveReport:false,comment:false}));
- try{const result=await runNextAnalysisJob({requestUrl:'https://agentproof.test/api/ops/analysis-jobs/run',now:new Date('2026-06-30T00:01:00Z')});expect(result.status).toBe('completed');expect(googleRequests).toHaveLength(2);expect(googleRequests.every(request=>request.model==='gemini-worker')).toBe(true);const value=await observation.mock.results.at(-1)?.value;expect(value?.report.reviewCandidates?.navigation?.model).toBe('gemini-worker');const diagnostics=(await import('./review-intent')).getReviewNavigationDiagnostics(value!.report.reviewCandidates!.navigation!);expect(diagnostics[0].transport).toMatchObject({provider:'google',modelVersion:'gemini-test-version',inputTokens:100,outputTokens:30,finishReasons:['STOP']});}
- finally{observation.mockRestore();}
+ try{const result=await runNextAnalysisJob({requestUrl:'https://agentproof.test/api/ops/analysis-jobs/run',now:new Date('2026-06-30T00:01:00Z')});expect(result.status,JSON.stringify(result)).toBe('completed');const value=await observe.mock.results.at(-1)?.value;expect(value.report.purposeReview.locale).toBe('ko');expect(value.report.purposeReview.clauses[0].purpose).toBe('대기 중인 작업 유지');expect(requests.filter(r=>!r.count).every(r=>JSON.parse(r.body.input[1].content).reportLanguage==='ko')).toBe(true);expect(requests.filter(r=>!r.count).map(r=>JSON.parse(r.body.input[1].content).stage)).toEqual(['purpose','locate','locate','assess']);}
+ finally{scope.mockRestore();observe.mockRestore();clearTenantGitHubInstallationsForTests();}
 });

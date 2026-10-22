@@ -1,3 +1,6 @@
+import {PurposeAnalysisError,requireCompletedPurpose} from './purpose-runtime';
+import {PaidBudgetError} from './paid-budget';
+import { assessPurpose, type PurposeAssessmentOptions } from "./purpose-assessment";
 import { enrichReviewNavigation, type ReviewNavigationOptions } from "./review-intent";
 import { createHash } from "node:crypto";
 import type { TypeScriptProjectCollector } from "./typescript-assignability-verification";
@@ -100,6 +103,7 @@ export interface GeneralPrSemanticSelectionOmittedReasonCountsV1 {
 }
 
 export interface RunGeneralPrObservationNowOptionsV2 {
+  purpose?: PurposeAssessmentOptions;
   navigation?: ReviewNavigationOptions;
   collectTypeScriptProject?: TypeScriptProjectCollector;
   collectStaticArtifacts?: (paths: string[], headSha: string) => Promise<OrdinaryDocumentationBlob[]>;
@@ -114,7 +118,6 @@ export interface RunGeneralPrObservationNowOptionsV2 {
     providerAvailable: boolean;
     privateRepository?: boolean;
     privateRepositoryConsent?: boolean;
-    providerRetentionApproved?: boolean;
     timeoutMs?: number;
     readCurrentInput: () => Promise<PullRequestInput | null>;
     modelProfile: GeneralPrSemanticObserverModelProfileV2;
@@ -137,11 +140,18 @@ export async function runGeneralPrObservationNowV2(
   // Reuse fetched exact-head blobs when both the observation and outcome need them.
   const capabilities = readEnabledVerificationCapabilitiesV2();
   const retainVerificationInterpreter = capabilities.has("documentation_literal") || capabilities.has("typescript_union_member");
-  const scoped = { ...options, ...(options.navigation && !retainVerificationInterpreter && options.policy.assessmentProjection === "advisory" ? { semantic: undefined } : {}), collectDocumentationArtifacts: boundedOrdinaryArtifactCollector(options.collectDocumentationArtifacts), collectStaticArtifacts: boundedOrdinaryArtifactCollector(options.collectStaticArtifacts), collectScalarArtifacts: boundedOrdinaryArtifactCollector(options.collectScalarArtifacts) };
+  const purposeAdvisory = options.purpose?.mode === "advisory";
+  const scoped = { ...options, ...(purposeAdvisory ? {navigation:undefined,semantic:undefined} : {}), ...(options.navigation && !retainVerificationInterpreter && options.policy.assessmentProjection === "advisory" ? { semantic: undefined } : {}), collectDocumentationArtifacts: boundedOrdinaryArtifactCollector(options.collectDocumentationArtifacts), collectStaticArtifacts: boundedOrdinaryArtifactCollector(options.collectStaticArtifacts), collectScalarArtifacts: boundedOrdinaryArtifactCollector(options.collectScalarArtifacts) };
   let result = await runGeneralPrObservations(scoped);
-  if(options.navigation && result.ordinaryDocumentationDiagnostic.state !== "deterministic_report_invalid")result={...result,report:await enrichReviewNavigation(options.input,result.report as VerificationReportV2,options.policy.assessmentProjection === "advisory" ? options.navigation : {model:options.navigation.model})};
-  if (options.policy.assessmentProjection !== "advisory" || result.ordinaryDocumentationDiagnostic.state === "deterministic_report_invalid" || (result.report as VerificationReportV2).reportSchemaVersion !== "verification-report.v2") return result;
-  return { ...result, report: await attachOrdinaryRequirementOutcomes(options.input, result.report as VerificationReportV2, scoped) };
+  if(!purposeAdvisory && options.navigation && result.ordinaryDocumentationDiagnostic.state !== "deterministic_report_invalid")result={...result,report:await enrichReviewNavigation(options.input,result.report as VerificationReportV2,options.policy.assessmentProjection === "advisory" ? options.navigation : {model:options.navigation.model})};
+  if (result.ordinaryDocumentationDiagnostic.state === "deterministic_report_invalid" || (result.report as VerificationReportV2).reportSchemaVersion !== "verification-report.v2") return result;
+  if (options.policy.assessmentProjection === "advisory" || purposeAdvisory) result = { ...result, report: await attachOrdinaryRequirementOutcomes(options.input,result.report as VerificationReportV2,scoped) };
+  if (options.purpose?.mode && options.purpose.mode !== "off") {
+    try { result = { ...result, report: (await assessPurpose(options.input,result.report as VerificationReportV2,options.purpose)).report }; }
+    catch(error) { if(error instanceof PaidBudgetError)throw error; throw new PurposeAnalysisError(error); }
+    if(purposeAdvisory && options.purpose.flow === 'explore_final_v1')requireCompletedPurpose(result.report as VerificationReportV2);
+  }
+  return result;
 }
 
 export function boundedOrdinaryArtifactCollector(collector: RunGeneralPrObservationNowOptionsV2["collectDocumentationArtifacts"]) {
@@ -210,7 +220,6 @@ async function runGeneralPrObservations(
     providerAvailable: options.semantic?.providerAvailable ?? false,
     privateRepository: options.semantic?.privateRepository,
     privateRepositoryConsent: options.semantic?.privateRepositoryConsent,
-    providerRetentionApproved: options.semantic?.providerRetentionApproved,
     timeoutMs: options.semantic?.timeoutMs,
     // A semantic call is never accepted without a caller-provided freshness
     // read. The null fallback is a fail-closed unavailable result.

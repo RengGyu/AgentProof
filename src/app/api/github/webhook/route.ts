@@ -1,16 +1,14 @@
+import {scheduleAnalysisJobWake} from "@/lib/analysis-job-wake";
 import { PaidBudgetError, withPaidAnalysis, assertPaidAnalysisAllowed } from "@/lib/paid-budget";
 import { resolveNavigationProvider } from "@/lib/gemini-navigation";
 import { enrichReviewNavigation } from "@/lib/review-intent";
 import { buildGitHubPullRequestInput, fetchGitHubPullRequestAnchor, collectReviewArtifacts } from "@/lib/github";
 import {
   AnalysisJobQueueError,
-  claimAnalysisJobById,
-  DEFAULT_ANALYSIS_JOB_CI_DISCOVERY_MS,
   enqueueAnalysisJob,
   listAnalysisJobIdsForHead,
   getAnalysisJobQueueStatus
 } from "@/lib/analysis-jobs";
-import { runClaimedAnalysisJob } from "@/lib/analysis-worker";
 import {
   getAuditLogStoreStatus,
   recordAuditEvent,
@@ -99,23 +97,6 @@ export async function POST(request: Request) {
   }
 }
 
-function scheduleAnalysisJobWake(jobId: string, requestUrl: string) {
-  if (process.env.VERCEL !== "1") return;
-  try {
-    const workerUrl = new URL("/api/ops/analysis-jobs/run", requestUrl).toString();
-    after(async () => {
-      try {
-        await new Promise<void>((resolve) => setTimeout(resolve, DEFAULT_ANALYSIS_JOB_CI_DISCOVERY_MS));
-        const claimed = await claimAnalysisJobById(jobId);
-        if (claimed.job) await runClaimedAnalysisJob(claimed.job, { requestUrl: workerUrl });
-      } catch {
-        // The daily cron recovers an unclaimed or expired job.
-      }
-    });
-  } catch {
-    // An unavailable post-response scheduler does not discard the queued job.
-  }
-}
 
 async function handlePost(request: Request) {
   const webhookSecret = process.env.GITHUB_WEBHOOK_SECRET ?? "";

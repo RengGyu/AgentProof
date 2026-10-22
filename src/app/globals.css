@@ -2295,7 +2295,6 @@ code {
 @media (max-width: 700px) {
   .github-dashboard .dashboard-pr-browser .dashboard-pr-workspace { margin-top: 16px; padding: 18px 14px; }
   .github-dashboard .quick-summary.compact-report { padding: 20px 16px; }
-  .github-dashboard .compact-report .quick-summary-header h2 { font-size: 23px; }
   .report-top-summary dl > div { grid-template-columns: minmax(0, 1fr); gap: 2px; }
   .github-dashboard .dashboard-pr-workspace .dashboard-section-heading { flex-direction: row; justify-content: space-between; gap: 10px; }
   .github-dashboard .dashboard-pr-workspace .dashboard-section-heading h3 { font-size: 21px; }
@@ -2304,15 +2303,15 @@ code {
 
 /* Report history: PR list | version shelf | report side by side on wide screens; one column at a time when narrow. */
 .dashboard-history-layout { min-width: 0; }
-.github-dashboard .dashboard-pr-browser .dashboard-pr-workspace { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); padding: 0; overflow: hidden; }
+.github-dashboard .dashboard-pr-browser .dashboard-pr-workspace { display: grid; grid-template-columns: minmax(0, 1fr); padding: 0; overflow: hidden; }
 .dashboard-pr-column { min-width: 0; padding: 18px; }
-.dashboard-pr-index { border-right: 1px solid var(--workspace-line); }
-.dashboard-version-shelf { background: var(--workspace-canvas); }
+.dashboard-pr-index { border-right: 0; }
+.dashboard-version-shelf { background: var(--workspace-panel); }
 .github-dashboard .dashboard-pr-index .dashboard-section-heading { padding: 0 0 10px; }
 .dashboard-pr-index .dashboard-pr-row { padding: 2px 0; border-bottom: 0; }
 .github-dashboard .dashboard-pr-index .dashboard-pr-title { display: grid; gap: 3px; width: 100%; min-width: 0; padding: 9px 10px; border-radius: 8px; }
 .dashboard-pr-index .dashboard-pr-title:hover { background: var(--workspace-canvas); }
-.dashboard-pr-index .dashboard-pr-row.selected .dashboard-pr-title { background: var(--workspace-violet-soft); box-shadow: inset 0 0 0 1.5px var(--workspace-violet); }
+.dashboard-pr-index .dashboard-pr-row.selected .dashboard-pr-title { background: var(--workspace-sunken); box-shadow: inset 2px 0 0 var(--workspace-accent); }
 .dashboard-pr-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .dashboard-pr-line > svg { flex-shrink: 0; color: var(--workspace-muted); }
 .dashboard-pr-number { flex-shrink: 0; font: 600 12px/1.5 "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
@@ -2324,15 +2323,12 @@ code {
 .dashboard-shelf-heading p { margin: 4px 0 0; color: var(--workspace-muted); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
 .github-dashboard .dashboard-shelf-generate { width: 100%; min-height: 40px; margin-top: 14px; justify-content: center; }
 .dashboard-shelf-note { display: flex; align-items: center; gap: 6px; margin: 8px 0 0; color: var(--workspace-muted); font-size: 12px; }
-.dashboard-version-list { position: relative; display: grid; gap: 10px; margin: 18px 0 0; padding: 0; list-style: none; }
-.dashboard-version-list::before { content: ""; position: absolute; top: 20px; bottom: 20px; left: 7px; width: 1px; background: var(--workspace-line); }
-.dashboard-version-list > li { position: relative; padding-left: 24px; }
-.dashboard-version-list > li::before { content: ""; position: absolute; top: 16px; left: 2px; width: 11px; height: 11px; border: 2px solid var(--workspace-ink); border-radius: 50%; background: var(--workspace-panel); }
-.dashboard-version-list > li.viewing::before { background: var(--workspace-ink); }
-.dashboard-version-card { display: grid; gap: 4px; width: 100%; padding: 10px 12px; border: 1px solid var(--workspace-line); border-radius: 8px; background: var(--workspace-panel); color: inherit; font: inherit; text-align: left; cursor: pointer; }
-.dashboard-version-card:hover:not(:disabled) { border-color: var(--workspace-violet); }
-.dashboard-version-card[aria-current="true"] { border-color: var(--workspace-violet); box-shadow: inset 0 0 0 1px var(--workspace-violet); background: var(--workspace-violet-soft); }
-.dashboard-version-card:focus-visible { outline: 2px solid var(--workspace-violet); outline-offset: 2px; }
+.dashboard-version-list { display: grid; gap: 0; margin: 16px 0 0; padding: 0; list-style: none; border-top: 1px solid var(--workspace-line); }
+.dashboard-version-list > li { border-bottom: 1px solid var(--workspace-line); }
+.dashboard-version-card { display: grid; gap: 4px; width: 100%; padding: 10px 12px; border: 0; border-radius: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.dashboard-version-card:hover:not(:disabled) { background: var(--workspace-sunken); }
+.dashboard-version-card[aria-current="true"] { box-shadow: inset 2px 0 0 var(--workspace-accent); background: var(--workspace-sunken); }
+.dashboard-version-card:focus-visible { outline: 2px solid var(--workspace-violet); outline-offset: -2px; }
 .dashboard-version-badges { display: flex; align-items: center; gap: 6px; }
 .dashboard-version-badges small, .dashboard-version-card > small { color: var(--workspace-muted); font-size: 12px; }
 .dashboard-version-tag { padding: 1px 7px; border-radius: 4px; background: var(--workspace-line); font: 600 12px/1.6 "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
@@ -2343,7 +2339,7 @@ code {
 .dashboard-version-banner.is-previous { background: var(--workspace-amber-soft); font-weight: 600; }
 .github-dashboard .dashboard-version-banner .dashboard-text-action { width: auto; min-height: 32px; padding: 0 4px; }
 @media (min-width: 1180px) {
-  .github-dashboard .dashboard-history-layout.is-split { display: grid; grid-template-columns: minmax(520px, 600px) minmax(0, 1fr); gap: 24px; align-items: start; margin-top: 18px; }
+  .github-dashboard .dashboard-history-layout.is-split { display: grid; grid-template-columns: 17rem minmax(0, 1fr); gap: 24px; align-items: start; margin-top: 18px; }
   .github-dashboard .is-split .dashboard-pr-browser { position: sticky; top: 16px; }
   .github-dashboard .is-split .dashboard-pr-browser .dashboard-pr-workspace { max-height: calc(100vh - 32px); }
   .github-dashboard .is-split .dashboard-pr-column { overflow-y: auto; overscroll-behavior: contain; }
@@ -2353,31 +2349,34 @@ code {
   .github-dashboard .dashboard-pr-browser .dashboard-pr-workspace { grid-template-columns: minmax(0, 1fr); }
   .dashboard-pr-column { padding: 14px; }
   .dashboard-pr-index { border-right: 0; }
-  .dashboard-pr-workspace.pane-list .dashboard-version-shelf, .dashboard-pr-workspace.pane-shelf .dashboard-pr-index { display: none; }
   .dashboard-shelf-back { display: inline-flex; }
   .github-dashboard .dashboard-pr-index .dashboard-pr-title strong { white-space: normal; overflow-wrap: anywhere; }
+  /* Wrapped titles: keep the PR number on the first line instead of centring it on the whole block. */
+  .github-dashboard .dashboard-pr-index .dashboard-pr-line { align-items: baseline; }
   .github-dashboard .dashboard-shelf-generate { min-height: 44px; }
 }
 
 /* Status at a glance: one palette, and each state also has its own marker shape (not color alone). */
 .github-dashboard {
-  --st-ok: #17663e; --st-ok-bg: #e4f1ea;
-  --st-fail: #b42318; --st-fail-bg: #fbe7e4;
-  --st-wait: #8a4a00; --st-wait-bg: #fcefd9;
-  --st-none: #4a515c; --st-none-bg: #f1f3f5;
+  --st-ok: #146c38; --st-ok-bg: #e7f4ec;
+  --st-fail: #b3261e; --st-fail-bg: #fdebe9;
+  --st-wait: #8f4f00; --st-wait-bg: #fcf1dc;
+  --st-none: #4a4844; --st-none-bg: #edecea;
 }
 .dashboard-status { display: inline-flex; align-items: center; gap: 6px; min-height: 22px; padding: 1px 8px 1px 7px; border-radius: 4px; font-size: 12px; font-weight: 600; line-height: 1.4; white-space: nowrap; }
 .dashboard-status > i { display: inline-block; flex-shrink: 0; width: 9px; height: 9px; }
-.dashboard-status.tone-ok { color: var(--st-ok); background: var(--st-ok-bg); }
+/* Recorded success and waiting read through their icon and words on a neutral chip; only failure keeps a tinted fill. */
+.dashboard-status.tone-ok { color: var(--workspace-ink, #111418); background: var(--st-none-bg); }
 .dashboard-status.tone-ok > i { border-radius: 50%; background: var(--st-ok); }
 .dashboard-status.tone-fail { color: var(--st-fail); background: var(--st-fail-bg); }
 .dashboard-status.tone-fail > i { border-radius: 1px; background: var(--st-fail); }
-.dashboard-status.tone-wait { color: var(--st-wait); background: var(--st-wait-bg); }
+.dashboard-status.tone-wait { color: var(--workspace-ink, #111418); background: var(--st-none-bg); }
 .dashboard-status.tone-wait > i { border: 2px solid var(--st-wait); border-radius: 50%; background: linear-gradient(90deg, var(--st-wait) 50%, transparent 50%); }
 .dashboard-status.tone-none { color: var(--st-none); background: var(--st-none-bg); font-weight: 500; }
 .dashboard-status.tone-none > i { border: 1.5px dashed var(--st-none); border-radius: 50%; }
 .github-dashboard .status-token.pending { color: var(--st-wait); background: var(--st-wait-bg); }
-.github-dashboard .status-token.success { color: var(--st-ok); background: var(--st-ok-bg); }
+/* Freshness and activity states are information, not a verification result: neutral with their icon and text. */
+.github-dashboard .status-token.success { color: #2f2e2b; background: var(--st-none-bg); }
 .github-dashboard .status-token.failed { color: var(--st-fail); background: var(--st-fail-bg); }
 
 /* PR rows: number + title, then one line of status. */
@@ -2399,7 +2398,7 @@ code {
 .dashboard-version-meta code { color: var(--workspace-muted); font-size: 12px; }
 .dashboard-version-card > .dashboard-status { justify-self: start; }
 .dashboard-version-viewing { color: var(--workspace-violet); font-size: 12px; font-weight: 600; }
-.dashboard-version-latest { background: var(--st-ok-bg); color: var(--st-ok); }
+.dashboard-version-latest { border: 1px solid var(--workspace-line); background: transparent; color: var(--workspace-ink); }
 .dashboard-version-banner { background: var(--st-wait-bg); color: var(--st-wait); font-weight: 600; }
 .dashboard-version-banner .dashboard-version-tag { background: #fff; color: var(--st-wait); }
 
@@ -2407,7 +2406,8 @@ code {
 .report-check-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
 .report-next { padding-left: 10px; border-left: 3px solid var(--workspace-violet); }
 .report-next.tone-fail { border-left-color: var(--st-fail); color: var(--st-fail); }
-.report-next.tone-wait { border-left-color: var(--st-wait); color: var(--st-wait); }
+/* Waiting is a marker, not brown body text: the bar carries the amber, the sentence stays readable ink. */
+.report-next.tone-wait { border-left-color: #c27a12; color: var(--workspace-ink); }
 .pr-evidence-review .relation-verified { color: var(--st-ok); background: var(--st-ok-bg); }
 .pr-evidence-review .relation-observed { color: #1f4fd1; background: #e8eefc; }
 .pr-evidence-review .relation-candidate { color: var(--st-wait); background: var(--st-wait-bg); }
@@ -2445,7 +2445,8 @@ code {
 }
 @media (min-width: 1180px) {
   .github-dashboard .is-split .dashboard-pr-browser { position: static; }
-  .github-dashboard .is-split .dashboard-report-reader { height: var(--pane-height); padding: 12px; overflow-y: auto; overscroll-behavior: contain; border: 1px solid var(--workspace-line); border-radius: 12px; background: var(--workspace-canvas); }
+  /* Containing block for absolutely positioned descendants (e.g. the visually hidden report heading); otherwise they escape the pane's clip and make the page scroll under a text-selection drag. */
+  .github-dashboard .is-split .dashboard-report-reader { position: relative; height: var(--pane-height); padding: 12px; overflow-y: auto; overscroll-behavior: contain; border: 1px solid var(--workspace-line); border-radius: 12px; background: var(--workspace-canvas); }
 }
 
 /* One label scale: item names 14/600, meta 12, chips 12. */
@@ -2467,7 +2468,125 @@ code {
 .dashboard-pr-lookup input { flex: 1; min-width: 0; min-height: 36px; padding: 0 10px; border: 1px solid var(--workspace-line); border-radius: 8px; background: var(--workspace-panel); color: inherit; font: inherit; font-size: 13px; }
 .dashboard-pr-lookup input:focus-visible { outline: 2px solid var(--workspace-violet); outline-offset: 1px; }
 .github-dashboard .dashboard-pr-lookup .dashboard-secondary-action { width: auto; min-height: 36px; padding: 0 12px; }
+/* Mobile: the PR lookup keeps the 44px touch target used by the other mobile controls. */
+@media (max-width: 760px) { .github-dashboard .dashboard-pr-lookup input, .github-dashboard .dashboard-pr-lookup .dashboard-secondary-action { min-height: 44px; } }
 .dashboard-shelf-confirm { display: grid; gap: 8px; margin-top: 10px; padding: 10px 12px; border-radius: 8px; background: var(--st-wait-bg); color: var(--st-wait); font-size: 12px; }
 .dashboard-shelf-confirm p { margin: 0; }
 .dashboard-shelf-confirm > div { display: flex; flex-wrap: wrap; gap: 8px; }
 .github-dashboard .dashboard-shelf-confirm button { width: auto; min-height: 36px; }
+
+/* 2026-10-13 sign-in entry, inbox read state, GitHub re-confirmation, purpose-first summary */
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.github-entry-main { justify-items: center; gap: 12px; }
+.github-entry-main .github-sign-in { margin: 0 auto; }
+.github-sign-in-status { margin: 0; color: var(--workspace-muted); font-size: 13px; }
+.dashboard-activity-row { position: relative; padding-left: 16px; }
+.dashboard-activity-row.is-unread { background: var(--st-none-bg, #f1f3f5); }
+.dashboard-activity-row.is-unread::before { content: ""; position: absolute; top: 50%; left: 5px; width: 6px; height: 6px; border-radius: 50%; background: var(--workspace-ink); transform: translateY(-50%); }
+.dashboard-activity-row.is-read strong { font-weight: 500; color: var(--workspace-muted); }
+.dashboard-reauth { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 12px 0 0; padding: 10px 14px; border: 1px solid var(--workspace-line); border-radius: 12px; background: var(--workspace-panel); color: var(--workspace-ink); font-size: 14px; line-height: 1.45; }
+@media (max-width: 720px) {
+  .github-entry-main { min-height: auto; padding-top: 6vh; }
+  .github-entry-main .github-sign-in { width: 100%; padding: 24px 20px; }
+  .dashboard-reauth { font-size: 13px; }
+}
+
+/* 2026-10-14 purpose fit roles, purpose change lines, brand touch target */
+.dashboard-status.tone-fit { color: var(--workspace-ink); background: var(--st-none-bg, #f1f3f5); }
+.dashboard-status.tone-fit > i { border-radius: 50%; background: var(--workspace-ink); }
+.dashboard-status.tone-conflict { color: var(--st-wait); background: var(--st-wait-bg); }
+.dashboard-status.tone-conflict > i { border-radius: 1px; background: var(--st-wait); }
+.report-purpose-change { color: var(--workspace-muted); font-size: 14px; }
+.report-purpose-ref { justify-self: start; color: var(--workspace-ink); font-size: 12.5px; overflow-wrap: anywhere; }
+@media (max-width: 720px) {
+  .dashboard-brand { min-height: 44px; align-items: center; }
+}
+
+/* 2026-10-14 report reading: purpose once in the summary, details add only what it does not show */
+.report-purpose-change { max-width: 70ch; font-size: 14px; line-height: 1.5; }
+.report-purpose-kind { color: var(--workspace-ink); font-weight: 550; }
+.report-purpose-ref-link, .purpose-ref-link { display: inline-flex; align-items: center; gap: 6px; justify-self: start; min-height: 44px; max-width: 100%; color: var(--workspace-ink); text-decoration: underline; text-decoration-color: var(--workspace-line); text-decoration-thickness: 1px; text-underline-offset: 4px; }
+.report-purpose-ref-link:hover, .purpose-ref-link:hover { text-decoration-color: currentColor; }
+.report-purpose-ref-link > svg, .purpose-ref-link > svg { flex: none; color: var(--workspace-muted); }
+.report-purpose-ref-link code, .purpose-ref-link code { font-size: 13px; overflow-wrap: anywhere; }
+.github-dashboard .compact-report .summary-actions { gap: 8px; }
+.github-dashboard .compact-report .dashboard-close-evidence { min-height: 44px; }
+.github-dashboard .compact-report .summary-actions > .dashboard-github-link { flex: 0 0 auto; margin-left: 0; color: var(--workspace-ink); font-size: 13px; text-decoration: none; }
+.github-dashboard .compact-report .summary-actions > .dashboard-github-link > svg { color: var(--workspace-muted); }
+.pr-evidence-review .purpose-evidence > h3 { margin: 0 0 4px; font-size: 17px; font-weight: 600; line-height: 1.35; }
+.purpose-boundary { color: var(--workspace-muted); font-size: 13px; line-height: 1.5; }
+.purpose-boundary > p { margin: 0; }
+.purpose-boundary details > p, .purpose-revisions ul { margin: 0 0 8px; }
+.purpose-evidence details > summary { display: list-item; min-height: 44px; padding: 12px 0; color: var(--workspace-ink); font-size: 13px; font-weight: 550; line-height: 20px; cursor: pointer; }
+.purpose-clause { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--workspace-line); }
+.pr-evidence-review .purpose-clause > h4 { margin: 0 0 4px; max-width: 70ch; color: var(--workspace-ink); font-size: 15px; font-weight: 550; line-height: 1.5; }
+.purpose-clause > .purpose-clause-pointer { margin: 0 0 8px; color: var(--workspace-muted); font-size: 13px; }
+.purpose-clause-facts { display: grid; gap: 6px; margin: 8px 0 0; }
+.purpose-clause-facts > div { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr); gap: 10px; }
+.purpose-clause-facts dt { color: var(--workspace-muted); font-size: 12px; font-weight: 550; line-height: 1.6; }
+.purpose-clause-facts dd { margin: 0; max-width: 70ch; color: var(--workspace-ink); font-size: 14px; line-height: 1.5; }
+.pr-evidence-review .purpose-clause h5 { margin: 14px 0 2px; color: var(--workspace-muted); font-size: 12px; font-weight: 600; }
+.purpose-clause > p { margin: 4px 0 0; max-width: 70ch; color: var(--workspace-ink); font-size: 14px; line-height: 1.55; }
+.purpose-clause > p strong { color: var(--workspace-muted); font-weight: 550; }
+.purpose-cites { color: var(--workspace-muted); font-size: 12.5px; }
+.purpose-cites code { margin-left: 4px; overflow-wrap: anywhere; }
+.purpose-ref-list { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
+.purpose-ref-list li { display: flex; flex-wrap: wrap; align-items: center; column-gap: 10px; }
+.purpose-ref-meta { color: var(--workspace-muted); font-size: 12px; }
+.purpose-revisions { margin-top: 10px; color: var(--workspace-muted); font-size: 12.5px; }
+.purpose-revisions ul { padding-left: 18px; }
+.purpose-revisions code { font-size: 12px; overflow-wrap: anywhere; }
+@media (max-width: 720px) {
+  .github-dashboard .compact-report .summary-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .github-dashboard .compact-report .summary-actions > * { width: 100%; }
+  .github-dashboard .compact-report .summary-actions > .dashboard-primary-action,
+  .github-dashboard .compact-report .summary-actions > :last-child:nth-child(2) { grid-column: 1 / -1; }
+}
+@media (max-width: 420px) {
+  .purpose-clause-facts > div { grid-template-columns: minmax(0, 1fr); gap: 0; }
+}
+
+/* 2026-10-15 report A: per purpose conclusion -> why -> evidence; details fold; labels follow the report locale */
+.report-purpose { display: grid; gap: 10px; }
+.report-purpose-list { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
+.report-purpose-item { padding: 14px 0; border-bottom: 1px solid var(--workspace-line); }
+.report-purpose-item:first-child { padding-top: 0; }
+.report-purpose-flow { display: grid; gap: 8px; margin: 0; }
+.report-purpose-flow > div { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: 12px; align-items: baseline; }
+.report-purpose-flow dt { color: var(--workspace-muted); font-size: 12px; font-weight: 600; line-height: 1.6; }
+.report-purpose-flow dd { margin: 0; min-width: 0; }
+.report-purpose-flow dd > .dashboard-status { margin-bottom: 4px; }
+.report-purpose-text { display: block; max-width: 68ch; color: var(--workspace-ink); font-size: 16px; font-weight: 500; line-height: 1.55; }
+.report-purpose-change { display: block; max-width: 68ch; color: var(--workspace-ink); font-size: 15px; line-height: 1.55; }
+.report-purpose-refs { display: flex; flex-wrap: wrap; column-gap: 18px; margin: 0; padding: 0; list-style: none; }
+.report-purpose-ref-dir { color: var(--workspace-muted); }
+.report-purpose-extra { margin: 2px 0 0 calc(5.5rem + 12px); }
+.report-purpose-extra > summary, .report-purpose-overflow > summary, .report-purpose-meta summary { display: list-item; min-height: 44px; padding: 12px 0; color: var(--workspace-ink); font-size: 14px; font-weight: 600; line-height: 20px; cursor: pointer; }
+.report-purpose-extra > dl { display: grid; gap: 8px; margin: 0 0 6px; }
+.report-purpose-extra > dl > div { display: grid; grid-template-columns: 7rem minmax(0, 1fr); gap: 10px; }
+.report-purpose-extra dt { color: var(--workspace-muted); font-size: 12px; font-weight: 600; line-height: 1.6; }
+.report-purpose-extra dd { margin: 0; max-width: 68ch; font-size: 14px; line-height: 1.55; }
+.report-purpose-extra dd ul { margin: 0; padding-left: 18px; }
+.report-purpose-extra dd p { margin: 0 0 4px; }
+.report-purpose-cites { color: var(--workspace-muted); font-size: 12.5px; }
+.report-purpose-note { margin: 0; color: var(--workspace-muted); font-size: 13px; line-height: 1.5; }
+.report-purpose-meta { display: flex; flex-wrap: wrap; column-gap: 20px; }
+.report-purpose-meta summary { color: var(--workspace-muted); font-size: 13px; font-weight: 550; }
+.report-purpose-meta details p, .report-purpose-meta details ul { margin: 0 0 8px; max-width: 68ch; color: var(--workspace-muted); font-size: 13px; line-height: 1.5; }
+.report-purpose-meta details ul { padding-left: 18px; }
+.report-purpose-meta code { font-size: 12px; overflow-wrap: anywhere; }
+.report-checks-note { margin: 6px 0 0; color: var(--workspace-muted); font-size: 12.5px; line-height: 1.5; }
+.report-top-summary .report-purpose + dl { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--workspace-line); }
+.dashboard-language-setting { margin: 0; padding: 14px 0; border: 0; border-top: 1px solid var(--workspace-line); }
+.dashboard-language-setting legend { float: left; display: grid; gap: 2px; width: 100%; padding: 0; margin-bottom: 8px; }
+.dashboard-language-setting legend small { color: var(--workspace-muted); font-size: 13px; }
+.dashboard-language-options { clear: both; display: flex; flex-wrap: wrap; gap: 8px; }
+.dashboard-language-option { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px; border: 1px solid var(--workspace-control, var(--workspace-line)); border-radius: 9px; background: #fff; font-size: 14px; font-weight: 550; cursor: pointer; }
+.dashboard-language-option:has(input:checked) { border-color: var(--workspace-violet); box-shadow: inset 0 0 0 1px var(--workspace-violet); }
+.dashboard-language-option input { width: 16px; height: 16px; margin: 0; accent-color: var(--workspace-violet); }
+.dashboard-language-setting:disabled .dashboard-language-option { opacity: .6; cursor: wait; }
+@media (max-width: 720px) {
+  .report-purpose-flow > div { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .report-purpose-extra { margin-left: 0; }
+  .report-purpose-extra > dl > div { grid-template-columns: minmax(0, 1fr); gap: 0; }
+}

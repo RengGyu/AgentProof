@@ -1,3 +1,4 @@
+import { resolveReportLanguage } from "@/lib/tenant-report-language";
 import { resolveWorkspaceAccess, type WorkspaceSource } from "./access";
 import { noStoreJson } from "@/lib/http";
 import {
@@ -36,6 +37,7 @@ export async function GET(request: Request, source: WorkspaceSource = "web") {
         saveReportsEnabled: repository.saveReportsEnabled,
         commentEnabled: repository.commentEnabled,
         llmAnalysisMode: repository.llmAnalysisMode ?? "essential",
+        reportLanguage: resolveReportLanguage(repository.reportLanguage),
         hybridPlannerConsentVersion: repository.hybridPlannerConsentVersion ?? null,
         privateAnalysisConsentVersion: repository.privateAnalysisConsentVersion ?? null,
         repositoryPrivate: repository.repositoryPrivate === true

@@ -40,7 +40,6 @@ export interface AdvanceQueuedGeneralPrObservationOptionsV2 {
   providerAvailable: boolean;
   privateRepository?: boolean;
   privateRepositoryConsent?: boolean;
-  providerRetentionApproved?: boolean;
   readCurrentInput: () => Promise<PullRequestInput | null>;
   modelProfile?: GeneralPrSemanticObserverModelProfileV2;
 }
@@ -120,7 +119,6 @@ export async function advanceQueuedGeneralPrObservationV2(
     providerAvailable: options.providerAvailable,
     privateRepository: options.privateRepository,
     privateRepositoryConsent: options.privateRepositoryConsent,
-    providerRetentionApproved: options.providerRetentionApproved,
     readCurrentInput: options.readCurrentInput,
     modelProfile: options.modelProfile ?? DEFAULT_MODEL_PROFILE
   });

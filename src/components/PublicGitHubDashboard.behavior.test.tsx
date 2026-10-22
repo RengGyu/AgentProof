@@ -1,6 +1,6 @@
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
 import type { ReactElement } from "react";
-import { DetailedEvidence, PublicGitHubDashboard } from "./PublicGitHubDashboard";
+import { DetailedEvidence, PublicGitHubDashboard, QuickSummaryPanel } from "./PublicGitHubDashboard";
 import { RepositoryPullRequestWorkspace } from "./RepositoryCommitBrowser";
 
 // Exercise the component's real handlers and async state changes without a DOM dependency.
@@ -28,6 +28,7 @@ vi.mock("react", async importOriginal => ({
 type Node = ReactElement<any>;
 let tree: Node;
 let runtime: any;
+let initialReportId:string|undefined;
 const repository = { installationId: 321, repositoryId: 100, repositoryFullName: "Owner/repo", enabled: true, analysisEnabled: true, saveReportsEnabled: true, commentEnabled: false };
 const report = { id: "report-one", repositoryId: 100, pullRequestNumber: 1, headSha: "a".repeat(40), priority: "low", createdAt: "2026-09-29T00:00:00Z", freshness: "current" };
 let reports: any[];
@@ -39,7 +40,7 @@ const focusedReport = { focus: vi.fn(), scrollIntoView: vi.fn(), querySelector: 
 const focusedPrList = { focus: vi.fn(), scrollIntoView: vi.fn() };
 function render() {
   hooks.index = 0;
-  tree = PublicGitHubDashboard(runtime ? { runtime } : {});
+  tree = PublicGitHubDashboard({ runtime, initialReportId });
   for (const node of nodes()) if (node.props["aria-label"] === "Selected report" && node.props.ref) node.props.ref.current = focusedReport;
   for (const node of nodes()) if (node.props["aria-label"] === "Pull request list" && node.props.ref) node.props.ref.current = focusedPrList;
   hooks.effects.splice(0).forEach(work => work());
@@ -66,7 +67,7 @@ beforeEach(async () => {
   focusedReport.focus.mockClear(); focusedReport.scrollIntoView.mockClear();
   evidenceToggle.focus.mockClear(); focusedReport.querySelector.mockClear();
   focusedPrList.focus.mockClear(); focusedPrList.scrollIntoView.mockClear();
-  runtime = undefined; hooks.slots = []; hooks.index = 0; hooks.effects = [];
+  runtime = undefined; initialReportId=undefined; hooks.slots = []; hooks.index = 0; hooks.effects = [];
   reports = [report];
   repositories = [repository];
   activity = [{ id: "job:one", kind: "analysis_completed", state: "Analysis completed", occurredAt: report.createdAt, repositoryId: 100, pullRequestNumber: 2 }];
@@ -135,8 +136,10 @@ it("keeps the PR list and version shelf beside the report on wide screens and fl
   expect(find("Pull request list").props.hidden).toBe(false);
   expect(workspace().props.activeReportId).toBe(report.id);
   expect(nodes().some(n => n.props["aria-label"] === "Back to PR list")).toBe(false);
-  expect(text(find("Selected report"))).toMatch(/v\s*1[\s\S]*Earlier version[\s\S]*Open latest v\s*2/);
-  await click(nodes().find(n => n.type === "button" && /Open latest/.test(text(n)))!);
+  // The version and earlier-version controls sit in the report's context row (QuickSummaryPanel versionContext).
+  const context = () => nodes().find(n => typeof n.type === "function" && n.type.name === "QuickSummaryPanel")!.props.versionContext;
+  expect(text(context())).toMatch(/v\s*1[\s\S]*Earlier version[\s\S]*Open latest v\s*2/);
+  await click(nodes(context()).find(n => n.type === "button" && /Open latest/.test(text(n)))!);
   expect(fetchMock).toHaveBeenCalledWith("/api/dashboard/reports?id=report-two", expect.anything());
 });
 
@@ -391,10 +394,10 @@ it("requests reports and activity again and renders both fresh responses on manu
 it("preserves loaded lists and shows refresh failures", async () => {
   fetchMock.mockImplementation(async () => Response.json({}, { status: 503 }));
   await click(find("Refresh reports and activity"));
-  expect(text()).toContain("Reports could not be refreshed.");
+  expect(text(find("Workspace refresh status"))).toContain("reports");
   expect(text()).toContain("PR #1");
   await click(find("Open Inbox"));
-  expect(text()).toContain("Activity could not be refreshed.");
+  expect(text(find("Workspace refresh status"))).toContain("activity");
   expect(text(find("Inbox"))).toContain("PR #2");
 });
 
@@ -440,7 +443,7 @@ it("clears reports and activity when refreshed access is denied", async () => {
   expect(nodes().some(n => n.props["aria-label"] === "Selected report")).toBe(false);
   expect(text()).not.toContain("PR #1");
   await click(find("Open Inbox"));
-  expect(text(find("Inbox"))).toContain("No recent activity.");
+  expect(text(find("Inbox"))).toContain("Activity is unavailable.");
 });
 
 it("clears inbox only after persistence succeeds, preserves reports and keeps newer events", async () => {
@@ -521,4 +524,289 @@ it("renders repositories from the supplied session transport and passes it to th
   expect(text()).not.toContain("Owner/repo");
   const browser=nodes().find(n=>typeof n.type==="function"&&n.type.name==="RepositoryCommitBrowser");
   expect(browser?.props.runtime).toBe(runtime);
+});
+
+it("keeps the unread count when Inbox only opens, marks just the opened notification read, and restores it after refresh", async () => {
+  activity = [2, 3].map(n => ({ id: `job:pr${n}`, kind: "analysis_completed", state: "Analysis completed", occurredAt: report.createdAt, repositoryId: 100, pullRequestNumber: n }));
+  await click(find("Refresh reports and activity"));
+  const badge = () => text(nodes().find(n => n.props.className === "dashboard-unread-badge") ?? null);
+  const rows = () => nodes().filter(n => typeof n.props.className === "string" && n.props.className.includes("dashboard-activity-row"));
+  expect(badge()).toBe("2");
+  await click(find("Open Inbox"));
+  expect(badge()).toBe("2");
+  expect(rows().map(row => row.props.className.includes("is-unread"))).toEqual([true, true]);
+  await click(rows().find(row => text(row).includes("PR #2"))!, true);
+  expect(badge()).toBe("1");
+  const stored = (window.localStorage.setItem as any).mock.calls.at(-1);
+  expect(stored[0]).toBe("agentproof.inbox.read.v1");
+  expect(JSON.parse(stored[1])).toEqual(["job:pr2"]);
+  await click(find("Open Inbox"));
+  expect(rows().find(row => text(row).includes("PR #2"))!.props.className).toContain("is-read");
+  expect(rows().find(row => text(row).includes("PR #3"))!.props.className).toContain("is-unread");
+  hooks.slots = []; hooks.effects = [];
+  (window as any).localStorage.getItem = () => JSON.stringify(["job:pr2"]);
+  render(); await settle(); await settle();
+  expect(badge()).toBe("1");
+});
+
+it("keeps the AgentProof session when GitHub installation access expired and offers a separate GitHub confirmation", async () => {
+  expect(nodes().find(n => n.props.className === "dashboard-brand")!.props.href).toBe("/dashboard");
+  const normal = fetchMock.getMockImplementation() as (url: string, init?: RequestInit) => Promise<Response>;
+  fetchMock.mockImplementation(async (url: string, init?: RequestInit) => url === "/api/github/onboarding/callback?existing=1"
+    ? Response.json({ code: "github_existing_installation_reauth_required" }, { status: 401 }) : normal(url, init));
+  await click(nodes().find(n => n.type === "button" && /Add repositories/.test(text(n)))!); await settle();
+  expect(nodes().some(n => typeof n.type === "function" && n.type.name === "WorkspaceSignIn")).toBe(false);
+  expect(nodes().some(n => n.props.className === "dashboard-topbar")).toBe(true);
+  expect(text()).toContain("You are still signed in.");
+  expect(nodes().some(n => n.type === "button" && text(n) === "Confirm with GitHub")).toBe(true);
+  expect(text()).not.toContain("Reconnect GitHub to recognize");
+});
+
+it("uses the shared sign-in entry when the session is signed out", async () => {
+  hooks.slots = []; hooks.effects = [];
+  const normal = fetchMock.getMockImplementation() as (url: string, init?: RequestInit) => Promise<Response>;
+  fetchMock.mockImplementation(async (url: string, init?: RequestInit) => url === "/api/dashboard/session" ? Response.json({ signedIn: false }) : normal(url, init));
+  render(); await settle(); await settle();
+  expect(nodes().some(n => typeof n.type === "function" && n.type.name === "WorkspaceSignIn")).toBe(true);
+});
+
+
+it("copies only the selected report on click without fetching, and resets feedback for another selection", async () => {
+  const { toQuickSummary } = await import("@/lib/github-dashboard-view-model");
+  hooks.slots = []; hooks.effects = [];
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  vi.stubGlobal("navigator", { clipboard: { writeText } });
+  let selected = { ...report, repositoryFullName: "Owner/repo", freshness: "stale" as const, copyEligible: false, report: { testing: { ciStatus: "passed", lintStatus: "unknown", typecheckStatus: "unknown" } } };
+  const panel = () => { hooks.index = 0; return QuickSummaryPanel({ detail: selected, quickSummary: toQuickSummary(selected), onShowDetail: vi.fn(), showDetailedEvidence: false, demoMode: false }); };
+  let output = panel();
+  const summary = nodes(output).find(node => node.props.ref)!;
+  summary.props.ref.current = { innerText: "Inspect first\nReview the referenced evidence." };
+  expect(writeText).not.toHaveBeenCalled(); fetchMock.mockClear();
+  await nodes(output).find(node => node.props["aria-label"] === "Copy selected report")!.props.onClick();
+  output = panel();
+  expect(writeText).toHaveBeenCalledTimes(1);
+  expect(writeText.mock.calls[0][0]).toContain("PR #1");
+  expect(writeText.mock.calls[0][0]).toContain("Review the referenced evidence.");
+  expect(text(output)).toContain("Report copied.");
+  expect(fetchMock).not.toHaveBeenCalled();
+  selected = { ...selected, id: "another-report", pullRequestNumber: 2 };
+  output = panel();
+  expect(text(output)).not.toContain("Report copied.");
+});
+
+it("shows a brief failure when clipboard and browser fallback cannot copy", async () => {
+  const { toQuickSummary } = await import("@/lib/github-dashboard-view-model");
+  hooks.slots = []; hooks.effects = []; hooks.index = 0;
+  vi.stubGlobal("navigator", { clipboard: { writeText: vi.fn().mockRejectedValue(new Error("denied")) } });
+  const detail = { ...report, freshness: "current" as const, report: {} };
+  const panel = () => { hooks.index = 0; return QuickSummaryPanel({ detail, quickSummary: toQuickSummary(detail), onShowDetail: vi.fn(), showDetailedEvidence: false, demoMode: false }); };
+  const output = panel(); fetchMock.mockClear();
+  await nodes(output).find(node => node.props["aria-label"] === "Copy selected report")!.props.onClick();
+  expect(text(panel())).toContain("Copy failed. Select the report text manually.");
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
+it("returns to the dashboard home state from the brand without a page load and keeps the link for new tabs", async () => {
+  const location = { assign: vi.fn(), replace: vi.fn(), reload: vi.fn() };
+  (window as any).location = location;
+  await click(nodes().find(n => n.type === "button" && n.props.className?.includes("report-row"))!);
+  expect(nodes().some(n => n.props["aria-label"] === "Selected report")).toBe(true);
+  await click(find("Open Inbox"));
+  expect(nodes().some(n => n.props["aria-label"] === "Inbox")).toBe(true);
+  const brand = () => nodes().find(n => n.props.className === "dashboard-brand")!;
+  expect(brand().props.href).toBe("/dashboard");
+  const modified = { button: 0, metaKey: true, ctrlKey: false, shiftKey: false, altKey: false, preventDefault: vi.fn() };
+  brand().props.onClick(modified); await settle();
+  expect(modified.preventDefault).not.toHaveBeenCalled();
+  const plain = { button: 0, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, preventDefault: vi.fn() };
+  brand().props.onClick(plain); await settle();
+  expect(plain.preventDefault).toHaveBeenCalledTimes(1);
+  expect(nodes().some(n => n.props["aria-label"] === "Inbox")).toBe(false);
+  expect(nodes().some(n => n.props["aria-label"] === "Selected report")).toBe(false);
+  expect(find("Pull request list").props.hidden).toBe(false);
+  expect([location.assign, location.replace, location.reload].every(fn => fn.mock.calls.length === 0)).toBe(true);
+});
+
+it('shows the existing first private notice with purpose interpretation use and requires the user checkbox',async()=>{
+ const normal=fetchMock.getMockImplementation() as (u:string,i?:RequestInit)=>Promise<Response>;
+ fetchMock.mockImplementation(async(u:string,i?:RequestInit)=>u==='/api/github/onboarding/callback?existing=1'?Response.json({next:'select_repository',installationId:321}):u.startsWith('/api/github/onboarding/repositories?')?Response.json({repositories:[{id:200,fullName:'Owner/private',private:true}]}):normal(u,i));
+ await click(nodes().find(n=>n.type==='button'&&/Add repositories/.test(text(n)))!);await settle();await click(nodes().find(n=>n.props.className==='dashboard-list-row'&&/Owner\/private/.test(text(n)))!);
+ expect(text()).toContain('explain how those changes fit the stated purpose');expect(text()).not.toMatch(/zero.data.retention|ZDR/);
+ const consentLabel=nodes().find(n=>n.type==='label'&&text(n).includes('Required to turn analysis ON for this repository.'))!;const approve=nodes(consentLabel).find(n=>n.type==='input')!;expect(approve).toBeTruthy();
+ const enable=nodes().find(n=>n.type==='button'&&/analysis ON/.test(text(n)))!;expect(enable.props.disabled).toBe(true);approve.props.onChange({target:{checked:true}});await settle();expect(nodes().find(n=>n.type==='button'&&/analysis ON/.test(text(n)))!.props.disabled).toBe(false);
+});
+
+it('approved private settings show the transmission notice without asking consent again, including OFF then ON',async()=>{
+ repositories=[{...repository,repositoryPrivate:true,privateAnalysisConsentVersion:'2026-09-24.v1'}];
+ const normal=fetchMock.getMockImplementation() as (u:string,i?:RequestInit)=>Promise<Response>;fetchMock.mockImplementation(async(u:string,i?:RequestInit)=>{if(u==='/api/tenants/repositories'){repositories[0]={...repositories[0],...JSON.parse(String(i?.body)).settings};return Response.json({repository:repositories[0]});}return normal(u,i);});
+ hooks.slots=[];hooks.effects=[];render();await settle();await settle();await click(find('Open settings'));
+ const settings=()=>nodes().find(n=>typeof n.type==='function'&&n.type.name==='SettingsPanel')!;
+ function content(){const old=hooks.slots,oldIndex=hooks.index;hooks.slots=[];hooks.index=0;try{return (settings().type as any)(settings().props);}finally{hooks.slots=old;hooks.index=oldIndex;}}
+ expect(text(content())).toContain('explain how those changes fit the stated purpose');expect(text(content())).not.toContain('I approve private PR analysis');
+ await settings().props.onUpdate('analysisEnabled',false);await settle();await settings().props.onUpdate('analysisEnabled',true);await settle();
+ const changes=fetchMock.mock.calls.filter(([u])=>u==='/api/tenants/repositories').map(([,i])=>JSON.parse(String(i?.body)));
+ expect(changes.map(c=>c.settings.analysisEnabled)).toEqual([false,true]);expect(changes.some(c=>c.settings.privateAnalysisConsent===true)).toBe(false);expect(settings().props.repository.privateAnalysisConsentVersion).toBe('2026-09-24.v1');
+});
+
+it('saves the report language for new reports through the existing settings request, defaulting to English',async()=>{
+ const normal=fetchMock.getMockImplementation() as (u:string,i?:RequestInit)=>Promise<Response>;fetchMock.mockImplementation(async(u:string,i?:RequestInit)=>{if(u==='/api/tenants/repositories'&&i?.method==='PATCH'){repositories[0]={...repositories[0],...JSON.parse(String(i?.body)).settings};return Response.json({repository:repositories[0]});}return normal(u,i);});
+ hooks.slots=[];hooks.effects=[];render();await settle();await settle();await click(find('Open settings'));
+ const settings=()=>nodes().find(n=>typeof n.type==='function'&&n.type.name==='SettingsPanel')!;
+ function content(){const old=hooks.slots,oldIndex=hooks.index;hooks.slots=[];hooks.index=0;try{return (settings().type as any)(settings().props);}finally{hooks.slots=old;hooks.index=oldIndex;}}
+ const selector=()=>nodes(content()).find(n=>typeof n.type==='function'&&n.type.name==='ReportLanguageSetting')!;
+ expect(selector().props.value).toBe('en');
+ const options=nodes((selector().type as any)(selector().props)).filter(n=>n.type==='input');
+ expect(options.map(n=>n.props.value)).toEqual(['en','ko']);expect(text((selector().type as any)(selector().props))).not.toContain('Applies to newly generated reports.');
+ const callsBefore=fetchMock.mock.calls.length;
+ selector().props.onChange('ko');await settle();
+ // Only the setting is saved: no report is reloaded, regenerated or translated.
+ expect(fetchMock.mock.calls.slice(callsBefore).map(([u,i])=>`${i?.method??'GET'} ${u}`)).toEqual(['PATCH /api/tenants/repositories']);
+ const patches=fetchMock.mock.calls.filter(([u,i])=>u==='/api/tenants/repositories'&&i?.method==='PATCH').map(([,i])=>JSON.parse(String(i?.body)));
+ expect(patches).toEqual([{installationId:321,repositoryId:100,settings:{reportLanguage:'ko'}}]);
+ expect(settings().props.repository.reportLanguage).toBe('ko');expect(selector().props.value).toBe('ko');
+});
+
+it.each(['transport', 'json'])("keeps a first %s load failure distinct from empty data and retries all three reads", async kind => {
+  const normal = fetchMock.getMockImplementation()! as (url: string, init?: RequestInit) => Promise<Response>;
+  fetchMock.mockImplementation(async (url, init) => url === '/api/dashboard/session' ? normal(url, init)
+    : kind === 'json' ? new Response('<html>unavailable</html>') : Promise.reject(new TypeError('Load failed')));
+  hooks.slots = []; hooks.effects = []; render(); await settle(); await settle();
+  expect(nodes().filter(n => n.props['aria-label'] === 'Workspace refresh status')).toHaveLength(1);
+  expect(text()).not.toContain('No active repository.');
+  expect(text()).not.toContain('Add a repository');
+  expect(text()).not.toContain('Connect a repository to view pull requests.');
+  expect(text()).not.toContain('Connect a GitHub repository to review saved evidence reports.');
+  await click(find('Open Inbox'));
+  expect(text()).not.toContain('No recent activity.');
+  const before = fetchMock.mock.calls.length;
+  fetchMock.mockImplementation(normal);
+  await click(find('Retry workspace loading'));
+  const urls = fetchMock.mock.calls.slice(before).map(([url]) => url);
+  expect(urls).toEqual(expect.arrayContaining(['/api/dashboard/repositories', '/api/dashboard/reports', '/api/dashboard/activity']));
+  expect(text()).toContain('Owner/repo');
+  expect(nodes().some(n => n.props['aria-label'] === 'Workspace refresh status')).toBe(false);
+});
+
+it('preserves loaded data, clears only successful read errors, and includes repositories in manual refresh', async () => {
+  const normal = fetchMock.getMockImplementation()! as (url: string, init?: RequestInit) => Promise<Response>;
+  fetchMock.mockImplementation(async () => { throw new TypeError('Load failed'); });
+  await click(find('Refresh reports and activity'));
+  expect(text()).toContain('Owner/repo'); expect(text()).toContain('PR #1');
+  expect(text(find('Workspace refresh status'))).toContain('repositories, reports, activity');
+  fetchMock.mockImplementation((url, init) => url === '/api/dashboard/activity'
+    ? Promise.reject(new TypeError('Load failed')) : normal(url, init));
+  await click(find('Retry workspace loading'));
+  expect(text(find('Workspace refresh status'))).toContain('activity');
+  expect(text(find('Workspace refresh status'))).not.toContain('repositories,');
+  expect(text(find('Workspace refresh status'))).not.toContain('reports,');
+});
+
+it('does not let an older repository read failure replace the latest successful read', async () => {
+  const normal = fetchMock.getMockImplementation()! as (url: string, init?: RequestInit) => Promise<Response>;
+  let finish!: (r: Response) => void;
+  fetchMock.mockImplementation((url, init) => url === '/api/dashboard/repositories'
+    ? new Promise(resolve => { finish = resolve; }) : normal(url, init));
+  const visibility = vi.mocked(document.addEventListener).mock.calls.find(c => c[0] === 'visibilitychange')![1] as () => void;
+  visibility(); await settle();
+  fetchMock.mockImplementation(normal);
+  await click(find('Refresh reports and activity'));
+  finish(Response.json({}, { status: 503 })); await settle();
+  expect(text()).toContain('Owner/repo');
+  expect(nodes().some(n => n.props['aria-label'] === 'Workspace refresh status')).toBe(false);
+});
+
+it('keeps repository read errors independent from settings actions', async () => {
+  const normal = fetchMock.getMockImplementation()! as (url: string, init?: RequestInit) => Promise<Response>;
+  fetchMock.mockImplementation((url, init) => url === '/api/dashboard/repositories'
+    ? Promise.reject(new TypeError('Load failed')) : normal(url, init));
+  await click(find('Refresh reports and activity')); await click(find('Open settings'));
+  const settings = nodes().find(n => typeof n.type === 'function' && n.type.name === 'SettingsPanel')!;
+  await settings.props.onUpdate('commentEnabled', true); await settle();
+  expect(text(find('Workspace refresh status'))).toContain('repositories');
+  fetchMock.mockImplementation((url, init) => url === '/api/tenants/repositories'
+    ? Promise.resolve(Response.json({}, { status: 503 })) : normal(url, init));
+  await settings.props.onUpdate('commentEnabled', true); await settle();
+  await click(find('Retry workspace loading'));
+  expect(text()).toContain('Repository settings could not be saved.');
+  expect(nodes().some(n => n.props['aria-label'] === 'Workspace refresh status')).toBe(false);
+});
+
+it.each([401, 403])('keeps denied reads (%s) distinct and clears inaccessible data', async status => {
+  fetchMock.mockResolvedValue(Response.json({}, { status }));
+  await click(find('Refresh reports and activity'));
+  expect(text()).not.toContain('Owner/repo');
+  expect(text()).toContain(status === 401 ? 'Your sign-in session has expired.' : 'Workspace access is unavailable.');
+  expect(nodes().some(n => n.type === 'button' && text(n).includes('Continue with GitHub'))).toBe(status === 401);
+  expect(text()).not.toContain('Previously loaded data is unchanged.');
+  expect(text()).not.toContain('No active repository.');
+});
+
+it('renders a genuine empty connection list only after a successful read', async () => {
+  repositories = []; reports = []; activity = [];
+  await click(find('Refresh reports and activity'));
+  expect(text()).toContain('No active repository.');
+  expect(text()).toContain('Add a repository');
+  await click(find('Open Inbox')); expect(text()).toContain('No recent activity.');
+});
+
+it('does not show arbitrary legacy failure summaries or codes in report rows and activity', async () => {
+  reports = [{ ...report, freshness: 'refresh_failed', failure: { code: 'internal_tenant_config', summary: 'PRIVATE_CONFIG_CANARY' } }];
+  activity = [{ ...activity[0], kind: 'analysis_needs_attention', state: 'Needs attention', failure: { code: 'internal_tenant_config', summary: 'PRIVATE_CONFIG_CANARY' } }];
+  await click(find('Refresh reports and activity')); await click(find('Open Inbox'));
+  expect(text()).not.toContain('PRIVATE_CONFIG_CANARY'); expect(text()).not.toContain('internal_tenant_config');
+  expect(text()).toContain('Existing saved reports remain available.');
+});
+
+it('uses icon-only top navigation and shows settings in the repository report language, with a back control',async()=>{
+ repositories=[{...repository,reportLanguage:'ko'}];
+ hooks.slots=[];hooks.effects=[];render();await settle();await settle();
+ // The brand and the settings toggle carry their words only as accessible names and titles.
+ const brand=nodes().find(n=>n.type==='a'&&n.props.className==='dashboard-brand')!;expect(brand.props['aria-label']).toBe('DiffEvidence home');expect(brand.props.title).toBe('DiffEvidence');expect(text(brand)).toBe('');
+ const toggle=find('Open settings');expect(toggle.props.title).toBe('Open settings');expect(text(toggle)).toBe('');
+ await click(toggle);
+ expect(find('Show reports').props.title).toBe('Show reports');
+ const settings=()=>nodes().find(n=>typeof n.type==='function'&&n.type.name==='SettingsPanel');
+ function content(){const s=settings()!,old=hooks.slots,oldIndex=hooks.index;hooks.slots=[];hooks.index=0;try{return (s.type as any)(s.props);}finally{hooks.slots=old;hooks.index=oldIndex;}}
+ const panel=content();
+ expect(text(panel)).toContain('저장소 설정');expect(text(panel)).toContain('계정');expect(text(panel)).toContain('로그아웃');
+ expect(nodes(panel).filter(n=>typeof n.type==='function'&&n.type.name==='SettingToggle').map(n=>n.props.label)).toEqual(['자동 분석','보고서 저장','요약 댓글']);
+ const language=nodes(panel).find(n=>typeof n.type==='function'&&n.type.name==='ReportLanguageSetting')!;expect(text((language.type as any)(language.props))).not.toContain('새로 작성하는 보고서에 적용됩니다.');
+ const back=nodes(panel).find(n=>n.props?.['aria-label']==='보고서로 돌아가기')!;expect(back.props.title).toBe('보고서로 돌아가기');
+ back.props.onClick();await settle();
+ expect(settings()).toBeUndefined();
+});
+
+
+it('hands one visible-return refresh to the PR workspace even when reports do not change', async () => {
+  const workspace=()=>nodes().find(n=>n.type===RepositoryPullRequestWorkspace)!;
+  const before=workspace().props.resumeKey;
+  const visibility=vi.mocked(document.addEventListener).mock.calls.find(c=>c[0]==='visibilitychange')![1] as ()=>void;
+  Object.defineProperty(document,'visibilityState',{value:'hidden',configurable:true});visibility();await settle();
+  expect(workspace().props.resumeKey).toBe(before);
+  Object.defineProperty(document,'visibilityState',{value:'visible',configurable:true});visibility();await settle();
+  expect(workspace().props.resumeKey).toBe(before+1);
+  visibility();await settle();expect(workspace().props.resumeKey).toBe(before+1);
+  // Existing periodic polling and repeated visible notifications do not create recovery bursts.
+  expect(fetchMock.mock.calls.some(([p])=>p==='/api/dashboard/analyze')).toBe(false);
+});
+
+it('opens a native notification target through the normal authenticated GET without an analysis call',async()=>{
+ initialReportId='report-one';render();
+ await settle();await settle();expect(fetchMock.mock.calls.some(([p])=>p==='/api/dashboard/reports?id=report-one')).toBe(true);
+ expect(fetchMock.mock.calls.some(([p])=>p==='/api/dashboard/analyze')).toBe(false);
+});
+
+it("leads a first connection with the guide and keeps the installation access confirmation inside it", async () => {
+  repositories = []; reports = []; activity = [];
+  await click(find("Refresh reports and activity"));
+  const guide = () => nodes().find(n => typeof n.type === "function" && n.type.name === "ConnectRepositoryGuide");
+  expect(guide()?.props.stage).toBe("install");
+  expect(nodes().some(n => String(n.props.className ?? "").startsWith("dashboard-history-layout"))).toBe(false);
+  const normal = fetchMock.getMockImplementation() as (url: string, init?: RequestInit) => Promise<Response>;
+  fetchMock.mockImplementation(async (url: string, init?: RequestInit) => url === "/api/github/onboarding/callback?existing=1"
+    ? Response.json({ code: "github_existing_installation_reauth_required" }, { status: 401 }) : normal(url, init));
+  await guide()!.props.onInstall(); await settle(); await settle();
+  expect(guide()?.props.stage).toBe("reauth");
+  expect(nodes().some(n => n.props.className === "dashboard-reauth")).toBe(false);
+  expect(nodes().some(n => typeof n.type === "function" && n.type.name === "WorkspaceSignIn")).toBe(false);
 });

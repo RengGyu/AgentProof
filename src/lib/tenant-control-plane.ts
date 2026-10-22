@@ -1,3 +1,4 @@
+import { isReportLanguage, type ReportLanguage } from "./tenant-report-language";
 import { redactSecrets } from "./redact";
 import { getControlPlaneSupabaseEnv } from "./control-plane-supabase";
 import {
@@ -30,6 +31,7 @@ export interface TenantRepositoryGrant {
   saveReportsEnabled: boolean;
   slackNotificationsEnabled: boolean;
   llmAnalysisMode?: LlmAnalysisMode;
+  reportLanguage?: ReportLanguage;
   hybridPlannerConsentVersion?: HybridPlannerConsentVersion;
   privateAnalysisConsentVersion?: PrivateAnalysisConsentVersion;
   repositoryPrivate?: boolean;
@@ -52,6 +54,7 @@ export interface TenantRepositoryGrantSettingsInput {
   saveReportsEnabled?: unknown;
   slackNotificationsEnabled?: unknown;
   llmAnalysisMode?: unknown;
+  reportLanguage?: unknown;
   hybridPlannerConsentVersion?: unknown;
   privateAnalysisConsentVersion?: unknown;
   repositoryPrivate?: unknown;
@@ -90,6 +93,7 @@ interface TenantRepositoryGrantInput {
   saveReportsEnabled?: unknown;
   slackNotificationsEnabled?: unknown;
   llmAnalysisMode?: unknown;
+  reportLanguage?: unknown;
   hybridPlannerConsentVersion?: unknown;
   privateAnalysisConsentVersion?: unknown;
   repositoryPrivate?: unknown;
@@ -106,6 +110,7 @@ interface TenantRepositoryGrantRow {
   save_reports_enabled: boolean;
   slack_notifications_enabled: boolean;
   llm_analysis_mode?: LlmAnalysisMode | null;
+  report_language?: ReportLanguage;
   hybrid_planner_consent_version?: HybridPlannerConsentVersion | null;
   private_analysis_consent_version?: PrivateAnalysisConsentVersion | null;
   repository_is_private?: boolean | null;
@@ -124,7 +129,7 @@ type GlobalWithTenantGrants = typeof globalThis & {
 };
 
 const TENANT_REPOSITORY_GRANT_SELECT =
-  "select=tenant_id,installation_id,repository_id,repository_full_name,repository_is_private,enabled,analysis_enabled,comment_enabled,save_reports_enabled,slack_notifications_enabled,llm_analysis_mode,hybrid_planner_consent_version,private_analysis_consent_version";
+  "select=tenant_id,installation_id,repository_id,repository_full_name,repository_is_private,enabled,analysis_enabled,comment_enabled,save_reports_enabled,slack_notifications_enabled,llm_analysis_mode,report_language,hybrid_planner_consent_version,private_analysis_consent_version";
 
 export class TenantControlPlaneStoreError extends Error {
   constructor(message: string) {
@@ -548,7 +553,7 @@ function normalizeGrant(input: TenantRepositoryGrantInput): TenantRepositoryGran
   const privateAnalysisConsentVersion = normalizeOptionalPrivateAnalysisConsentVersion(input.privateAnalysisConsentVersion);
   const repositoryPrivate = normalizeOptionalRepositoryPrivate(input.repositoryPrivate);
 
-  if (!tenantId || !installationId || !repositoryFullName || llmAnalysisMode === null || hybridPlannerConsentVersion === null || privateAnalysisConsentVersion === null || repositoryPrivate === null) {
+  if (!tenantId || !installationId || !repositoryFullName || (input.reportLanguage !== undefined && !isReportLanguage(input.reportLanguage)) || llmAnalysisMode === null || hybridPlannerConsentVersion === null || privateAnalysisConsentVersion === null || repositoryPrivate === null) {
     return null;
   }
   if (hybridPlannerConsentVersion && (llmAnalysisMode !== "enhanced" || repositoryPrivate !== true)) return null;
@@ -565,6 +570,7 @@ function normalizeGrant(input: TenantRepositoryGrantInput): TenantRepositoryGran
     saveReportsEnabled: input.saveReportsEnabled === true,
     slackNotificationsEnabled: input.slackNotificationsEnabled === true,
     ...(llmAnalysisMode ? { llmAnalysisMode } : {}),
+    ...(isReportLanguage(input.reportLanguage) ? { reportLanguage: input.reportLanguage } : {}),
     ...(hybridPlannerConsentVersion ? { hybridPlannerConsentVersion } : {}),
     ...(privateAnalysisConsentVersion ? { privateAnalysisConsentVersion } : {}),
     ...(repositoryPrivate !== undefined ? { repositoryPrivate } : {})
@@ -751,6 +757,7 @@ async function updateSupabaseTenantRepositoryGrantSettings(
     p_save_reports_enabled: input.settings.saveReportsEnabled ?? null,
     p_slack_notifications_enabled: input.settings.slackNotificationsEnabled ?? null,
     p_llm_analysis_mode: input.settings.llmAnalysisMode ?? null,
+    p_report_language: input.settings.reportLanguage ?? null,
     p_hybrid_planner_consent_requested: input.settings.hybridPlannerConsentVersion === HYBRID_PLANNER_CONSENT_VERSION
       ? true
       : input.settings.hybridPlannerConsentVersion === null
@@ -907,6 +914,7 @@ function toTenantRepositoryGrantRow(grant: TenantRepositoryGrant, now: string): 
     comment_enabled: grant.commentEnabled,
     save_reports_enabled: grant.saveReportsEnabled,
     slack_notifications_enabled: grant.slackNotificationsEnabled,
+    ...(grant.reportLanguage ? { report_language: grant.reportLanguage } : {}),
     ...(grant.llmAnalysisMode ? { llm_analysis_mode: grant.llmAnalysisMode } : {}),
     ...(grant.hybridPlannerConsentVersion ? { hybrid_planner_consent_version: grant.hybridPlannerConsentVersion } : {}),
     ...(grant.privateAnalysisConsentVersion ? { private_analysis_consent_version: grant.privateAnalysisConsentVersion } : {}),
@@ -915,7 +923,7 @@ function toTenantRepositoryGrantRow(grant: TenantRepositoryGrant, now: string): 
   };
 }
 
-type TenantRepositoryGrantSettings = Partial<Pick<TenantRepositoryGrant, "enabled" | "analysisEnabled" | "commentEnabled" | "saveReportsEnabled" | "slackNotificationsEnabled" | "llmAnalysisMode">> & {
+type TenantRepositoryGrantSettings = Partial<Pick<TenantRepositoryGrant, "enabled" | "analysisEnabled" | "commentEnabled" | "saveReportsEnabled" | "slackNotificationsEnabled" | "llmAnalysisMode" | "reportLanguage">> & {
   hybridPlannerConsentVersion?: HybridPlannerConsentVersion | null;
   privateAnalysisConsentVersion?: PrivateAnalysisConsentVersion | null;
 };
@@ -928,6 +936,7 @@ function toTenantRepositoryGrantSettingsRow(settings: TenantRepositoryGrantSetti
   if (settings.commentEnabled !== undefined) row.comment_enabled = settings.commentEnabled;
   if (settings.saveReportsEnabled !== undefined) row.save_reports_enabled = settings.saveReportsEnabled;
   if (settings.slackNotificationsEnabled !== undefined) row.slack_notifications_enabled = settings.slackNotificationsEnabled;
+  if (settings.reportLanguage !== undefined) row.report_language = settings.reportLanguage;
   if (settings.llmAnalysisMode !== undefined) row.llm_analysis_mode = settings.llmAnalysisMode;
   if (settings.hybridPlannerConsentVersion !== undefined) row.hybrid_planner_consent_version = settings.hybridPlannerConsentVersion;
   if (settings.privateAnalysisConsentVersion !== undefined) row.private_analysis_consent_version = settings.privateAnalysisConsentVersion;
@@ -950,6 +959,7 @@ function rowToTenantRepositoryGrant(row: unknown): TenantRepositoryGrant | undef
     commentEnabled: value.comment_enabled,
     saveReportsEnabled: value.save_reports_enabled,
     slackNotificationsEnabled: value.slack_notifications_enabled,
+    reportLanguage: value.report_language,
     llmAnalysisMode: value.llm_analysis_mode
     ,hybridPlannerConsentVersion: value.hybrid_planner_consent_version,
     privateAnalysisConsentVersion: value.private_analysis_consent_version
@@ -968,6 +978,7 @@ function normalizeGrantSettingsUpdate(input: TenantRepositoryGrantSettingsInput)
   const llmAnalysisMode = normalizeOptionalLlmAnalysisMode(input.llmAnalysisMode);
   const hybridPlannerConsentVersion = normalizeOptionalHybridPlannerConsentVersion(input.hybridPlannerConsentVersion);
   const privateAnalysisConsentVersion = normalizeOptionalPrivateAnalysisConsentVersion(input.privateAnalysisConsentVersion);
+  if (input.reportLanguage !== undefined && !isReportLanguage(input.reportLanguage)) return null;
   if (input.llmAnalysisMode !== undefined && llmAnalysisMode === null) return null;
   if (input.hybridPlannerConsentVersion !== undefined && input.hybridPlannerConsentVersion !== null && hybridPlannerConsentVersion === null) return null;
   if (input.privateAnalysisConsentVersion !== undefined && input.privateAnalysisConsentVersion !== null && privateAnalysisConsentVersion === null) return null;
@@ -978,6 +989,7 @@ function normalizeGrantSettingsUpdate(input: TenantRepositoryGrantSettingsInput)
     ...(typeof input.saveReportsEnabled === "boolean" ? { saveReportsEnabled: input.saveReportsEnabled } : {}),
     ...(typeof input.slackNotificationsEnabled === "boolean" ? { slackNotificationsEnabled: input.slackNotificationsEnabled } : {}),
     ...(llmAnalysisMode ? { llmAnalysisMode } : {}),
+    ...(isReportLanguage(input.reportLanguage) ? { reportLanguage: input.reportLanguage } : {}),
     ...(input.llmAnalysisMode === "essential" || input.hybridPlannerConsentVersion === null
       ? { hybridPlannerConsentVersion: null }
       : hybridPlannerConsentVersion !== undefined

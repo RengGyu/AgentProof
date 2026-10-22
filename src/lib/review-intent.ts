@@ -1,3 +1,4 @@
+import { applyJevSelection, type JevSelectionContext, type JevProposal } from './jev-selection-contract';
 import { NAVIGATION_FAILURE_REASONS as navigationFailureReasons, getNavigationTransportDiagnostics, getNavigationMeasurements, measureReviewAsync, measureReviewSync, recordReviewEvidence, reviewArtifactId, reviewFileId, setNavigationMeasurements, type ReviewMeasurementContext, type NavigationTransportDiagnostics } from './review-navigation-diagnostics';
 import { extractReviewSnippets, REVIEW_PAYLOAD_SNIPPETS, REVIEW_PAYLOAD_BYTES, REVIEW_FILE_BYTES } from './review-snippets';
 import { createHash } from "crypto";
@@ -40,7 +41,7 @@ const TEST_PATH = /(?:^|\/)(?:tests?|__tests__|spec)(?:\/|$)|[._-](?:test|spec)\
 function reviewPathTier(path: string): number { return DOC_PATH.test(path) ? 3 : FIXTURE_PATH.test(path) ? 2 : TEST_PATH.test(path) ? 1 : 0; }
 const splitWords = (s: string) => s.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2");
 const pathTerms = (path: string) => [...new Set(splitWords(path).toLowerCase().split(/[^a-z0-9]+/).filter(t => t.length >= 4 && /^[a-z]/.test(t) && !COMMON.has(t) && !GENERIC_PATH_TERMS.has(t)))];
-const textTerms = (text: string) => [...new Set([...allTerms(text), ...allTerms(splitWords(text)).flatMap(t => t.split("_"))].filter(t => t.length >= 4))];
+export const textTerms = (text: string) => [...new Set([...allTerms(text), ...allTerms(splitWords(text)).flatMap(t => t.split("_"))].filter(t => t.length >= 4))];
 const stemMatch = (a: string, b: string) => {
   if (a === b || a.startsWith(b) || b.startsWith(a)) return true;
   let n = 0; while (n < a.length && n < b.length && a[n] === b[n]) n++;
@@ -332,6 +333,11 @@ const navigationDiagnostics=new WeakMap<ReviewNavigation,ReviewNavigationDiagnos
 /** Transient, text-free execution evidence. Callers may explicitly collect it without storing source. */
 export const getReviewNavigationDiagnostics=(navigation:ReviewNavigation)=>structuredClone(navigationDiagnostics.get(navigation)??[]);
 export interface ReviewNavigationOptions {
+  /** Default-off, first-ranking only; preserves every selected interval without another read. */
+  completeSmallSnapshot?:boolean;
+  /** Explicit public-only experiment; never enabled by an environment key or product default. */
+  selectionExperiment?:(context:JevSelectionContext,measurements?:ReviewMeasurementContext)=>Promise<JevProposal|null>;
+
   measurements?:ReviewMeasurementContext;
   onDiagnostics?:(event:ReviewNavigationDiagnostics)=>void;
   model:string; provider?:(request:ReviewNavigationRequest)=>Promise<unknown>;
@@ -383,6 +389,12 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
   const preferredSnapshotIds=new Set<string>(),artifactGoals=new Map<string,Set<string>>();
   const snapshotScores=new Map<string,Record<string,number>>();
   const suppliedSnapshots:Array<{path:string;headSha:string;content:string}>=[];
+  const completeSmallSnapshots=new Map<string,string>();
+  let smallSnapshotAttempted=false;
+  const experimentCandidates:ReviewNavigationRequest['artifacts']=[];
+  let experimentAttempted=false;
+  let selectionPool:ReviewNavigationRequest['artifacts']=[];
+  let experimentProtected:string[]=[];
   const add=(path:string,revision:string,side:'head'|'base',start:number,content:string,origin:'diff'|'snapshot')=>{
     if(artifacts.length>=artifactLimit){evidence('artifact',{fileId:reviewFileId(path,revision),reason:'artifact_budget_exceeded'});navigation.limitations.push('artifact_context_truncated');return;}
     if(!safePath(path)||!exact(revision)||start<1){evidence('artifact',{fileId:reviewFileId(path,revision),reason:'invalid_reference'});navigation.limitations.push('invalid_reference');return;}
@@ -435,6 +447,7 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
   const returned=new Set<string>(),aliases=new Map<string,string>();
   const canonical=(id:string):string=>aliases.has(id)?canonical(aliases.get(id)!):id;
   const finish=()=>{
+    completeSmallSnapshots.clear();
     if(!navigation.goals.length)navigation.unprocessed=[...new Set([...navigation.unprocessed,...sources.flatMap(s=>s.spans.map(p=>p.id))])];
     navigation.artifacts=artifacts.filter(a=>returned.has(a.id)).map(({content:_,...a})=>a);
     const limitationCount=new Set(navigation.limitations).size;navigation.limitations=boundNavigationLimitations(navigation.limitations);
@@ -467,13 +480,21 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
     const safe=blobs.filter(b=>safePath(b.path)&&b.headSha===navigation.headSha);
     if(safe.length<blobs.length)navigation.limitations.push('invalid_reference');
     if(safe.length>8)navigation.limitations.push('retrieval_file_budget_exceeded');
+    if(options.completeSmallSnapshot&&!smallSnapshotAttempted&&!options.selectionExperiment)for(const b of safe.slice(0,8)){
+      const content=redactSecretsPreservingLines(b.content.replace(/\r\n?/g,'\n'));
+      if(content.split('\n').length<=80&&Buffer.byteLength(content)<=8000&&completeSmallSnapshots.size<8)completeSmallSnapshots.set(b.path,content);
+    }
     const hints=navigation.goals.map(g=>({id:g.id,terms:textTerms(goalText(g)).sort().slice(0,1024),anchors:artifacts.filter(a=>a.side==='head'&&(a.origin==='diff'&&(incompletePaths.has(a.path)||artifactGoals.get(a.id)?.has(g.id))||a.id===g.firstInspection||g.candidates.some(c=>c.artifactId===a.id))).map(a=>({path:a.path,startLine:a.startLine,endLine:a.endLine,weak:a.origin==='diff'&&incompletePaths.has(a.path)}))}));
     if(measurements)for(const b of blobs)evidence('read',{fileId:reviewFileId(b.path,b.headSha),bytes:Buffer.byteLength(b.content),hash:sha(b.content),reason:!safe.includes(b)?'invalid_reference':safe.indexOf(b)>=8?'file_budget_exceeded':'included'});
-    const selected=await measureReviewAsync(measurements,'snippet_extraction',child=>extractReviewSnippets(safe.slice(0,8),hints,child));
+    const selected=await measureReviewAsync(measurements,'snippet_extraction',child=>extractReviewSnippets(safe.slice(0,8),hints,child,options.selectionExperiment&&input.repositoryPrivate===false?pool=>{
+      for(const s of pool){const hash=sha(s.content),a={id:reviewArtifactId({path:s.path,revision:s.headSha,startLine:s.startLine,endLine:s.endLine,hash}),path:s.path,revision:s.headSha,side:'head' as const,startLine:s.startLine,endLine:s.endLine,hash,kind:/(?:^|\/)(?:tests?|__tests__)(?:\/|\.)|[._]test\./i.test(s.path)?'test' as const:'code' as const,origin:'snapshot' as const,content:s.content,goalIds:s.goalIds};
+        if(!experimentCandidates.some(b=>b.id===a.id)&&experimentCandidates.length<64&&Buffer.byteLength(JSON.stringify([...experimentCandidates,a]))<=192_000)experimentCandidates.push(a);
+      }
+    }:undefined));
     navigation.limitations.push(...selected.limitations);
     for(const snippet of selected.snippets){const id=add(snippet.path,snippet.headSha,'head',snippet.startLine,snippet.content,'snapshot');if(id){if(snippet.matched)preferredSnapshotIds.add(id);snapshotScores.set(id,snippet.goalScores);artifactGoals.set(id,new Set([...(artifactGoals.get(id)??[]),...snippet.goalIds]));}}
   };
-  const returnedArtifacts=()=>{
+  const returnedArtifacts=(completeSmallSnapshot=false)=>{
     const associations=new Map(artifacts.map(a=>[a.id,new Set(artifactGoals.get(a.id)??[])]));
     const pool=artifacts.filter(a=>canonical(a.id)===a.id).slice();
     // Canonicalize only overlapping, byte-identical source at the same revision and side.
@@ -495,6 +516,7 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
       if(a.id!==id)aliases.set(a.id,id);if(b.id!==id)aliases.set(b.id,id);
       pool[i]=artifacts.find(c=>c.id===id)!;pool.splice(j,1);j=i;
     }
+    if(options.selectionExperiment&&input.repositoryPrivate===false)selectionPool=pool.map(a=>({...a,goalIds:[...(associations.get(a.id)??[])]}));
     const selected=new Map<string,Set<string>>();let bytes=2;
     // A fixed overhead allowance makes grouping labels irrelevant to the source-code budget.
     const budgetGoalIds=Array.from({length:16},(_,n)=>`goal_${n+1}`);
@@ -517,6 +539,7 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
     // Preserve the chosen snippets for each concern through the smaller shared packet;
     // alphabetical file order is not a relevance score within an exact-revision read.
     const goalSnapshots=navigation.goals.map(g=>({goal:g.id,ids:['code','test'].flatMap(kind=>pool.filter(a=>a.kind===kind&&preferredSnapshotIds.has(a.id)&&(snapshotScores.get(a.id)?.[g.id]??0)>0).sort((a,b)=>(snapshotScores.get(b.id)?.[g.id]??0)-(snapshotScores.get(a.id)?.[g.id]??0)||a.path.localeCompare(b.path)||a.startLine-b.startLine).slice(0,kind==='test'?1:2).map(a=>a.id))}));
+    if(options.selectionExperiment)experimentProtected=[...new Set([...reservation.flatMap(g=>g.ids),...goalSnapshots.flatMap(g=>g.ids)].flatMap(id=>[id,canonical(id)]))];
     for(let slot=0;slot<3;slot++)for(const g of goalSnapshots){const id=g.ids[slot];if(id&&!include(id,[...(associations.get(id)??[])]))navigation.limitations.push('retrieval_budget_exceeded');}
     const ranked=pool.sort((a,b)=>Number(preferredSnapshotIds.has(b.id))-Number(preferredSnapshotIds.has(a.id))||a.path.localeCompare(b.path)||a.startLine-b.startLine);
     const firstPaths=new Set<string>();const leading=ranked.filter(a=>{if(firstPaths.has(a.path))return false;firstPaths.add(a.path);return true;});
@@ -532,14 +555,45 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
       if(g.firstInspection)g.firstInspection=resolve(g.firstInspection);
       g.candidates=g.candidates.map(c=>({...c,artifactId:resolve(c.artifactId)})).filter((c,index,all)=>all.findIndex(other=>other.artifactId===c.artifactId)===index);
     }
-    return [...selected].map(([id,ids])=>{returned.add(id);return {...artifacts.find(a=>a.id===id)!,goalIds:[...ids]};}).sort((a,b)=>a.path.localeCompare(b.path)||a.startLine-b.startLine||a.id.localeCompare(b.id));
+    let packet=[...selected].map(([id,ids])=>({...artifacts.find(a=>a.id===id)!,goalIds:[...ids]}));
+    // Freeze B0 first. Never free a slot, remove another interval, or combine selection experiments.
+    if(completeSmallSnapshot&&options.completeSmallSnapshot&&!options.selectionExperiment){
+      smallSnapshotAttempted=true;
+      for(const parent of packet){
+        const content=completeSmallSnapshots.get(parent.path);
+        if(content===undefined||parent.origin!=='snapshot'||parent.side!=='head'||parent.revision!==navigation.headSha||canonical(parent.id)!==parent.id)continue;
+        const lines=content.split('\n'),sameFile=artifacts.filter(a=>a.path===parent.path&&a.revision===parent.revision&&a.side===parent.side);
+        const agrees=(a:ReviewNavigationRequest['artifacts'][number])=>a.startLine>=1&&a.endLine<=lines.length&&a.endLine-a.startLine+1===a.content.split('\n').length&&sha(a.content)===a.hash&&reviewArtifactId(a)===a.id&&lines.slice(a.startLine-1,a.endLine).join('\n')===a.content;
+        if(!sameFile.every(agrees))continue;
+        const covered=(line:number)=>packet.some(a=>a.path===parent.path&&a.revision===parent.revision&&a.side===parent.side&&a.startLine<=line&&a.endLine>=line);
+        if(!sameFile.some(a=>a.origin==='snapshot'&&Array.from({length:a.endLine-a.startLine+1},(_,n)=>a.startLine+n).some(line=>!covered(line))))continue;
+        const hash=sha(content),id=reviewArtifactId({path:parent.path,revision:parent.revision,startLine:1,endLine:lines.length,hash});
+        if(id===parent.id||artifacts.length>=artifactLimit)continue;
+        const full={...parent,id,startLine:1,endLine:lines.length,hash,content};
+        const proposal=packet.map(a=>a.id===parent.id?full:a);
+        const bounded=(items:typeof proposal)=>items.length<=REVIEW_PAYLOAD_SNIPPETS&&Buffer.byteLength(JSON.stringify(items))<=REVIEW_PAYLOAD_BYTES;
+        if(!bounded(proposal)||!bounded(proposal.map(a=>({...a,goalIds:budgetGoalIds}))))continue;
+        // All selected/protected locations must be mappable by exact containment, not by ID guesswork.
+        const protectedIds=navigation.goals.flatMap(g=>[...(g.firstInspection?[g.firstInspection]:[]),...g.candidates.map(c=>c.artifactId)]);
+        if(protectedIds.some(ref=>!packet.some(a=>a.id===canonical(ref))))continue;
+        if(add(full.path,full.revision,full.side,1,full.content,'snapshot')!==id)continue;
+        aliases.set(parent.id,id);artifactGoals.set(id,new Set(parent.goalIds));
+        snapshotScores.set(id,{...(snapshotScores.get(parent.id)??{})});if(preferredSnapshotIds.has(parent.id))preferredSnapshotIds.add(id);
+        for(const g of navigation.goals){if(g.firstInspection===parent.id)g.firstInspection=id;g.candidates=g.candidates.map(c=>c.artifactId===parent.id?{...c,artifactId:id}:c);}
+        evidence('artifact',{artifactId:id,parentIds:[parent.id],reason:'merged'});
+        packet=proposal;break;
+      }
+      completeSmallSnapshots.clear();
+    }
+    for(const a of packet)returned.add(a.id);
+    return packet.sort((a,b)=>a.path.localeCompare(b.path)||a.startLine-b.startLine||a.id.localeCompare(b.id));
   };
   const packetHashes=new WeakMap<ReviewNavigationRequest,string>();
   const packetHash=(packet:ReviewNavigationRequest)=>{let digest=packetHashes.get(packet);if(!digest){digest=sha(JSON.stringify(packet));packetHashes.set(packet,digest);}return digest;};
-  const request=(stage:'intent'|'ranking'):ReviewNavigationRequest=>measureReviewSync(measurements,'packet',child=>{
+  const request=(stage:'intent'|'ranking',completeSmallSnapshot=false):ReviewNavigationRequest=>measureReviewSync(measurements,'packet',child=>{
     evidenceContext=child;
     try {
-      const packetArtifacts=stage==='ranking'?returnedArtifacts():[];
+      const packetArtifacts=stage==='ranking'?returnedArtifacts(completeSmallSnapshot):[];
       const packet:ReviewNavigationRequest={stage,model:options.model,sources:stage==='intent'?sources:[],goals:navigation.goals.map(g=>({...g,firstInspection:null,candidates:[],uncertainty:[]})),artifacts:packetArtifacts,inventory:stage==='ranking'?prioritizePaths(input.changedFiles.filter(f=>safePath(f.path)).map(f=>f.path),navigation.goals.map(g=>g.summary).join(' ')+' '+sourceText).slice(0,128).map(path=>input.changedFiles.find(f=>f.path===path)!).map(f=>({path:f.path,status:f.status??'modified'})):[],capabilities:{readPaths:!!options.readArtifacts,searchScope:'supplied_artifacts',wholeRepository:false}};
       if(measurements){const digest=packetHash(packet);for(const a of packet.artifacts)evidence('packet',{artifactId:a.id,packetHash:digest,reason:'included'});}
       return packet;
@@ -547,6 +601,19 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
   });
   const invoke=async(packet:ReviewNavigationRequest,stage:ReviewNavigationDiagnostics['stage'])=>{
     if(!await phaseAllowed())throw new Error('Repository access changed.');
+    if(stage==='ranking'&&options.selectionExperiment&&input.repositoryPrivate===false&&!experimentAttempted){
+      experimentAttempted=true;
+      const context:JevSelectionContext={repositoryPrivate:false,headSha:navigation.headSha,baseSha:navigation.baseSha,packet:structuredClone(packet),candidates:structuredClone([...selectionPool,...experimentCandidates]),protectedIds:[...new Set([...experimentProtected,...navigation.goals.flatMap(g=>[...(g.firstInspection?[g.firstInspection]:[]),...g.candidates.map(c=>c.artifactId)])])]};
+      const proposal=await measureReviewAsync(measurements,'model',child=>options.selectionExperiment!(structuredClone(context),child));
+      const replacement=applyJevSelection(context,proposal);
+      if(replacement.accepted){
+        for(const a of replacement.artifacts)if(!artifacts.some(b=>b.id===a.id))add(a.path,a.revision,a.side,a.startLine,a.content,a.origin);
+        // A source interval rejected by the ordinary artifact cap cannot reach the final model.
+        if(replacement.artifacts.every(a=>artifacts.some(b=>b.id===a.id))){packet.artifacts=replacement.artifacts;packetHashes.delete(packet);const digest=packetHash(packet);for(const a of packet.artifacts){returned.add(a.id);evidence('packet',{artifactId:a.id,packetHash:digest,reason:'included'});}}
+      }
+      if(!await phaseAllowed())throw new Error('Repository access changed.');
+    }
+
     const trace:ReviewNavigationDiagnostics={version:1,stage,providerCalled:true,limits:{artifactBytes:REVIEW_PAYLOAD_BYTES,artifactCount:REVIEW_PAYLOAD_SNIPPETS},resultLimitations:[],requestHash:packetHash(packet),artifactBytes:Buffer.byteLength(JSON.stringify(packet.artifacts)),artifacts:packet.artifacts.map(({content:_,...a})=>({...a,goalIds:[...(a.goalIds??[])]})),sources:packet.sources.map(s=>({id:s.id,hash:s.hash,spans:s.spans.map(p=>({start:p.start,end:p.end,hash:sha(p.text)}))})),goals:packet.goals.map(g=>({id:g.id,summaryHash:sha(g.summary),sourceRefs:structuredClone(g.sourceRefs),facets:g.facets.map(f=>({summaryHash:sha(f.summary),sourceRefs:structuredClone(f.sourceRefs)}))})),limitations:[...new Set(navigation.limitations)],decisions:[]};
     traces.push(trace);
     try{return await measureReviewAsync(measurements,'model',child=>{setNavigationMeasurements(packet,child);return options.provider!(packet);});}finally{trace.transport=getNavigationTransportDiagnostics(packet);}
@@ -708,7 +775,7 @@ export async function enrichReviewNavigation(input:PullRequestInput,report:impor
     if(missing.length)await readSnapshots(missing,'automatic');
     for(let round=0;round<2;round++){
       stage=round===0?'ranking':'refinement';
-      const previouslyReturned=new Set(returned),packet=request('ranking');
+      const previouslyReturned=new Set(returned),packet=request('ranking',round===0);
       if(round===1&&!packet.artifacts.some(a=>!previouslyReturned.has(a.id))){lifecycle.push({kind:'stop',reason:'no_new_context'});break;}
       const rawResult:unknown=await invoke(packet,stage);
       const result=measureReviewSync(measurements,'local_validation',child=>{

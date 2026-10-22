@@ -8,7 +8,7 @@ export const REVIEW_PAYLOAD_SNIPPETS = 16;
 export const REVIEW_PAYLOAD_BYTES = 48_000;
 interface GoalHint { id:string; terms:string[]; anchors:Array<{path:string;startLine:number;endLine:number;weak?:boolean}> }
 interface ReadFile { path:string;headSha:string;content:string }
-interface Snippet extends ReadFile { startLine:number;endLine:number;goalIds:string[];matched:boolean;goalScores:Record<string,number> }
+export interface Snippet extends ReadFile { startLine:number;endLine:number;goalIds:string[];matched:boolean;goalScores:Record<string,number> }
 interface Range { startLine:number;endLine:number;priority:number;titleTerms?:string[] }
 const overlaps=(a:Pick<Range,'startLine'|'endLine'>,b:Pick<Range,'startLine'|'endLine'>)=>a.startLine<=b.endLine&&b.startLine<=a.endLine;
 const wordsFor=(text:string)=>{
@@ -17,7 +17,7 @@ const wordsFor=(text:string)=>{
 };
 
 /** AST boundaries for JS/TS; other languages remain explicitly unparsed, anchored context. */
-export async function extractReviewSnippets(files:ReadFile[],goals:GoalHint[],measurements?:ReviewMeasurementContext):Promise<{snippets:Snippet[];limitations:string[]}> {
+export async function extractReviewSnippets(files:ReadFile[],goals:GoalHint[],measurements?:ReviewMeasurementContext,onCandidates?:(candidates:Snippet[])=>void):Promise<{snippets:Snippet[];limitations:string[]}> {
  const hash=(s:string)=>createHash('sha256').update(s).digest('hex');
  const metadataCache=new WeakMap<Snippet,{content:string;start:number;end:number;value:{artifactId:string;fileId:string;hash:string;startLine:number;endLine:number;bytes:number}}>();
  const metadata=(s:Snippet)=>{
@@ -174,6 +174,12 @@ export async function extractReviewSnippets(files:ReadFile[],goals:GoalHint[],me
  const ordered=[...new Set([...goalLeading,...leading,...ranked])];
  const testIndex=ordered.findIndex(c=>/(?:^|\/)(?:tests?|__tests__)(?:\/|\.)|[._]test\./i.test(c.path));
  if(testIndex>0)ordered.splice(1,0,...ordered.splice(testIndex,1));
+ // Explicit request-local experiment only. Raw originals never leave this function.
+ if(onCandidates){const pool:Snippet[]=[];let size=2;
+  for(const {score:_,...candidate} of ordered){const cost=Buffer.byteLength(JSON.stringify(candidate))+(pool.length?1:0);if(pool.length>=64||size+cost>192_000)continue;size+=cost;pool.push(structuredClone(candidate));}
+  try{onCandidates(pool);}catch{/* Collection cannot change the baseline selection. */}
+ }
+
  const payloadSize=(s:Snippet)=>{const {goalScores:_,...payload}=s;return Buffer.byteLength(JSON.stringify({...payload,goalIds:Array.from({length:16},(_,n)=>`goal_${n+1}`)}));};
  for(const candidate of ordered){
   const covering=selected.find(r=>r.path===candidate.path&&r.headSha===candidate.headSha&&r.startLine<=candidate.startLine&&r.endLine>=candidate.endLine&&r.content.split('\n').slice(candidate.startLine-r.startLine,candidate.endLine-r.startLine+1).join('\n')===candidate.content);

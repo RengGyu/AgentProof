@@ -1,3 +1,4 @@
+import {safePurposeReviewPath,isPurposeReviewForSummary} from './purpose-summary';
 import { isTestFocusedReviewGoal } from "./review-intent";
 import type { ReviewIntentGraphV1, ReviewSourceRefV1 } from "./review-intent";
 import type { EvidenceItem, RequirementFinding, VerificationReport, VerificationReportV2 } from "./types";
@@ -35,6 +36,10 @@ export interface PrEvidenceReviewObjective {
 }
 
 export interface PrEvidenceReview {
+  repositoryFullName?:string;
+  purposeReview?: import("./purpose-contract").PurposeReview;
+  purpose?: import("./purpose-contract").PurposeAssessmentSummary;
+  purposeFacts?: import("./purpose-contract").PurposeAssessment;
   mode: "objectives" | "change_summary";
   source: null | {
     kind: "linked_issue" | "pr_author_claim" | "mixed" | "provided_requirement";
@@ -56,7 +61,6 @@ interface PrEvidenceReviewContext {
 }
 
 const SAFE_REPOSITORY = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
-const SAFE_PATH = /^[A-Za-z0-9_.@+/#:()\[\]-]+$/;
 const EXACT_SHA = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/;
 
 export function buildExactGitHubFileUrl(input: {
@@ -67,17 +71,24 @@ export function buildExactGitHubFileUrl(input: {
 }): string | undefined {
   if (!safeRepository(input.repositoryFullName) || !EXACT_SHA.test(input.revisionSha) || !safePath(input.path)) return undefined;
   if (input.line !== undefined && (!Number.isSafeInteger(input.line) || input.line < 1)) return undefined;
-  const encodedPath = input.path.split("/").map(encodeURIComponent).join("/");
+  let encodedPath:string;try{encodedPath=input.path.split('/').map(encodeURIComponent).join('/');}catch{return undefined;}
   return `https://github.com/${input.repositoryFullName}/blob/${input.revisionSha}/${encodedPath}${input.line ? `#L${input.line}` : ""}`;
 }
 
 export function usesPrEvidenceReview(report: NonNullable<DashboardReportDetail["report"]>): boolean {
+  if(isPurposeReviewForSummary(report.purposeReview,report.purposeAssessmentSummary))return true;
   return (report.reportSchemaVersion === "verification-report.v2" || report.generalPrAssessmentSummary?.mode === "ordinary_pr")
     && report.generalPrAssessmentSummary?.mode !== "typed_contract_companion"
     && (!report.verificationContract || report.verificationContract.state === "absent");
 }
 
 export function buildPrEvidenceReview(report: VerificationReport, context: PrEvidenceReviewContext = {}): PrEvidenceReview {
+  const review = buildPrEvidenceReviewBase(report,context);
+  const purpose = (report as VerificationReportV2).purposeAssessmentSummary;
+  return purpose ? {...review,repositoryFullName:context.repositoryFullName??repositoryFromPullUrl(report.source.url),purpose,...((report as VerificationReportV2).purposeReview?{purposeReview:(report as VerificationReportV2).purposeReview}:{}),...(purpose.flow === "explore_final_v1" && (report as VerificationReportV2).purposeAssessment?.facts ? {purposeFacts:(report as VerificationReportV2).purposeAssessment} : {})} : review;
+}
+
+function buildPrEvidenceReviewBase(report: VerificationReport, context: PrEvidenceReviewContext = {}): PrEvidenceReview {
   const changeSummaryOnly = report.requirements.length === 0;
   const sourceRepository = repositoryFromPullUrl(report.source.url);
   const repositoryFullName = sourceRepository && context.repositoryFullName && sourceRepository !== context.repositoryFullName ? undefined : context.repositoryFullName ?? sourceRepository;
@@ -117,6 +128,12 @@ export function buildPrEvidenceReview(report: VerificationReport, context: PrEvi
 }
 
 export function buildDashboardPrEvidenceReview(detail: DashboardReportDetail & { repositoryFullName?: string }): PrEvidenceReview | undefined {
+  const review = buildDashboardPrEvidenceReviewBase(detail);
+  const purpose = detail.report?.purposeAssessmentSummary;
+  return review && purpose?.flow === "explore_final_v1" ? {...review,repositoryFullName:detail.repositoryFullName,purpose,...(detail.report?.purposeReview?{purposeReview:detail.report.purposeReview}:{})} : review;
+}
+
+function buildDashboardPrEvidenceReviewBase(detail: DashboardReportDetail & { repositoryFullName?: string }): PrEvidenceReview | undefined {
   const report = detail.report as (NonNullable<DashboardReportDetail["report"]> & { proofGraph?: VerificationReport["proofGraph"] }) | undefined;
   if (!report || !usesPrEvidenceReview(report)) return undefined;
   if (!report.reviewCandidates?.navigation && report.reviewCandidates?.intentGraph?.repository && detail.repositoryFullName && report.reviewCandidates.intentGraph.repository !== detail.repositoryFullName) detail = { ...detail, repositoryFullName: undefined };
@@ -383,8 +400,7 @@ function repositoryFromPullUrl(value: string | undefined): string | undefined {
 }
 
 function safePath(value: string): boolean {
-  const segments = value.split("/");
-  return value.length <= 240 && SAFE_PATH.test(value) && !value.startsWith("/") && !segments.some(segment => !segment || segment === ".." || segment === ".");
+  return safePurposeReviewPath(value);
 }
 
 function safeRepository(value: string): boolean {
@@ -501,4 +517,11 @@ function projectNavigation(nav:import("./review-intent").ReviewNavigation,change
   const authority=authorities.length>1?'mixed_sources':authorities[0]??'provided_source';
   const kind=authority==='issue_source'?'linked_issue':authority==='pr_author_claim'?'pr_author_claim':authority==='mixed_sources'?'mixed':'provided_requirement';
   return {mode:objectives.length?'objectives':'change_summary',sourceLinks:nav.sources.filter((s,index,all)=>all.findIndex(other=>other.url===s.url)===index).flatMap(s=>s.url?[{label:s.authority.replaceAll('_',' '),url:s.url}]:[]),source:nav.sources.length?{kind,authority:authority==='pr_author_claim'?'author_claim':authority,label:authority.replaceAll('_',' ')}:null,objectives,changes:bound?changes:changes.map(({url:_,...item})=>item),nextInspection:objectives[0]?.nextInspection??(nav.limitations.includes('no_interpreted_goal')&&!nav.failures?.some(f=>f.stage==='intent')?'No review goal was identified; inspect the source and collected changes.':'Goal interpretation unavailable; source and unranked collected changes remain available.'),retrievalNote:`Inspection uses linked evidence at the analyzed commit; whole repository not searched.${nav.limitations.includes('freshness_unavailable')?' Current GitHub PR state was not reconfirmed; code links remain pinned to the analyzed commit.':''}`};
+}
+
+/** Public purpose source links reuse exact repository/revision binding; code API permissions do not expand. */
+export function purposeReferenceUrl(review:PrEvidenceReview,ref:NonNullable<PrEvidenceReview['purposeReview']>['references'][number]):string|undefined {
+ if(!review.repositoryFullName)return undefined;
+ const url=buildExactGitHubFileUrl({repositoryFullName:review.repositoryFullName,revisionSha:ref.revision,path:ref.path,line:ref.startLine});
+ return url&&ref.endLine>ref.startLine?url+'-L'+ref.endLine:url;
 }

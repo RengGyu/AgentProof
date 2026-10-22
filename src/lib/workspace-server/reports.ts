@@ -1,27 +1,37 @@
+import {canReadWorkspaceJob,workspaceJobReceipt} from './queued-analysis';
+import {withAnalysisDiagnostics,analysisDiagnostic,analysisHash,bindAnalysisDiagnosticTenant} from '@/lib/analysis-diagnostics';
 import { resolveWorkspaceAccess, type WorkspaceSource } from "./access";
 import { noStoreJson } from "@/lib/http";
 import { getSavedReport, listTenantSavedReportDetails, listTenantSavedReports, SavedReportStoreError, TENANT_SAVED_REPORT_FILTER_CANDIDATE_LIMIT, tenantSavedReportVerificationOutcome, type StoredServerReport } from "@/lib/server-report-store";
 import { TenantAuthStoreError } from "@/lib/tenant-auth";
 import { tenantReportAnalysisContext } from "@/lib/tenant-report-language";
-import { listTenantAnalysisJobs, resolveAnalysisJobFreshness, type AnalysisJobFreshness, type TenantAnalysisJobSummary } from "@/lib/analysis-jobs";
+import { readTenantRepositoryAnalysisJobs, listTenantAnalysisJobs, resolveAnalysisJobFreshness, type AnalysisJobFreshness, type TenantAnalysisJobSummary } from "@/lib/analysis-jobs";
+import { dashboardAnalysisFailureMessage } from "@/lib/github-dashboard-view-model";
 import type { DashboardSavedReport } from "@/lib/github-dashboard-view-model";
 
 export async function GET(request: Request, source: WorkspaceSource = "web") {
+  return withAnalysisDiagnostics(request,()=>readReports(request,source));
+}
+async function readReports(request:Request,source:WorkspaceSource) {
   try {
     const access = await resolveWorkspaceAccess(request, source);
     const tenantId = access.tenantId;
     if (!access.authorized || !tenantId) return noStoreJson({ error: "Dashboard reports require a signed-in tenant session.", code: "dashboard_reports_unauthorized" }, { status: 401 });
+    bindAnalysisDiagnosticTenant(tenantId);
     const searchParams = new URL(request.url).searchParams;
     const id = searchParams.get("id");
     if (id) {
       const saved = await getSavedReport(id, { tenantId: access.tenantId });
       if (!saved) return noStoreJson({ error: "Report was not found.", code: "dashboard_report_not_found" }, { status: 404 });
-      return noStoreJson({ ok: true, ...await toDashboardReportDetail(saved, tenantId), privacy: "tenant-sanitized-detail" });
+      const detail=await toDashboardReportDetail(saved,tenantId);
+      analysisDiagnostic('store','reused',()=>({hashes:{report:analysisHash(id),projection:analysisHash(saved.report)},reportCreatedAt:saved.createdAt}));
+      analysisDiagnostic('projection','success',()=>({hashes:{projection:analysisHash(detail)}}));
+      return noStoreJson({ ok: true, ...detail, privacy: "tenant-sanitized-detail" });
     }
     const repositorySelector = searchParams.get("repositoryId");
     if (repositorySelector !== null) {
       const repositoryId = normalizeRepositorySelector(repositorySelector);
-      if (repositoryId && searchParams.get("scope") === "history" && source === "web") {
+      if (repositoryId && searchParams.get("scope") === "history") {
         const rawOffset = searchParams.get("offset") ?? "0";
         const offset = Number(rawOffset);
         if (!/^\d+$/.test(rawOffset) || !Number.isSafeInteger(offset)) return noStoreJson({ error: "History page is invalid." }, { status: 400 });
@@ -33,7 +43,13 @@ export async function GET(request: Request, source: WorkspaceSource = "web") {
             ? { freshness: "unknown" as const, copyEligible: false }
             : await resolveSavedReportFreshness(report, tenantId))
         })));
-        return noStoreJson({ ok: true, reports, hasMore: saved.length > pageSize,
+        const jobs=[];
+        let jobsUnavailable=false;
+        try {
+          const activeJobs = offset===0 ? await readTenantRepositoryAnalysisJobs({tenantId,repositoryId,activeOnly:true}) : [];
+          for(const job of activeJobs)if(await canReadWorkspaceJob(job,tenantId))jobs.push(workspaceJobReceipt(job));
+        } catch { jobsUnavailable=true; }
+        return noStoreJson({ ok: true, reports, jobs, ...(jobsUnavailable?{jobsUnavailable:true}:{}), hasMore: saved.length > pageSize,
           nextOffset: saved.length > pageSize ? offset + pageSize : null, privacy: "tenant-report-metadata-only" });
       }
       if (!repositoryId || searchParams.get("scope") !== "current") {
@@ -109,8 +125,7 @@ function failedAnalysisRowsForDashboard(
       copyEligible: false,
       availability: "analysis_failed" as const,
       failure: {
-        ...(job.errorCode ? { code: job.errorCode } : {}),
-        ...(job.errorSummary ? { summary: job.errorSummary } : {})
+        summary: dashboardAnalysisFailureMessage({ code: job.errorCode })
       }
     }));
 }
@@ -122,6 +137,7 @@ async function toDashboardReportDetail(saved: StoredServerReport, tenantId: stri
   if (saved.availability === "unavailable") {
     return {
       availability: "unavailable" as const,
+      id: saved.id,
       createdAt: saved.createdAt,
       priority: "low",
       repositoryId: saved.repositoryId,
@@ -133,6 +149,7 @@ async function toDashboardReportDetail(saved: StoredServerReport, tenantId: stri
   }
   return {
     availability: "available" as const,
+    id: saved.id,
     verificationOutcome: tenantSavedReportVerificationOutcome(saved.report),
     report: saved.report,
     createdAt: saved.createdAt,
@@ -148,20 +165,22 @@ async function toDashboardReportDetail(saved: StoredServerReport, tenantId: stri
 }
 
 async function resolveSavedReportFreshness(
-  saved: Pick<StoredServerReport, "repositoryId" | "pullRequestNumber" | "headSha" | "staleAt">,
+  saved: Pick<StoredServerReport, "repositoryId" | "pullRequestNumber" | "headSha" | "staleAt" | "createdAt">,
   tenantId: string
 ): Promise<AnalysisJobFreshness> {
   if (!saved.repositoryId || !saved.pullRequestNumber || !saved.headSha) {
     return { freshness: "unknown", copyEligible: false };
   }
   try {
-    return await resolveAnalysisJobFreshness({
+    const freshness = await resolveAnalysisJobFreshness({
       tenantId,
       repositoryId: saved.repositoryId,
       pullRequestNumber: saved.pullRequestNumber,
       reportHeadSha: saved.headSha,
+      reportCreatedAt: saved.createdAt,
       staleAt: saved.staleAt
     });
+    return { ...freshness, ...(freshness.failure ? { failure: { summary: dashboardAnalysisFailureMessage(freshness.failure) } } : {}) };
   } catch {
     return { freshness: "unknown", copyEligible: false };
   }

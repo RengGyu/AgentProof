@@ -1,3 +1,5 @@
+import { isPurposeSummary } from "./purpose-summary";
+import type { PurposeAssessmentSummary } from "./purpose-contract";
 import { createUnverifiedAuthenticity } from "./report-authenticity";
 import { copyOrdinaryDocumentationSummary, isOrdinaryDocumentationSummary, type OrdinaryDocumentationSummary } from "./general-pr-documentation-presentation";
 import { copyOrdinaryStaticSummary, isOrdinaryStaticSummary, type OrdinaryStaticSummary } from "./general-pr-static-types-presentation";
@@ -48,6 +50,7 @@ interface ShareableReportV4 extends Omit<ShareableReportV3, "version"> {
   verificationContract: Omit<VerificationContractReportV2, "integrity" | "gaps">;
   generalPrAssessmentSummary?: GeneralPrAssessmentSummaryV1;
   ordinaryDocumentationSummary?: OrdinaryDocumentationSummary;
+  purposeAssessmentSummary?: PurposeAssessmentSummary;
   ordinaryStaticSummary?: OrdinaryStaticSummary;
   ordinaryRequirementOutcomes?: OrdinaryRequirementOutcomes;
 }
@@ -155,6 +158,7 @@ function toShareableReport(report: VerificationReport): ShareableReportV3 | Shar
     verificationContract: portableVerificationContract(report.verificationContract),
     ...(report.ordinaryDocumentationSummary ? { ordinaryDocumentationSummary: copyOrdinaryDocumentationSummary(report.ordinaryDocumentationSummary) } : {}),
     ...(report.ordinaryStaticSummary ? { ordinaryStaticSummary: copyOrdinaryStaticSummary(report.ordinaryStaticSummary) } : {}),
+    ...(report.purposeAssessmentSummary ? { purposeAssessmentSummary: structuredClone(report.purposeAssessmentSummary) } : {}),
     ...(report.ordinaryRequirementOutcomes ? { ordinaryRequirementOutcomes: copyOrdinaryRequirementOutcomes(report.ordinaryRequirementOutcomes, true) } : {}),
     ...(report.generalPrAssessmentSummary ? {
       generalPrAssessmentSummary: copyGeneralPrAssessmentSummary(report.generalPrAssessmentSummary)
@@ -222,6 +226,7 @@ function shareableToReport(shared: ShareableReport): VerificationReport {
     } : {}),
     ...(shared.ordinaryDocumentationSummary ? { ordinaryDocumentationSummary: copyOrdinaryDocumentationSummary(shared.ordinaryDocumentationSummary) } : {}),
     ...(shared.ordinaryStaticSummary ? { ordinaryStaticSummary: copyOrdinaryStaticSummary(shared.ordinaryStaticSummary) } : {}),
+    ...(shared.purposeAssessmentSummary ? { purposeAssessmentSummary: structuredClone(shared.purposeAssessmentSummary) } : {}),
     ...(shared.ordinaryRequirementOutcomes ? { ordinaryRequirementOutcomes: copyOrdinaryRequirementOutcomes(shared.ordinaryRequirementOutcomes, true) } : {})
   } as VerificationReportV2;
 }
@@ -231,7 +236,7 @@ function parseShareableReport(value: unknown): ShareableReport {
   const version = value.version;
   if (version !== 1 && version !== 2 && version !== 3 && version !== 4) throw new Error("Shared report version is not supported.");
   assertOnlyShareableKeys(value, version === 4
-    ? ["version", "createdAt", "source", "summary", "requirements", "testing", "reviewPriority", "proofGraph", "scope", "planner", "limitations", "reportSchemaVersion", "verificationContract", "generalPrAssessmentSummary", "ordinaryDocumentationSummary", "ordinaryStaticSummary", "ordinaryRequirementOutcomes"]
+    ? ["version", "createdAt", "source", "summary", "requirements", "testing", "reviewPriority", "proofGraph", "scope", "planner", "limitations", "reportSchemaVersion", "verificationContract", "generalPrAssessmentSummary", "ordinaryDocumentationSummary", "ordinaryStaticSummary", "purposeAssessmentSummary", "ordinaryRequirementOutcomes"]
     : version === 2 || version === 3
     ? ["version", "createdAt", "source", "summary", "requirements", "testing", "reviewPriority", "proofGraph", "scope", "planner", "limitations"]
     : ["version", "createdAt", "source", "summary", "requirements", "testing", "reviewPriority", "proofGraph", "limitations"], "report");
@@ -247,6 +252,7 @@ function parseShareableReport(value: unknown): ShareableReport {
   if (version === 4) validateShareableVerificationContract(value);
   if (version === 4 && value.generalPrAssessmentSummary !== undefined) validateShareableGeneralPrAssessmentSummary(value.generalPrAssessmentSummary);
   if (version === 4 && value.ordinaryDocumentationSummary !== undefined && !isOrdinaryDocumentationSummary(value.ordinaryDocumentationSummary)) throw new Error("Invalid scoped documentation summary.");
+  if (value.purposeAssessmentSummary !== undefined && (version !== 4 || !isPurposeSummary(value.purposeAssessmentSummary))) throw new Error("Invalid purpose assessment summary.");
   if (version === 4 && value.ordinaryStaticSummary !== undefined && !isOrdinaryStaticSummary(value.ordinaryStaticSummary)) throw new Error("Invalid scoped static summary.");
   if (version === 4 && value.ordinaryRequirementOutcomes !== undefined && !isOrdinaryRequirementOutcomes(value.ordinaryRequirementOutcomes)) throw new Error("Invalid source-derived requirement outcomes.");
   return value as unknown as ShareableReport;

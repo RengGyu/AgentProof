@@ -64,3 +64,26 @@ it.each([{ path: "other.ts" }, { revision: "b".repeat(40) }, { reference: "unrel
   response = { ...response, ...change }; render(); click("Read code for src/reset.ts"); await settle();
   expect(text()).toContain("Code could not be matched"); expect(text()).not.toContain("return expired;"); expect(text()).not.toContain("untrusted-code");
 });
+it("opens on mount for the cited-code reader and marks only the cited range, saying when it is outside the excerpt", async () => {
+  const draw = (range: { startLine: number; endLine: number }) => { hooks.index = 0; tree = ReportCodeViewer({ item, reportId: id, runtime, initiallyOpen: true, range }); hooks.effects.splice(0).forEach(work => work()); };
+  response = { ...response, lines: [24, 25, 26, 27].map(number => ({ number, text: `line ${number}` })) };
+  draw({ startLine: 25, endLine: 26 }); expect(text()).toContain("Loading referenced code"); expect(request).toHaveBeenCalledTimes(1);
+  for (let i = 0; i < 16; i++) await Promise.resolve(); draw({ startLine: 25, endLine: 26 });
+  const marked = nodes().filter(node => String(node.props.className).includes("is-reference")).map(node => text(node));
+  expect(marked.map(t => t.trim().split(/\s+/)[0])).toEqual(["25", "26"]);
+  expect(text()).toContain("lines 25–26"); expect(text()).not.toContain("outside this excerpt");
+  draw({ startLine: 90, endLine: 95 }); expect(text()).toMatch(/Cited lines\s*90\s*–\s*95\s*are outside this excerpt/);
+  expect(request).toHaveBeenCalledTimes(1);
+});
+
+it('localizes report code controls without changing reference identity or requesting code on language selection',()=>{
+ hooks.index=0;tree=ReportCodeViewer({item,reportId:id,runtime,locale:'ko'});expect(text()).toContain('코드 보기');expect(nodes().find(n=>n.type==='button')?.props['aria-label']).toBe('src/reset.ts 코드 보기');expect(request).not.toHaveBeenCalled();
+ nodes().find(n=>n.type==='button')!.props.onClick();hooks.index=0;tree=ReportCodeViewer({item,reportId:id,runtime,locale:'ko'});expect(text()).toContain('코드 닫기');expect(text()).toContain('참조 코드를 읽는 중');
+});
+it("lets a parent code pane own closing: no viewer toggle, one read when mounted", async () => {
+  hooks.index = 0; tree = ReportCodeViewer({ item, reportId: id, runtime, paneOwned: true }); hooks.effects.splice(0).forEach(work => work());
+  expect(nodes().some(node => node.type === "button" && /code for/.test(String(node.props["aria-label"] ?? "")))).toBe(false);
+  expect(request).toHaveBeenCalledTimes(1);
+  for (let i = 0; i < 16; i++) await Promise.resolve(); hooks.index = 0; tree = ReportCodeViewer({ item, reportId: id, runtime, paneOwned: true }); hooks.effects.splice(0).forEach(work => work());
+  expect(text()).toContain("return expired;"); expect(request).toHaveBeenCalledTimes(1);
+});

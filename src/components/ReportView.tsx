@@ -31,6 +31,7 @@ import { buildPrEvidenceReview, usesPrEvidenceReview } from "@/lib/pr-evidence-r
 import type { CheckStatus, PriorityLevel, RequirementStatus, VerificationReport } from "@/lib/types";
 import { deriveRequirementPresentationV2, isVerificationReportV2 } from "@/lib/requirement-presentation-v2";
 import { PrEvidenceReview } from "@/components/PrEvidenceReview";
+import {reportCopy} from "./report-copy";
 import { ReportTopSummary } from "@/components/ReportTopSummary";
 
 interface ReportViewProps {
@@ -39,6 +40,7 @@ interface ReportViewProps {
 }
 
 export function ReportView({ report, mode = "full" }: ReportViewProps) {
+  const t = reportCopy(isVerificationReportV2(report)?report.purposeReview?.locale:undefined);
   const isSummaryMode = mode === "summary";
   const markdown = useMemo(() => reportToMarkdown(report), [report]);
   const githubComment = useMemo(() => reportToGitHubComment(report), [report]);
@@ -122,14 +124,14 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
     try {
       await writeClipboardText(text);
       setCopiedAction(action);
-      setActionMessage({ tone: "success", text: "Copied to clipboard." });
+      setActionMessage({ tone: "success", text: t.copiedClipboard });
       window.setTimeout(() => {
         setCopiedAction(null);
         setActionMessage(null);
       }, 1800);
       return true;
     } catch {
-      setActionMessage({ tone: "error", text: "Copy failed in this browser. Use Download or select the text manually." });
+      setActionMessage({ tone: "error", text: t.copyDownloadFailed });
       return false;
     }
   }
@@ -146,10 +148,10 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
       anchor.click();
       anchor.remove();
       URL.revokeObjectURL(url);
-      setActionMessage({ tone: "success", text: "Download started." });
+      setActionMessage({ tone: "success", text: t.downloadStarted });
       window.setTimeout(() => setActionMessage(null), 1800);
     } catch {
-      setActionMessage({ tone: "error", text: "Download failed in this browser. Use Copy Report instead." });
+      setActionMessage({ tone: "error", text: t.downloadFailed });
     }
   }
 
@@ -207,7 +209,7 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
           <PriorityChip priority={report.summary.priority} />
         </div>
 
-        <ReportTopSummary report={report} review={ordinaryPrReview ?? undefined} />
+        <ReportTopSummary report={report} review={ordinaryPrReview ?? undefined} executionItems={executionEvidence} />
         {isSummaryMode ? (
           <div className="notice summary-mode-notice">
             <AlertCircle size={15} />
@@ -315,27 +317,27 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
           <div className="action-dock-copy">
             <span>
               <LockKeyhole size={14} />
-              Human handoff
+              {t.handoff}
             </span>
-            <small>Copy or download only when you intend to move this report outside AgentProof.</small>
+            <small>{t.handoffNote}</small>
           </div>
-          <div className="report-actions" aria-label="Report export actions">
+          <div className="report-actions" aria-label={t.exportActions}>
             {!isSummaryMode ? (
               <>
                 <button className="button compact" onClick={() => copyText(markdown, "report")}>
                   {copiedAction === "report" ? <CheckCircle2 size={15} /> : <Clipboard size={15} />}
-                  {copiedAction === "report" ? "Copied" : "Copy Report"}
+                  {copiedAction === "report" ? t.copied : t.copyReport}
                 </button>
                 <button className="button compact" onClick={() => copyText(githubComment, "comment")}>
                   {copiedAction === "comment" ? <CheckCircle2 size={15} /> : <MessageSquareText size={15} />}
-                  {copiedAction === "comment" ? "Copied" : "Copy PR Comment"}
+                  {copiedAction === "comment" ? t.copied : t.copyPrComment}
                 </button>
               </>
             ) : null}
             {!isSummaryMode ? (
               <button className="button compact" onClick={downloadMarkdown}>
                 <Download size={15} />
-                Download
+                {t.download}
               </button>
             ) : null}
           </div>
@@ -345,7 +347,7 @@ export function ReportView({ report, mode = "full" }: ReportViewProps) {
 
       <div className="report-body">
         <div className="stack report-main">
-          {ordinaryPrReview ? <div className="card section-card"><PrEvidenceReview review={ordinaryPrReview} /></div> : <div className="card section-card">
+          {ordinaryPrReview ? <div className="card section-card"><PrEvidenceReview review={ordinaryPrReview} leadInSummary /></div> : <div className="card section-card">
             <div className="section-heading">
               <div>
                 <p className="eyebrow">Coverage</p>

@@ -38,7 +38,7 @@ export default async function SavedReportPage({ params, searchParams }: SavedRep
           <h1>Report unavailable</h1>
           <p>This saved report was not found, expired, or is temporarily unavailable.</p>
           <Link className="button primary" href="/">
-            Open AgentProof
+            Open DiffEvidence
           </Link>
         </section>
       </main>
@@ -49,8 +49,8 @@ export default async function SavedReportPage({ params, searchParams }: SavedRep
     <main className="shared-layout">
       <div className="notice">
         {saved.report.authenticity?.trust === "verified_agentproof"
-          ? "Server-verified AgentProof summary."
-          : "Imported / unverified summary. Do not treat it as a server-verified AgentProof artifact."} {status.durabilityWarning} {saved.expiresAt ? `Expires at ${saved.expiresAt}.` : "Retained until report or account deletion."}
+          ? "Server-verified DiffEvidence summary."
+          : "Imported / unverified summary. Do not treat it as a server-verified DiffEvidence artifact."} {status.durabilityWarning} {saved.expiresAt ? `Expires at ${saved.expiresAt}.` : "Retained until report or account deletion."}
       </div>
       <ReportView report={saved.report} mode="summary" />
     </main>

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const source = readFileSync(new URL("./PublicGitHubDashboard.tsx", import.meta.url), "utf8");
+const settingsSource = readFileSync(new URL("./settings-copy.ts", import.meta.url), "utf8");
 
 describe("PublicGitHubDashboard saved reports", () => {
   it("checks for an existing verified App installation before opening GitHub installation", () => {
@@ -22,7 +23,8 @@ describe("PublicGitHubDashboard saved reports", () => {
     expect(source).toContain("reportWorkspaceStatusLabel(report.freshness)");
     expect(source).toContain('event.kind === "report_stale"');
     expect(source).toContain("Previous result");
-    expect(source).toContain("Priority:");
+    // Legacy report priority is not shown in the list or report status.
+    expect(source).not.toContain("<strong>Priority:</strong>");
   });
 
   it("shows saved-report availability without a misleading verification verdict", () => {
@@ -133,9 +135,9 @@ describe("PublicGitHubDashboard saved reports", () => {
 
   it("shows a safe refresh-failure explanation in the existing dashboard workspace", () => {
     expect(source).toContain("Analysis refresh failed");
-    expect(source).toContain("event.failure?.summary");
-    expect(source).toContain("event.failure?.code");
-    expect(source).toContain("A newer analysis failed before a report was saved.");
+    expect(source).toContain("dashboardAnalysisFailureMessage(event.failure)");
+    expect(source).not.toContain("event.failure?.code");
+    expect(source).toContain("This saved report remains available.");
   });
 
   it("opens the saved previous report when a stale Inbox item is selected", () => {
@@ -149,19 +151,21 @@ describe("PublicGitHubDashboard saved reports", () => {
     expect(source).toContain("window.clearInterval");
     expect(source).toContain('"/api/tenants/auth/session"');
     expect(source).toContain('method: "DELETE"');
-    expect(source).toContain("Log out");
+    expect(source).toContain("c.logOut");
+    expect(settingsSource).toContain('logOut: "Log out"');
   });
 
   it("moves an ephemeral preview to the configured OAuth host before starting sign-in", () => {
     expect(source).toContain("github_oauth_callback_origin_mismatch");
-    expect(source).toContain("Opening the configured AgentProof address for secure GitHub sign-in.");
+    expect(source).toContain("Opening the configured DiffEvidence address for secure GitHub sign-in.");
   });
 
   it("keeps repository summary comments opt-in through the existing tenant settings endpoint", () => {
     expect(source).toContain("Summary comments");
     expect(source).toContain('"/api/tenants/repositories"');
     expect(source).toContain('method: "PATCH"');
-    expect(source).toContain("Comments are off");
+    expect(source).toContain("c.commentsOff");
+    expect(settingsSource).toContain("Comments are off");
   });
 
   it("asks for an explicit ON/OFF private analysis choice only when a private repository is selected", () => {
@@ -177,5 +181,25 @@ describe("PublicGitHubDashboard saved reports", () => {
     expect(source).toContain("hybridPlannerConsent");
     expect(source).toContain("Private enhanced planning consent");
     expect(source).toContain('repository.repositoryPrivate === true && repository.llmAnalysisMode === "enhanced"');
+  });
+});
+
+describe("concise settings and report status", () => {
+  it("uses short private/automatic labels that match the real triggers, and keeps the consent notice in one disclosure", () => {
+    expect(settingsSource).toContain('approvePrivate: "Allow private PR analysis"');
+    expect(settingsSource).toContain('approvePrivate: "비공개 PR 분석 허용"');
+    // shouldHandlePullRequestAction: opened, reopened, synchronize (new commits), ready_for_review.
+    expect(settingsSource).toContain('automaticAnalysisDetail: "Creates a report when a PR is opened or gets new commits."');
+    expect(settingsSource).toContain('automaticAnalysisDetail: "PR을 열거나 새 커밋이 올라오면 보고서를 자동으로 만듭니다."');
+    expect(settingsSource).not.toContain("reportLanguageHelp");
+    expect(settingsSource).not.toContain("approvePrivateHelp");
+    // The legal notice text is unchanged and still reachable; it is open while consent is needed.
+    expect(settingsSource).toContain("Turning on private analysis sends bounded private PR goal text");
+    expect(source).toContain('<details className="settings-private-details" open={needsPrivateConsent}><summary>{c.privateDetails}</summary><p>{c.privateNotice}</p></details>');
+  });
+  it("does not show legacy priority or requirement-evidence fields in the report status", () => {
+    expect(source).not.toContain('<SummaryState label="Priority"');
+    expect(source).not.toContain('<SummaryState label="Evidence"');
+    expect(source).toContain('<SummaryState label="Analyzed"');
   });
 });

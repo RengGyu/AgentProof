@@ -232,7 +232,7 @@ export function AnalyzeWorkspace({ initialReport = null, launchNonce, runtime = 
             <ShieldCheck size={18} />
           </div>
           <div className="brand-copy">
-            <span>AgentProof</span>
+            <span>DiffEvidence</span>
             <small>Evidence verifier</small>
           </div>
         </div>
@@ -491,7 +491,7 @@ export function AnalyzeWorkspace({ initialReport = null, launchNonce, runtime = 
               <GitPullRequest size={36} />
               <h1>Paste a GitHub PR URL</h1>
               <p>
-                AgentProof will show the top risk, missing proof, first files, test/build status, and next agent ask in one 30-second card. Demo is optional if you do not have a PR ready.
+                DiffEvidence will show the top risk, missing proof, first files, test/build status, and next agent ask in one 30-second card. Demo is optional if you do not have a PR ready.
               </p>
             </div>
           </section>

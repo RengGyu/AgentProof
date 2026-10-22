@@ -1,7 +1,9 @@
+import {getPurposeDiffIndex} from './purpose-github';
 import { createHash } from "crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildPullRequestInput,
+  buildGitHubPullRequestInput,
   GITHUB_EVIDENCE_TIMING_PHASES,
   normalizeGitHubPullUrl,
   parseGitHubPullUrl,
@@ -3331,4 +3333,21 @@ it('reconciles an exactly full last metadata page against the pinned PR file cou
  expect(input.changedFiles).toHaveLength(300);
  expect(input.sourceProvenance?.changedFileInventory?.completeness).toBe('complete');
  expect(input.limitations?.join(' ')).not.toContain('was capped');
+});
+
+it.each([true, false])('binds opt-in patch coordinates to a verified merge base, or keeps it unknown (%s)',async(ok)=>{
+ const head='a'.repeat(40),base='b'.repeat(40),merge='c'.repeat(40);
+ const fetchMock=vi.fn(async(url:string)=>{
+  if(url.endsWith('/pulls/12'))return Response.json({title:'Keep work',body:'Keep queued work.',changed_files:1,base:{sha:base,ref:'main',repo:{private:false}},head:{sha:head,ref:'work'}});
+  if(url.includes('/files?'))return Response.json([{filename:'src/work.py',status:'modified',patch:'@@ -1 +1 @@\n-old()\n+keep()',additions:1,deletions:1}]);
+  if(url.includes('/compare/'))return ok?Response.json({base_commit:{sha:base},merge_base_commit:{sha:merge}}):new Response('unavailable',{status:503});
+  if(url.includes('/check-runs'))return Response.json({total_count:0,check_runs:[]});
+  if(url.endsWith('/status'))return Response.json({statuses:[]});
+  return new Response('unavailable',{status:404});
+ });vi.stubGlobal('fetch',fetchMock);
+ const input=await buildGitHubPullRequestInput('https://github.com/acme/repo/pull/12',undefined,'',undefined,{purposeEvidence:true});
+ expect(input).not.toBeNull();const diff=getPurposeDiffIndex(input!);
+ expect(diff.hunks).toHaveLength(1);
+ expect(diff.comparison).toEqual(ok?{baseRefSha:base,diffBaseSha:merge,headSha:head}:undefined);
+ expect(input!.sourceProvenance?.baseSha).toBe(base);
 });

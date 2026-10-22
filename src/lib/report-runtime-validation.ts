@@ -21,6 +21,13 @@ export type RuntimeReportBoundary =
 
 // The source compiler is server-only. Retain its independent validator without
 // importing it into client-side summary readers. JSON cannot create this context.
+const purposeContexts = new WeakMap<object, (input: PullRequestInput, report: VerificationReportV2) => boolean>();
+export function registerPurposeValidationContext(assessment: object, validate: (input: PullRequestInput, report: VerificationReportV2) => boolean): void {
+  purposeContexts.set(assessment, validate);
+}
+function hasPurposeContext(assessment: object, input: PullRequestInput, report: VerificationReportV2): boolean {
+  return purposeContexts.get(assessment)?.(input, report) === true;
+}
 const ordinaryDocumentationContexts = new WeakMap<object, (input: PullRequestInput) => boolean>();
 const ordinaryStaticContexts = new WeakMap<object, (input: PullRequestInput) => boolean>();
 const ordinaryOutcomeContexts = new WeakMap<object, (input: PullRequestInput, report: VerificationReport) => boolean>();
@@ -83,6 +90,7 @@ export function validateRuntimeReportBoundary(
   }
 
   if (input.boundary === "inbound_untrusted_full") {
+    if ((input.report as VerificationReportV2).purposeAssessment !== undefined || (input.report as VerificationReportV2).purposeAssessmentSummary !== undefined || (input.report as VerificationReportV2).purposeReview !== undefined) return {valid:false,reasonCodes:["inbound_authority_rejected"],errors:["Inbound reports cannot supply purpose assessment authority."]};
     if((input.report as VerificationReportV2).reviewCandidates?.navigation)return {valid:false,reasonCodes:["inbound_authority_rejected"],errors:["Inbound reports cannot supply model-ranked read authority."]};
     if ((input.report as VerificationReportV2).ordinaryRequirementOutcomes !== undefined) return { valid: false, reasonCodes: ["inbound_authority_rejected"], errors: ["Inbound reports cannot supply source-derived requirement authority."] };
     if ((input.report as VerificationReportV2).ordinaryStaticSummary !== undefined) return { valid: false, reasonCodes: ["inbound_authority_rejected"], errors: ["Inbound reports cannot supply scoped static evidence."] };
@@ -143,6 +151,9 @@ export function resolveRuntimeReportValidation(input: {
 
 function resolveGeneratedPrivateFull(input: Extract<RuntimeReportBoundaryInput, { boundary: "generated_private_full" }>): RuntimeReportValidation {
   const v2 = isVerificationReportV2(input.report);
+  const purpose = (input.report as VerificationReportV2).purposeAssessment;
+  if (!purpose && ((input.report as VerificationReportV2).purposeAssessmentSummary !== undefined || (input.report as VerificationReportV2).purposeReview !== undefined)) return {valid:false,reasonCodes:["outcome_context_mismatch"],errors:["Generated purpose summary requires its bound full assessment."]};
+  if (purpose && !hasPurposeContext(purpose,input.input,input.report as VerificationReportV2)) return {valid:false,reasonCodes:["outcome_context_mismatch"],errors:["Purpose assessment requires transient source, snapshot and sent evidence context."]};
   const navigation = (input.report as VerificationReportV2).reviewCandidates?.navigation;
   if(navigation && !hasReviewNavigationContext(navigation,input.input))return {valid:false,reasonCodes:["navigation_context_mismatch"],errors:["Review navigation requires its bound source and exact read context."]};
   const intent = (input.report as VerificationReportV2).reviewCandidates?.intentGraph;
@@ -163,6 +174,7 @@ function resolveGeneratedPrivateFull(input: Extract<RuntimeReportBoundaryInput, 
   }
   const validation = validateVerificationReport(input.report, {
     mode: v2 ? "v2_full" : "full",
+    ...(purpose ? { purposeAssessmentValidator: (report: VerificationReport) => hasPurposeContext(purpose,input.input,report as VerificationReportV2) } : {}),
     ...(ordinaryOutcomes ? { ordinaryOutcomeValidator: (report: VerificationReport) => ordinaryOutcomeContexts.get(ordinaryOutcomes)?.(input.input, report) === true } : {}),
     ...(v2 ? { receiptValidationContext: createRuntimeValidationContextV2(input.input, input.verificationCapabilitiesV2) } : {}),
     ...(input.requireSourceProvenance ? { requireSourceProvenance: true } : {})

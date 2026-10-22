@@ -38,15 +38,15 @@ export default function AccountDeletionPanel({ request, signIn, onCompleted }: {
     finally { setBusy(false); }
   }
   return <section className="account-deletion-panel">
-    <h1>Delete your AgentProof account</h1>
-    <p>This removes your personal AgentProof account, saved reports, repository connections, jobs, sessions, and associated identifiable service records from live storage. This cannot be undone.</p>
-    <p>Your GitHub account and repositories remain. The shared GitHub App is not uninstalled. Signing in after deletion creates a new, empty AgentProof account.</p>
+    <h1>Delete your DiffEvidence account</h1>
+    <p>This removes your personal DiffEvidence account, saved reports, repository connections, jobs, sessions, and associated identifiable service records from live storage. This cannot be undone.</p>
+    <p>Your GitHub account and repositories remain. The shared GitHub App is not uninstalled. Signing in after deletion creates a new, empty DiffEvidence account.</p>
     <p>Cost records no longer linked to your account expire after 90 days. Deletion confirmation records expire after 24 hours. Both are removed by daily cleanup. Backups expire under the provider’s retention settings; they are not immediately erased. Restoring an older backup is not automatically reconciled with deletions.</p>
     <div role="status" aria-live="polite">
       {!status && <p>Checking account…</p>}
-      {status === "completed" && <p>Your AgentProof account and its associated live data have been deleted.</p>}
+      {status === "completed" && <p>Your DiffEvidence account and its associated live data have been deleted.</p>}
       {status === "pending" && <p>Deletion is in progress. Normal account access is blocked. We will retry automatically after active work has stopped; you can also retry below.</p>}
-      {status === "unauthorized" && <p>Sign in with the GitHub account you used for AgentProof to request deletion or check a pending request.</p>}
+      {status === "unauthorized" && <p>Sign in with the GitHub account you used for DiffEvidence to request deletion or check a pending request.</p>}
       {status === "shared_workspace" && <p>This workspace has other members. Personal account deletion is unavailable because it would remove their data.</p>}
       {status === "unavailable" && <p>Account deletion is currently unavailable. Completion has not been confirmed. Please try again later.</p>}
       {error && <p role="alert">{error}</p>}

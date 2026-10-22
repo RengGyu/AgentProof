@@ -1,3 +1,6 @@
+import { scheduleMobileReportReady } from './mobile-push';
+import { isPurposeSummary } from "./purpose-summary";
+import type { PurposeAssessmentSummary } from "./purpose-contract";
 import { measureReviewAsync, measureReviewSync, type ReviewMeasurementContext } from './review-navigation-diagnostics';
 import { captureReviewRelations } from "./pr-evidence-review";
 import { createHash, randomBytes, timingSafeEqual } from "crypto";
@@ -233,9 +236,11 @@ export async function createVerifiedSavedReport(
     admittedReport = validation.report;
   }
 
-  if (config) return createSupabaseSavedReport(config, admittedReport, options, "verified_agentproof", measurements);
-
-  return createMemorySavedReport(admittedReport, options, "verified_agentproof");
+  const saved = config ? await createSupabaseSavedReport(config, admittedReport, options, "verified_agentproof", measurements)
+    : createMemorySavedReport(admittedReport, options, "verified_agentproof");
+  if (saved.tenantId && saved.repositoryId && saved.availability !== "unavailable")
+    scheduleMobileReportReady({tenantId:saved.tenantId,repositoryId:saved.repositoryId,reportId:saved.id});
+  return saved;
 }
 
 export async function getSavedReport(
@@ -965,6 +970,8 @@ export function prepareTenantDetailReportForStorage(
       verificationContract: structuredClone(report.verificationContract),
       ...(report.ordinaryDocumentationSummary ? { ordinaryDocumentationSummary: copyOrdinaryDocumentationSummary(report.ordinaryDocumentationSummary) } : {}),
       ...(report.ordinaryStaticSummary ? { ordinaryStaticSummary: copyOrdinaryStaticSummary(report.ordinaryStaticSummary) } : {}),
+    ...(report.purposeAssessmentSummary ? { purposeAssessmentSummary: structuredClone(report.purposeAssessmentSummary) } : {}),
+      ...(report.purposeReview ? { purposeReview: structuredClone(report.purposeReview) } : {}),
       ...(report.ordinaryRequirementOutcomes ? { ordinaryRequirementOutcomes: copyOrdinaryRequirementOutcomes(report.ordinaryRequirementOutcomes) } : {}),
       ...(report.generalPrAssessmentSummary ? {
         generalPrAssessmentSummary: copyGeneralPrAssessmentSummary(report.generalPrAssessmentSummary)
@@ -1389,6 +1396,7 @@ function normalizeCreateOptions(optionsOrTtlMs: CreateSavedReportOptions | numbe
 function requiresGeneratedPrivateContext(report: VerificationReport): boolean {
   if ((report as { reportSchemaVersion?: unknown }).reportSchemaVersion !== "verification-report.v2") return false;
   if ((report as VerificationReportV2).ordinaryDocumentationSummary !== undefined) return true;
+  if ((report as VerificationReportV2).purposeAssessment !== undefined || (report as VerificationReportV2).purposeAssessmentSummary !== undefined) return true;
   if ((report as VerificationReportV2).ordinaryStaticSummary !== undefined) return true;
   if ((report as VerificationReportV2).ordinaryRequirementOutcomes !== undefined) return true;
   const contractState = (report as { verificationContract?: { state?: unknown } }).verificationContract?.state;

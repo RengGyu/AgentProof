@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react';
 import { App as NativeApp } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
-import { CapacitorHttp } from '@capacitor/core';
+import { CapacitorHttp, Capacitor, registerPlugin } from '@capacitor/core';
+import { PushNotifications } from '@capacitor/push-notifications';
+import { createPushRegistration, pushDeviceId, reportFromPush, type PushState } from './push';
 import { PublicGitHubDashboard, WorkspaceSignIn } from '../../src/components/PublicGitHubDashboard';
 import { AnalyzeWorkspace } from '../../src/components/AnalyzeWorkspace';
 import AccountDeletionPanel, { parseDeletionResult } from '../../src/components/AccountDeletionPanel';
 import { createLoginAttempt } from './auth-flow';
 import { createNativeWorkspaceClient } from './workspace-client';
 
+const DeviceNotifications=registerPlugin<{displayAllowed():Promise<{allowed:boolean}>}>('DeviceNotifications');
 type Client = ReturnType<typeof createNativeWorkspaceClient>;
 function base64url(bytes: Uint8Array) { return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
 
@@ -20,6 +23,11 @@ export function MobileApp({ apiOrigin }: { apiOrigin: string }) {
   const [deletionPending, setDeletionPending] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const session = useRef<Client | null>(null);
+  const push = useRef<ReturnType<typeof createPushRegistration>|null>(null);
+  const [pushState,setPushState]=useState<PushState>('off');
+  const [pushPending,setPushPending]=useState(false);
+  const [notificationReport,setNotificationReport]=useState<string|undefined>();
+  const route=useRef(path);route.current=path;
   const epoch = useRef(0);
   const login = useRef(createLoginAttempt());
 
@@ -27,12 +35,12 @@ export function MobileApp({ apiOrigin }: { apiOrigin: string }) {
     epoch.current++;
     session.current?.close(); session.current = null;
     login.current.finish();
-    setClient(null); setPath('/dashboard'); setChecking(false); setDeletionPending(false); setBusy(false);
+    setClient(null); setNotificationReport(undefined); setPath('/dashboard'); setChecking(false); setDeletionPending(false); setBusy(false);
   }, []);
-  const completed = useCallback(() => { clearLocal(); setMessage('Your AgentProof account and associated live data have been deleted.'); }, [clearLocal]);
+  const completed = useCallback(() => { clearLocal(); setMessage('Your DiffEvidence account and associated live data have been deleted.'); }, [clearLocal]);
 
   async function signIn() {
-    if (!apiOrigin.startsWith('https://')) { setMessage('A secure AgentProof server address is required.'); return; }
+    if (!apiOrigin.startsWith('https://')) { setMessage('A secure DiffEvidence server address is required.'); return; }
     if (!login.current.begin()) return;
     setBusy(true); setMessage('');
     const attemptEpoch = epoch.current;
@@ -81,6 +89,7 @@ export function MobileApp({ apiOrigin }: { apiOrigin: string }) {
           origin: apiOrigin, token: value.token,
           send: options => CapacitorHttp.request(options),
           navigate: destination => setPath(destination),
+          onClose:()=>{push.current?.dispose();push.current=null;setPushState('off');setPushPending(false);},
           onExpired: reason => { clearLocal(); setMessage(reason === 'logout' ? 'Signed out on this device.' : 'Session expired. Sign in again.'); }
         });
         next.runtime.signIn = signIn;
@@ -94,12 +103,33 @@ export function MobileApp({ apiOrigin }: { apiOrigin: string }) {
       } catch { if (!disposed && epoch.current === attemptEpoch) setMessage('Sign-in could not be completed.'); }
       finally { if (!disposed && epoch.current === attemptEpoch) { login.current.finish(); setBusy(false); } }
     }).then(keep);
+    if(Capacitor.getPlatform()!=='web')void PushNotifications.addListener('pushNotificationActionPerformed', action => {
+      const report=reportFromPush(action.notification.data);
+      if(!disposed&&(report||action.notification.data?.eventKind==='analysis_failed')){setNotificationReport(report??undefined);setPath('/dashboard');void PushNotifications.removeDeliveredNotifications({notifications:[action.notification]}).catch(()=>{});}
+    }).then(keep);
+    void NativeApp.addListener('appStateChange', ({isActive})=>{
+      if(isActive){session.current?.resume();void push.current?.resume();}
+    }).then(keep);
+    void NativeApp.addListener('backButton',()=>{
+      const back=document.querySelector<HTMLButtonElement>('[data-report-action="back"]');
+      if(back){back.click();return;}
+      if(route.current!=='/dashboard'){setPath('/dashboard');return;}
+      if(Capacitor.getPlatform()==='android')void NativeApp.exitApp();
+    }).then(keep);
     void Browser.addListener('browserFinished', () => {
       if (login.current.browserFinished()) setBusy(false);
       if (session.current) setRefresh(value => value + 1);
     }).then(keep);
     return () => { disposed = true; epoch.current++; session.current?.close(); login.current.finish(); for (const listener of listeners) void listener.remove(); };
   }, [apiOrigin]);
+
+  useEffect(()=>{
+    if(!client)return;
+    const platform=Capacitor.getPlatform();if(platform!=='ios'&&platform!=='android')return;
+    const registration=createPushRegistration({plugin:PushNotifications,runtime:client.runtime,platform,deviceId:pushDeviceId(localStorage),onState:setPushState,...(platform==='android'?{canDisplay:async()=> (await DeviceNotifications.displayAllowed()).allowed}:{})});
+    push.current=registration;void registration.resume();
+    return ()=>{registration.dispose();if(push.current===registration)push.current=null;};
+  },[client]);
 
   const deletionRequest = useCallback(async (remove: boolean) => {
     if (!client) return { status: 'unauthorized' as const };
@@ -121,6 +151,10 @@ export function MobileApp({ apiOrigin }: { apiOrigin: string }) {
   }
   const analyzing = path.split('?')[0] === '/analyze';
   return <div className="native-shell" onClickCapture={openLink}>
+    {client&&!checking&&!deletionPending&&<section className="native-push-settings" aria-label="Device notifications">
+      <span>Report notifications · {pushState==='on'?'On':pushState==='denied'?'Off in system settings':pushState==='unavailable'?'Could not update. Try again.':'Off'}</span>
+      <button className="dashboard-secondary-action" disabled={pushPending} onClick={()=>{if(pushPending)return;const active=session.current;setPushPending(true);void (pushState==='on'?push.current?.disable():push.current?.enable())?.finally(()=>{if(session.current===active)setPushPending(false);});}}>{pushState==='on'?'Turn off':'Enable notifications'}</button>
+    </section>}
     {message && <p className="native-message" role="status">{message}</p>}
     {!client ? <WorkspaceSignIn message="" onSignIn={signIn} pending={busy} /> : checking ? <section className="github-dashboard github-session-loading"><p role="status">Checking account…</p>{message && <button className="dashboard-secondary-action" onClick={() => void checkDeletion(client)}>Try again</button>}<button className="dashboard-secondary-action" onClick={() => void client.runtime.request('/api/tenants/auth/session', { method: 'DELETE' }).catch(() => undefined)}>Log out</button></section> : path === '/account/delete' ? <>
       <nav className="native-navigation">{!deletionPending && <button className="dashboard-secondary-action" onClick={() => setPath('/dashboard')}>Back to workspace</button>}<button className="dashboard-secondary-action" onClick={() => void client.runtime.request('/api/tenants/auth/session', { method: 'DELETE' }).catch(() => undefined)}>Log out</button></nav>
@@ -128,6 +162,6 @@ export function MobileApp({ apiOrigin }: { apiOrigin: string }) {
     </> : analyzing ? <>
       <nav className="native-navigation"><button className="dashboard-secondary-action" onClick={() => setPath('/dashboard')}>Back to workspace</button></nav>
       <AnalyzeWorkspace key={path} runtime={client.runtime} launchNonce={new URLSearchParams(path.split('?')[1]).get('launch') ?? undefined} />
-    </> : <PublicGitHubDashboard key={refresh} runtime={client.runtime} />}
+    </> : <PublicGitHubDashboard key={refresh} runtime={client.runtime} initialReportId={notificationReport} />}
   </div>;
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildGitHubPullUrl,
+  dashboardAnalysisFailureMessage,
   isPreviewDemoEnabled,
   isActiveRepositoryGrant,
   verificationOutcomeLabel,
@@ -194,4 +195,18 @@ describe("github dashboard view model", () => {
       expect.objectContaining({ repositoryFullName: "RengGyu/dongo", reportCount: 1, commentsEnabled: false })
     ]);
   });
+});
+
+
+it.each(["private-consent-required", "github_private_consent_required", "analysis-disabled", "grant-disabled", "workspace_connection_required", "github_app_pr_head_changed", "github_rate_limited", "soft_stop", "duplicate", "workspace_session_changed", "github_save_reports_disabled", "github_connection_required", "github_reauth_required", "github_private_denied", "github_install_required"])("maps %s to a fixed user action without echoing raw data", code => {
+  const message = dashboardAnalysisFailureMessage({ code, summary: "RAW_CONFIG_CANARY tenant=secret" });
+  expect(message).not.toBe("Analysis did not finish. Existing saved reports remain available.");
+  expect(message).not.toContain(code); expect(message).not.toContain("CANARY");
+  expect(message).toMatch(/settings|Settings|new analysis|Wait|saved reports|Sign in/);
+  expect(dashboardAnalysisFailureMessage({ summary: message })).toBe(message);
+});
+it.each(["internal_tenant_config", "__proto__", "constructor", undefined])("uses a neutral failure for unknown code %s and never arbitrary prose", code => {
+  const message = dashboardAnalysisFailureMessage({ code, summary: "RAW_CONFIG_CANARY accesskey=private" });
+  expect(message).toBe("Analysis did not finish. Existing saved reports remain available.");
+  expect(message).not.toContain("no report was saved");
 });

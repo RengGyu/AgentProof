@@ -1,3 +1,4 @@
+import { isReportLanguage, resolveReportLanguage, type ReportLanguage } from "@/lib/tenant-report-language";
 import { resolveWorkspaceAccess, validWorkspaceMutation, type WorkspaceSource } from "./access";
 import {
   getTenantControlPlaneSettings,
@@ -21,6 +22,7 @@ const SETTINGS_KEYS = new Set([
   "saveReportsEnabled",
   "slackNotificationsEnabled",
   "llmAnalysisMode",
+  "reportLanguage",
   "hybridPlannerConsent",
   "privateAnalysisConsent"
 ]);
@@ -36,6 +38,7 @@ interface RepositorySettingsPatchRequest {
     saveReportsEnabled?: unknown;
     slackNotificationsEnabled?: unknown;
     llmAnalysisMode?: unknown;
+    reportLanguage?: unknown;
     hybridPlannerConsent?: unknown;
     privateAnalysisConsent?: unknown;
   };
@@ -179,7 +182,7 @@ export async function PATCH(request: Request, source: WorkspaceSource = "web") {
   const settingsValidation = validateSettingsPayload(body.settings);
   if (!settingsValidation.valid) {
     return noStoreJson({
-      error: "Repository settings may only update known boolean verification settings.",
+      error: "Repository settings contain an unsupported field or value.",
       code: "tenant_repository_settings_invalid"
     }, { status: 422 });
   }
@@ -250,6 +253,7 @@ function toPublicRepositorySettings(grant: TenantRepositoryGrant) {
     commentEnabled: grant.commentEnabled,
     slackNotificationsEnabled: grant.slackNotificationsEnabled,
     llmAnalysisMode: grant.llmAnalysisMode ?? "essential",
+    reportLanguage: resolveReportLanguage(grant.reportLanguage),
     hybridPlannerConsentVersion: grant.hybridPlannerConsentVersion ?? null,
     privateAnalysisConsentVersion: grant.privateAnalysisConsentVersion ?? null,
     repositoryPrivate: grant.repositoryPrivate === true
@@ -277,6 +281,7 @@ function validateSettingsPayload(value: Record<string, unknown>): {
     saveReportsEnabled?: boolean;
     slackNotificationsEnabled?: boolean;
     llmAnalysisMode?: "essential" | "enhanced";
+    reportLanguage?: ReportLanguage;
     hybridPlannerConsent?: boolean;
     privateAnalysisConsent?: boolean;
   };
@@ -291,12 +296,13 @@ function validateSettingsPayload(value: Record<string, unknown>): {
     saveReportsEnabled?: boolean;
     slackNotificationsEnabled?: boolean;
     llmAnalysisMode?: "essential" | "enhanced";
+    reportLanguage?: ReportLanguage;
     hybridPlannerConsent?: boolean;
     privateAnalysisConsent?: boolean;
   } = {};
 
   for (const [key, setting] of entries) {
-    if (!SETTINGS_KEYS.has(key) || (key === "llmAnalysisMode"
+    if (!SETTINGS_KEYS.has(key) || (key === "reportLanguage" ? !isReportLanguage(setting) : key === "llmAnalysisMode"
       ? setting !== "essential" && setting !== "enhanced"
       : typeof setting !== "boolean")) {
       return { valid: false };

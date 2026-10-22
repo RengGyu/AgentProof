@@ -1,6 +1,12 @@
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { AnalyzeWorkspace } from "@/components/AnalyzeWorkspace";
+import { resolveTenantAuthAccess } from "@/lib/tenant-auth";
 
+// Signed-out public PR analysis is not offered; signed-in repository launches keep working.
 export default async function AnalyzePage({ searchParams }: { searchParams: Promise<{ launch?: string }> }) {
+  const access = await resolveTenantAuthAccess({ cookieHeader: (await cookies()).toString() }).catch(() => null);
+  if (!access?.authorized) redirect("/");
   const params = await searchParams;
   const launchNonce = typeof params.launch === "string" && /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(params.launch)
     ? params.launch : undefined;

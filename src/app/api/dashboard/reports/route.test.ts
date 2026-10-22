@@ -303,15 +303,13 @@ describe("/api/dashboard/reports", () => {
     const body = await response.json();
 
     expect(body).toMatchObject({
+      id: saved.id,
       freshness: "refresh_failed",
       copyEligible: false,
-      failure: {
-        code: "github_fetch_failed",
-        summary: "GitHub request could not be completed."
-      }
+      failure: { summary: "GitHub could not be reached. Try again shortly." }
     });
     expect(JSON.stringify(body)).not.toContain("provider_response_id");
-    expect(JSON.stringify(body)).not.toContain("tenant_a");
+    expect(JSON.stringify(body)).not.toContain('"tenant_a"');
 
     const listResponse = await GET(new Request("http://localhost/api/dashboard/reports", {
       headers: { cookie: session.sessionCookie }
@@ -353,7 +351,7 @@ describe("/api/dashboard/reports", () => {
       claimGeneration: claim.job!.claim_generation!,
       retryable: false,
       code: "generated_report_validation_failed",
-      summary: "Generated report failed runtime validation."
+      summary: "PRIVATE_CONFIG_CANARY tenant configuration invalid."
     });
 
     const response = await GET(new Request("http://localhost/api/dashboard/reports", {
@@ -369,13 +367,12 @@ describe("/api/dashboard/reports", () => {
       availability: "analysis_failed",
       freshness: "refresh_failed",
       copyEligible: false,
-      failure: {
-        code: "generated_report_validation_failed",
-        summary: "Generated report failed runtime validation."
-      }
+      failure: { summary: "Analysis did not finish. Existing saved reports remain available." }
     })]);
-    expect(JSON.stringify(body)).not.toContain("tenant_a");
+    expect(JSON.stringify(body)).not.toContain('"tenant_a"');
     expect(JSON.stringify(body)).not.toContain("provider_response_id");
+    expect(JSON.stringify(body)).not.toContain("PRIVATE_CONFIG_CANARY");
+    expect(JSON.stringify(body)).not.toContain("generated_report_validation_failed");
   });
 
   it("keeps an unavailable report visible while blocking its detail content and copy bundle", async () => {
@@ -479,4 +476,16 @@ describe("/api/dashboard/reports", () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({ code: "dashboard_reports_repository_invalid" });
   });
+  it.each([[-1,'current',true],[1,'refresh_failed',false]] as const)('auth GET reconciles a failure %sms from the saved timestamp',async(delta,freshness,copyEligible)=>{
+    vi.stubEnv('AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED','true');vi.stubEnv('AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY','true');
+    const session=await createTenantAuthSessionForMember({tenantId:'tenant_a',memberId:'github:1'}),head='a'.repeat(40);
+    const saved=await createVerifiedSavedReport(generateVerificationReport(demoScenarios.clean),{tenantId:'tenant_a',installationId:321,repositoryId:100,pullRequestNumber:10,headSha:head});
+    const at=Date.parse(saved.createdAt);const job=await enqueueAnalysisJob({tenantId:'tenant_a',idempotencyKey:'saved-time',deliveryId:'123e4567-e89b-12d3-a456-426614174388',event:'pull_request',action:'synchronize',installationId:321,repositoryId:100,repositoryFullName:'RengGyu/AgentProof',pullRequestNumber:10,pullRequestUrl:'https://github.com/RengGyu/AgentProof/pull/10',headSha:head,saveReport:true,comment:false,now:new Date(at-60000)});
+    const claim=await claimAnalysisJobById(job.id,{now:new Date(at-30000)});await failAnalysisJob({id:job.id,claimGeneration:claim.job!.claim_generation!,retryable:false,code:'budget_unverified',summary:'Budget unavailable',now:new Date(at+delta)});
+    const response=await GET(new Request(`http://localhost/api/dashboard/reports?id=${saved.id}`,{headers:{cookie:session.sessionCookie}}));const detail=await response.json();expect(response.status).toBe(200);expect(detail).toMatchObject({createdAt:saved.createdAt,headSha:head,freshness,copyEligible});
+    const {toQuickSummary}=await import('@/lib/github-dashboard-view-model');expect(toQuickSummary(detail).freshness).toBe(delta<0?'CURRENT':'REFRESH FAILED');
+    const {listTenantAnalysisJobs}=await import('@/lib/analysis-jobs');expect((await listTenantAnalysisJobs({tenantId:'tenant_a'}))[0]).toMatchObject({status:'failed_terminal',errorCode:'budget_unverified'});
+    const bundle=await(await GET(new Request('http://localhost/api/dashboard/reports?repositoryId=100&scope=current',{headers:{cookie:session.sessionCookie}}))).json();expect(bundle.bundle.excluded).toBe(delta<0?0:1);expect(bundle.reports).toHaveLength(delta<0?1:0);
+  });
+
 });

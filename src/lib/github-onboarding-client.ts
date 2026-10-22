@@ -1,21 +1,16 @@
-const SAFE_ONBOARDING_FAILURE_CODES = new Set([
-  "github_onboarding_not_configured",
-  "github_onboarding_state_store_unavailable",
-  "github_onboarding_request_invalid"
-]);
-
 const SAFE_REPOSITORY_CONNECTION_FAILURE_CODES = new Map<string, string>([
   ["github_onboarding_activation_invalid", "Repository selection expired. Reconnect GitHub, then choose the repository again."],
   ["github_onboarding_repository_not_installed", "This repository is no longer available to the AgentProof App. Update the App repository access, then reconnect."],
-  ["github_onboarding_repository_fetch_failed", "AgentProof could not load repositories from GitHub. Reconnect GitHub and try again."],
+  ["github_onboarding_repository_fetch_failed", "DiffEvidence could not load repositories from GitHub. Reconnect GitHub and try again."],
   ["github_onboarding_grant_store_unavailable", "Repository connection storage is temporarily unavailable. Try again shortly."],
   ["github_onboarding_state_store_unavailable", "Repository selection storage is temporarily unavailable. Reconnect GitHub and try again."]
 ]);
 
 export function githubOnboardingStartFailureMessage(code: unknown): string {
-  if (typeof code === "string" && SAFE_ONBOARDING_FAILURE_CODES.has(code)) {
-    return `GitHub App installation could not start (${code}).`;
+  if (code === "github_onboarding_not_configured" || code === "github_onboarding_state_store_unavailable") {
+    return "GitHub installation is temporarily unavailable. Try again later.";
   }
+  if (code === "github_onboarding_request_invalid") return "Start again from Add repositories.";
   return "GitHub App installation could not start.";
 }
 
@@ -29,6 +24,7 @@ export function dashboardRepositoryLoadFailureMessage(status: number | undefined
   if (status === 401 || code === "dashboard_repositories_unauthorized") {
     return "Your sign-in session has expired. Continue with GitHub again to load connected repositories.";
   }
+  if (status === 403) return "Workspace access is unavailable. Check repository access in Settings.";
   if (status === 503 || code === "dashboard_repositories_unavailable") {
     return "Connected repositories are temporarily unavailable. Try again shortly.";
   }

@@ -48,6 +48,20 @@ describe("analysis job queue", () => {
     clearTenantDeletionStateForTests();
   });
 
+  it("keeps a manual replay and active same-head request on one revision, but allows an explicit completed refresh", async () => {
+    vi.stubEnv('AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED','true');vi.stubEnv('AGENTPROOF_ANALYSIS_JOBS_ALLOW_MEMORY','true');
+    const first=await enqueueAnalysisJob({...jobInput(),manualRequest:true});
+    const replay=await enqueueAnalysisJob({...jobInput(),manualRequest:true});
+    expect(replay).toEqual(first);expect(getAnalysisJobsForTests()[0].desired_revision).toBe(1);
+    const other=await enqueueAnalysisJob({...jobInput(),manualRequest:true,idempotencyKey:'other-request'});
+    expect(other.id).toBe(first.id);expect(getAnalysisJobsForTests()[0].desired_revision).toBe(1);
+    await claimAnalysisJobById(first.id,{now:new Date('2026-06-30T00:01:00Z')});
+    expect(await completeAnalysisJob({id:first.id})).toBe(true);
+    const completedReplay=await enqueueAnalysisJob({...jobInput(),manualRequest:true});expect(completedReplay.status).toBe('completed');
+    const refreshed=await enqueueAnalysisJob({...jobInput(),manualRequest:true,idempotencyKey:'next-request'});
+    expect(refreshed.status).toBe('queued');expect(getAnalysisJobsForTests()[0].desired_revision).toBe(2);
+  });
+
   it("is disabled by default", () => {
     expect(getAnalysisJobQueueStatus()).toEqual({
       enabled: false,
@@ -650,8 +664,50 @@ describe("analysis job queue", () => {
     const url = new URL(requestUrl);
     expect(url.searchParams.get("order")).toBe("created_at.desc");
     expect(url.searchParams.get("limit")).toBe("2");
-    expect(url.searchParams.get("select")).toBe("status,head_sha,created_at,error_code,error_summary");
+    expect(url.searchParams.get("select")).toBe("status,head_sha,created_at,updated_at,completed_at,error_code,error_summary");
     expect(url.searchParams.get("is_historical")).toBe("eq.false");
+  });
+
+  it.each([
+    ['old terminal failure', 'failed_terminal', '2026-06-30T00:00:59.999Z', null, 'current', true],
+    ['old retryable failure', 'failed_retryable', '2026-06-30T00:00:59.999Z', null, 'current', true],
+    ['same-head job retried after save', 'failed_terminal', '2026-06-30T00:01:00.001Z', null, 'refresh_failed', false],
+    ['new retryable failure', 'failed_retryable', '2026-06-30T00:01:00.001Z', null, 'refresh_failed', false],
+    ['same millisecond failure', 'failed_terminal', '2026-06-30T00:01:00.000Z', null, 'unknown', false],
+    ['same instant in another timezone', 'failed_terminal', '2026-06-30T09:01:00.000+09:00', null, 'unknown', false],
+    ['missing failure time', 'failed_terminal', undefined, null, 'unknown', false],
+    ['invalid failure time', 'failed_terminal', 'invalid', null, 'unknown', false],
+    ['failure before job creation', 'failed_terminal', '2026-06-29T23:59:59Z', null, 'unknown', false],
+    ['older completed job', 'completed', '2026-06-30T00:00:59.999Z', '2026-06-30T00:00:59.999Z', 'current', true],
+    ['new completed job', 'completed', '2026-06-30T00:01:00.001Z', '2026-06-30T00:01:00.001Z', 'current', true],
+    ['missing completion time', 'completed', '2026-06-30T00:01:00.001Z', null, 'unknown', false],
+    ['invalid completion time', 'completed', '2026-06-30T00:01:00.001Z', 'invalid', 'unknown', false],
+    ['new queued work', 'queued', '2026-06-30T00:01:00.001Z', null, 'refreshing', false],
+    ['still active earlier work', 'processing', '2026-06-30T00:00:59.999Z', null, 'refreshing', false]
+  ])('compares saved time with actual job transition: %s', async (_label,status,updated,completed,freshness,copyEligible) => {
+    vi.stubEnv('AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED','true');
+    vi.stubEnv('AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL','https://agentproof-test.supabase.co');
+    vi.stubEnv('AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY','fixture-secret');
+    const row={status,head_sha:'a'.repeat(40),created_at:'2026-06-30T00:00:00Z',updated_at:updated,completed_at:completed,error_code:'budget_unverified',error_summary:'Budget unavailable'};
+    vi.stubGlobal('fetch',vi.fn(async()=>Response.json([row])));
+    const base={tenantId:'tenant_a',repositoryId:100,pullRequestNumber:7,reportHeadSha:row.head_sha,reportCreatedAt:'2026-06-30T00:01:00.000Z'} as any;
+    const result=await resolveAnalysisJobFreshness(base);expect(result).toMatchObject({freshness,copyEligible});
+    if(freshness==='current'||freshness==='unknown')expect(result.failure).toBeUndefined();
+    expect(JSON.stringify(result)).not.toMatch(/fixture-secret|updated_at|completed_at|job_id/);
+    // Failure history and canonical job timestamps are never rewritten.
+    expect(row).toMatchObject({status,updated_at:updated,completed_at:completed});
+  });
+  it('keeps saved-time reconciliation behind head/tenant/PR anchors and conservative missing-time rules',async()=>{
+    vi.stubEnv('AGENTPROOF_ANALYSIS_JOB_QUEUE_ENABLED','true');vi.stubEnv('AGENTPROOF_ANALYSIS_JOBS_SUPABASE_URL','https://agentproof-test.supabase.co');vi.stubEnv('AGENTPROOF_ANALYSIS_JOBS_SUPABASE_SERVICE_ROLE_KEY','fixture-secret');
+    const row={status:'failed_terminal',head_sha:'b'.repeat(40),created_at:'2026-06-30T00:00:00Z',updated_at:'2026-06-30T00:00:30Z',completed_at:null,error_code:'failed'};
+    const fetchMock=vi.fn(async(_url:string)=>Response.json([row]));vi.stubGlobal('fetch',fetchMock);
+    const input={tenantId:'tenant_a',repositoryId:100,pullRequestNumber:7,reportHeadSha:'a'.repeat(40),reportCreatedAt:'2026-06-30T00:01:00Z'} as any;
+    expect(await resolveAnalysisJobFreshness(input)).toMatchObject({freshness:'refresh_failed',copyEligible:false});
+    row.status='completed';row.completed_at=row.updated_at as any;expect(await resolveAnalysisJobFreshness(input)).toEqual({freshness:'superseded',copyEligible:false});
+    for(const reportCreatedAt of [null,'invalid'])expect(await resolveAnalysisJobFreshness({...input,reportCreatedAt})).toEqual({freshness:'unknown',copyEligible:false});
+    row.status='failed_terminal';expect(await resolveAnalysisJobFreshness({...input,reportCreatedAt:undefined})).toMatchObject({freshness:'refresh_failed',copyEligible:false});
+    row.head_sha=input.reportHeadSha;expect(await resolveAnalysisJobFreshness({...input,staleAt:'2026-06-30T00:01:01Z'})).toEqual({freshness:'stale',copyEligible:false});
+    const url=new URL(fetchMock.mock.calls[0][0] as unknown as string);expect(url.searchParams.get('tenant_id')).toBe('eq.tenant_a');expect(url.searchParams.get('repository_id')).toBe('eq.100');expect(url.searchParams.get('pull_request_number')).toBe('eq.7');
   });
 
   it("keeps freshness anchored to creation order when an older job completes out of order", async () => {

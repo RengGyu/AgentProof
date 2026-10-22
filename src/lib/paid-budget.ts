@@ -1,3 +1,5 @@
+import {timeLocate} from './purpose-locate-timing';
+import {recordPurposeTimeout} from './purpose-timeout';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash, randomUUID } from 'node:crypto';
 import { getControlPlaneSupabaseEnv } from './control-plane-supabase';
@@ -14,11 +16,20 @@ const scopes = new AsyncLocalStorage<Scope>();
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 const CALL_TIMEOUT_MS=60_000;
 const PAUSE_POLL_MS=1_000;
+/** Combined reasoning and visible output; shared by the DeepSeek request and admission guard. */
+export const DEEPSEEK_MAX_OUTPUT_TOKENS=32_768;
 
 /** Stop fallback orchestration before it saves or publishes a blocked analysis. */
 export function assertPaidAnalysisAllowed():void {
   const failure=scopes.getStore()?.failure;
   if(failure)throw failure;
+}
+
+/** Non-generative source transmission still belongs to an active, non-denied analysis. */
+export function assertPaidAnalysisScope():void {
+  const scope=scopes.getStore();
+  if(!scope||scope.closed)throw new PaidBudgetError('budget_scope_required');
+  if(scope.failure)throw scope.failure;
 }
 
 /** Scope carries no prompt or credential to the durable ledger. Admission is lazy. */
@@ -74,10 +85,10 @@ export function calculateUsageMilliKrw(usage:PaidUsage,price:Price,fx:string):nu
 }
 function token(value:unknown):value is number { return typeof value==='number' && Number.isSafeInteger(value) && value>=0; }
 /** Gemini total already includes thoughts; OpenAI output already includes reasoning. */
-export function normalizePaidUsage(provider:'google'|'openai',raw:unknown):PaidUsage|null {
+export function normalizePaidUsage(provider:'google'|'openai'|'typesafe',raw:unknown):PaidUsage|null {
   if(!raw || typeof raw!=='object')return null;
   const u=raw as Record<string,unknown>;
-  if(provider==='openai')return token(u.input_tokens)&&token(u.output_tokens)?{input:u.input_tokens,output:u.output_tokens}:null;
+  if(provider==='openai'||provider==='typesafe')return token(u.input_tokens)&&token(u.output_tokens)?{input:u.input_tokens,output:u.output_tokens}:null;
   if(!token(u.promptTokenCount)||!token(u.candidatesTokenCount)||!token(u.totalTokenCount))return null;
   const output=u.totalTokenCount-u.promptTokenCount;
   if(output<u.candidatesTokenCount || (u.thoughtsTokenCount!==undefined && (!token(u.thoughtsTokenCount)||output!==u.candidatesTokenCount+u.thoughtsTokenCount)) || (u.toolUsePromptTokenCount!==undefined && u.toolUsePromptTokenCount!==0))return null;
@@ -92,7 +103,7 @@ function validateConfig(raw:unknown):BudgetConfig {
   return c;
 }
 
-export async function paidProviderCall<T>(options:{provider:'google'|'openai';model:string;invoke:(signal:AbortSignal)=>Promise<T>;usage:(result:T)=>PaidUsage|null;measurements?:ReviewMeasurementContext}):Promise<T> {
+export async function paidProviderCall<T>(options:{provider:'google'|'openai'|'typesafe'|'deepseek';model:string;invoke:(signal:AbortSignal)=>Promise<T>;usage:(result:T)=>PaidUsage|null;admission?:PaidUsage;measurements?:ReviewMeasurementContext}):Promise<T> {
   const scope=scopes.getStore();
   if(!scope || scope.closed)throw new PaidBudgetError('budget_scope_required');
   if(scope.failure)throw scope.failure;
@@ -100,16 +111,28 @@ export async function paidProviderCall<T>(options:{provider:'google'|'openai';mo
   let price!:Price;
   const callId=randomUUID();
   try {
-    await measureReviewAsync(measurements,'budget_reserve',async()=>{
+    await timeLocate('budget_reserve',()=>measureReviewAsync(measurements,'budget_reserve',async()=>{
       scope.config ??= validateConfig((await rpc({p_action:'config'})).config);
       price=scope.config.prices[`${options.provider}/${options.model}`];
       if(!price || typeof price.source!=='string' || !price.source.startsWith('https://'))throw new PaidBudgetError('budget_price_unconfigured');
-      if(decimal(price.inputUsdPerMillion,6)<=0n||decimal(price.outputUsdPerMillion,6)<=0n)throw new PaidBudgetError('budget_price_invalid');
+      // TypeSafe's pinned model is input-billed; zero output cost is not missing usage.
+      if(options.provider==='typesafe'){
+        if(options.model!=='jev-1.13.0'||price.inputUsdPerMillion!=='0.042'||price.outputUsdPerMillion!=='0'||price.source!=='https://docs.typesafe.ai/models')throw new PaidBudgetError('budget_price_invalid');
+      }else if(decimal(price.inputUsdPerMillion,6)<=0n||decimal(price.outputUsdPerMillion,6)<=0n)throw new PaidBudgetError('budget_price_invalid');
+      // Flash admission reserves the entire documented 1M context,
+      // conservatively using 2^20, at peak cache-miss prices; this is not a token count.
+      if(options.provider==='deepseek'&&(options.model!=='deepseek-flash'||
+        price.source!=='https://api-docs.deepseek.com/quick_start/pricing/'||
+        decimal(price.inputUsdPerMillion,6)<300000n||decimal(price.outputUsdPerMillion,6)<1200000n||
+        options.admission?.input!==1048576||!token(options.admission.output)||options.admission.output<1||options.admission.output>DEEPSEEK_MAX_OUTPUT_TOKENS))throw new PaidBudgetError('budget_price_invalid');
       const reserve=safeNumber(decimal(price.callReserveKrw,3));
       if(reserve<=0)throw new PaidBudgetError('budget_reserve_invalid');
+      if(options.admission && (!token(options.admission.input)||!token(options.admission.output)||reserve<calculateUsageMilliKrw(options.admission,price,scope.config.krwPerUsd)))throw new PaidBudgetError('budget_reserve_invalid');
+      // Reserve the entire published 64k request ceiling; FX comes from the active config.
+      if(options.provider==='typesafe'&&reserve<calculateUsageMilliKrw({input:64_000,output:0},price,scope.config.krwPerUsd))throw new PaidBudgetError('budget_reserve_invalid');
       await rpc({p_action:'reserve',p_run:scope.key,p_owner:scope.owner,p_call:callId,p_reserve:reserve,p_config:scope.config});
       scope.started=true;
-    });
+    }));
   } catch(error) {
     scope.failure=error instanceof PaidBudgetError?error:new PaidBudgetError('budget_unavailable');
     throw scope.failure;
@@ -117,7 +140,8 @@ export async function paidProviderCall<T>(options:{provider:'google'|'openai';mo
   const controller=new AbortController();
   let timer:ReturnType<typeof setTimeout>|undefined;
   let done=false;
-  const timeout=setTimeout(()=>controller.abort(new PaidBudgetError('budget_call_timeout')),CALL_TIMEOUT_MS);
+  const timeoutStarted=performance.now();
+  const timeout=setTimeout(()=>controller.abort(recordPurposeTimeout(new PaidBudgetError('budget_call_timeout'),'budget_call_timeout',CALL_TIMEOUT_MS,timeoutStarted)),CALL_TIMEOUT_MS);
   const poll=async()=>{
     try { await rpc({p_action:'check',p_run:scope.key,p_owner:scope.owner,p_call:callId}); }
     catch(error) { if(!done){scope.failure=error instanceof PaidBudgetError?error:new PaidBudgetError('budget_unavailable');controller.abort(scope.failure);} }
@@ -137,7 +161,7 @@ export async function paidProviderCall<T>(options:{provider:'google'|'openai';mo
     done=true;clearTimeout(timeout);if(timer)clearTimeout(timer);
     // Missing usage, cancellation and provider/network failure retain the reservation.
     // A failed settlement also leaves the durable pending reservation in place.
-    try { await measureReviewAsync(measurements,'budget_settle',()=>rpc({p_action:'settle',p_run:scope.key,p_owner:scope.owner,p_call:callId,p_charge:charge})); }
+    try { await timeLocate('budget_settle',()=>measureReviewAsync(measurements,'budget_settle',()=>rpc({p_action:'settle',p_run:scope.key,p_owner:scope.owner,p_call:callId,p_charge:charge}))); }
     catch(error) { scope.failure=error instanceof PaidBudgetError?error:new PaidBudgetError('budget_unavailable');throw scope.failure; }
   }
 }
