@@ -810,12 +810,12 @@
 .report-hierarchy :is(.report-ref-read, .report-purpose-ref-link):hover code { border-color: var(--workspace-control, #7a8490); background: var(--ws-nav, #eef0f2); }
 .report-hierarchy .report-ref-read[aria-pressed="true"] code { border-color: var(--workspace-accent, #33363b); background: var(--workspace-accent, #33363b); color: #fff; }
 .report-hierarchy .report-ref-side { font-family: var(--ws-mono, monospace); font-size: 11px; color: var(--workspace-muted, #5e6672); }
-.report-hierarchy .report-ref-github { width: 36px; min-width: 36px; height: 44px; }
+.report-hierarchy .report-ref-github { width: 44px; min-width: 44px; height: 44px; }
 .report-hierarchy .report-ref-full summary { font-family: var(--ws-mono, monospace); font-size: 11px; }
 .report-hierarchy .report-ref-full[open] code { font-family: var(--ws-mono, monospace); font-size: 12px; color: var(--workspace-muted, #5e6672); }
 
 /* Cited-code location list: the selected location is the filled chip, as on the home sample. */
-.github-dashboard .report-code-ref { min-height: 40px; padding: 0 10px; gap: 8px; }
+.github-dashboard .report-code-ref { min-height: 44px; padding: 0 10px; gap: 8px; }
 .github-dashboard .report-code-ref code { font-family: var(--ws-mono); font-size: 12px; }
 .github-dashboard .report-code-ref span { font-family: var(--ws-mono); font-size: 11px; }
 .github-dashboard .report-code-ref[aria-pressed="true"] { border-color: var(--workspace-accent); background: var(--workspace-accent); box-shadow: none; color: #fff; }
