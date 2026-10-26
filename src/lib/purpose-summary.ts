@@ -23,11 +23,12 @@ const id = (prefix: string) => ({type:'string',pattern:'^'+prefix+'_[a-f0-9]{24}
 const prose = {type:'string',minLength:1,maxLength:600};
 const description = object({text:prose,evidenceRefs:array(id('pe'),16)});
 // New fields are optional: old HMAC payloads are accepted without rewriting them.
-const clauseShape=object({changeSummary:description,scopeNotes:array(description,8),clauseId:id('pc'),goalId:id('pg'),purpose:prose,implementation,changeDescriptions:array(description,8),testDescriptions:array(description,8),conditions:array(prose,32),exceptions:array(prose,32),evidenceRefs:array(id('pe'),16),counterEvidenceRefs:array(id('pe'),16)});
+const intentMember=object({clauseId:id('pc'),purpose:prose,conditions:array(prose,8),exceptions:array(prose,8)});
+const clauseShape=object({intentMembers:array(intentMember,32),changeSummary:description,scopeNotes:array(description,8),clauseId:id('pc'),goalId:id('pg'),purpose:prose,implementation,changeDescriptions:array(description,8),testDescriptions:array(description,8),conditions:array(prose,32),exceptions:array(prose,32),evidenceRefs:array(id('pe'),16),counterEvidenceRefs:array(id('pe'),16)});
 const reviewSchema = object({version:{const:1},flow:{const:'explore_final_v1'},locale:enumeration('en','ko'),headSha:sha,baseSha:sha,clauses:array({...clauseShape,required:['clauseId','goalId','purpose','implementation','changeDescriptions','testDescriptions']},32),references:array(object({id:id('pe'),path:{type:'string',minLength:1,maxLength:600},side:enumeration('head','base'),revision:sha,startLine:{type:'integer',minimum:1,maximum:1000000},endLine:{type:'integer',minimum:1,maximum:1000000}}),16)});
 const reviewShape = contract<PurposeReview>({...reviewSchema,required:['version','flow','headSha','baseSha','clauses','references']});
 export function purposeClauseReferences(c:PurposeReview['clauses'][number]):string[] {return [...new Set([...(c.evidenceRefs??[]),...(c.counterEvidenceRefs??[]),...[...(c.changeSummary?[c.changeSummary]:[]),...(c.scopeNotes??[]),...c.changeDescriptions,...c.testDescriptions].flatMap(d=>d.evidenceRefs)])];}
-export function purposeVisibleClauses(review:PurposeReview):PurposeReview['clauses'] {return review.clauses.filter(c=>purposeClauseReferences(c).length>0);}
+export function purposeVisibleClauses(review:PurposeReview):PurposeReview['clauses'] {return review.clauses.filter(c=>c.intentMembers!==undefined||purposeClauseReferences(c).length>0);}
 export function purposeClauseHasInterpretation(c:PurposeReview['clauses'][number]):boolean {return !!(c.changeDescriptions.length||c.testDescriptions.length);}
 export function purposeClauseFitText(c:PurposeReview['clauses'][number]):string {return !purposeClauseHasInterpretation(c)?'Selected source locations; purpose fit was not interpreted.':c.implementation==='supports'?'Changed material fits this purpose item.':c.implementation==='contradicts'?'Changed material conflicts with this purpose item.':'Not confirmed from the selected changed source.';}
 export function safePurposeReviewPath(path:string):boolean {return path.length>0&&path.length<=600&&!path.startsWith('/')&&!/[\\\u0000-\u001f\u007f]/.test(path)&&!path.split('/').some(p=>!p||p==='.'||p==='..');}
@@ -35,8 +36,11 @@ export function safePurposeReviewPath(path:string):boolean {return path.length>0
 export function purposeReviewFailure(value:unknown):'purpose_projection_shape'|'purpose_no_citable_material'|'purpose_projection_text'|'purpose_projection_refs'|'purpose_projection_source'|null {
  if(!reviewShape(value)||!value.clauses.length||new Set(value.clauses.map(c=>c.clauseId)).size!==value.clauses.length||new Set(value.references.map(e=>e.id)).size!==value.references.length)return 'purpose_projection_shape';
  const ids=new Set(value.references.map(e=>e.id));
+ const members=value.clauses.flatMap(c=>c.intentMembers??[]);
+ if(new Set(members.map(m=>m.clauseId)).size!==members.length||value.clauses.some(c=>c.intentMembers!==undefined&&(!c.intentMembers.length||c.conditions!==undefined||c.exceptions!==undefined)))return 'purpose_projection_shape';
  if(!value.clauses.some(c=>purposeClauseReferences(c).length))return 'purpose_no_citable_material';
  for(const c of value.clauses){
+  if((c.intentMembers??[]).some(m=>!safePurposeReviewText(m.purpose)||[...m.conditions,...m.exceptions].some(t=>!safePurposeReviewText(t))))return 'purpose_projection_text';
   if(!safePurposeReviewText(c.purpose)||[...(c.conditions??[]),...(c.exceptions??[]),...[...(c.changeSummary?[c.changeSummary]:[]),...(c.scopeNotes??[]),...c.changeDescriptions,...c.testDescriptions].map(d=>d.text)].some(t=>!safePurposeReviewText(t)))return 'purpose_projection_text';
   if((c.evidenceRefs!==undefined||c.counterEvidenceRefs!==undefined||c.changeSummary!==undefined||c.scopeNotes!==undefined)&&!purposeClauseHasInterpretation(c)&&c.implementation!=='unknown')return 'purpose_projection_shape';
   if([c.evidenceRefs??[],c.counterEvidenceRefs??[]].some(refs=>new Set(refs).size!==refs.length)||purposeClauseReferences(c).some(id=>!ids.has(id))||[...(c.changeSummary?[c.changeSummary]:[]),...(c.scopeNotes??[]),...c.changeDescriptions,...c.testDescriptions].some(d=>!d.evidenceRefs.length||new Set(d.evidenceRefs).size!==d.evidenceRefs.length))return 'purpose_projection_refs';

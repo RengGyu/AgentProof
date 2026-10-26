@@ -46,3 +46,9 @@ it.each([undefined,null,[],{status:{raw:'PRIVATE_CANARY'},incompleteReason:['PRI
  const e=new Error('purpose_provider_incomplete');annotatePurposeFailure(e,{stage:'purpose',phase:'parse',providerResponse:value??{}} as any);const safe=purposeFailureDiagnostic(e);
  expect(safe).toMatchObject({providerResponse:{status:'unknown',incompleteReason:'unknown',inputTokens:null,outputTokens:null,totalTokens:null,cachedInputTokens:null,reasoningTokens:null}});expect(JSON.stringify(safe)).not.toMatch(/PRIVATE_CANARY|9007199254740992|1\.5/);
 });
+
+it('reports the final unit counter-reference rejection as its closed code instead of unknown',async()=>{
+ const {purposeFailureDiagnostic,annotatePurposeFailure}=await import('./purpose-failure');const error=new Error('purpose_final_counter_reference');annotatePurposeFailure(error,{stage:'assess',phase:'validation'});
+ expect(purposeFailureDiagnostic(error)).toMatchObject({stage:'assess',phase:'validation',code:'purpose_final_counter_reference'});
+ expect(purposeFailureDiagnostic(new Error('purpose_final_counter_reference PRIVATE_CANARY')).code).toBe('unknown');
+});

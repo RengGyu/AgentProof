@@ -1,10 +1,11 @@
 import {describe,it,expect,vi} from 'vitest';
 import {createHash} from 'node:crypto';
 import {capturePurposeDiffIndex} from './purpose-github';
-import {assessPurpose} from './purpose-assessment';
+import {assessPurpose,finalChangeInventory} from './purpose-assessment';
 import {buildPurposeSources,compilePurposeSpec} from './purpose-spec';
 import {generateVerificationReportV2FromInput} from './verifier';
 import type {PullRequestInput} from './types';
+import {purposeFailureDiagnostic} from './purpose-failure';
 const head='a'.repeat(40),base='b'.repeat(40);
 const input:PullRequestInput={title:'Retain pending work',taskText:'',description:'Keep pending work unless cancelled.',repositoryPrivate:false,url:'https://github.com/acme/work/pull/8',changedFiles:[{path:'queue.py',status:'modified',patch:'@@ -1 +1 @@\n-old\n+new'}],checks:[],logs:[],sourceProvenance:{version:1,origin:'github_snapshot',headSha:head,baseSha:base,evidenceCapturedAt:'2026-10-08T00:00:00Z',inputFingerprint:{version:1,algorithm:'sha256',value:'c'.repeat(64),coverage:'github_metadata'}}};
 capturePurposeDiffIndex(input,input.changedFiles.map(f=>({filename:f.path,patch:f.patch})),{baseRefSha:base,diffBaseSha:base,headSha:head});
@@ -196,4 +197,76 @@ it('hierarchy fields never supply a fit judgment or bypass local source/secret c
  expect(result.report.purposeReview!.clauses[0].implementation).toBe('unknown');
  for(const mutate of [(v:any)=>v.clauses[0].changeSummary.evidenceRefs=['pe_'+'f'.repeat(24)],(v:any)=>v.clauses[0].changeSummary.evidenceRefs=[],(v:any)=>v.clauses[0].changeSummary.text='api_key=fixture_secret_value',(v:any)=>v.clauses[0].scopeNotes=[{text:'Scope',evidenceRefs:['pe_'+'f'.repeat(24)]}]]){const v=structuredClone(result.report.purposeReview);mutate(v);expect(isPurposeReview(v)).toBe(false);}
  await expect(run(explorer([],q=>{const p:any=final(q);p.clauses[0].scopeNotes=[{text:'Scope',evidenceRefs:['pe_'+'f'.repeat(24)]}];return p;}))).rejects.toThrow('purpose_final_reference');
+});
+
+describe('final assess uses the remaining absolute analysis deadline',()=>{
+ const slow=(stage:string,ms:number,seen:any[]=[])=>{const p=explorer(seen);return vi.fn(async(q:any,signal:AbortSignal)=>{if(q.stage===stage)await new Promise<void>((resolve,reject)=>{const t=setTimeout(resolve,ms);signal.addEventListener('abort',()=>{clearTimeout(t);reject(signal.reason);},{once:true});});return p(q);});};
+ const clock=()=>vi.useFakeTimers({toFake:['setTimeout','clearTimeout','Date','performance']});
+ it('completes a final call longer than the former 180s total inside the 300s analysis deadline',async()=>{clock();try{const pending=run(slow('assess',200000));await vi.advanceTimersByTimeAsync(200001);expect((await pending).report).toBeTruthy();}finally{vi.useRealTimers();}});
+ it('aborts the final call at the absolute 300s analysis deadline',async()=>{clock();try{const t0=Date.now();const pending=run(slow('assess',500000)).then(()=>null,e=>e);let done=false;void pending.then(()=>{done=true;});await vi.advanceTimersByTimeAsync(299000);expect(done).toBe(false);await vi.advanceTimersByTimeAsync(1001);const error=await pending;expect(purposeFailureDiagnostic(error)).toMatchObject({stage:'assess',code:'purpose_timeout',timeoutOrigin:'analysis_deadline',timeoutMs:300000});expect(Date.now()-t0).toBeLessThanOrEqual(300001);}finally{vi.useRealTimers();}});
+ it('keeps 60s for exploration calls',async()=>{clock();try{const pending=run(slow('locate',61000)).then(()=>null,e=>e);await vi.advanceTimersByTimeAsync(60001);expect(purposeFailureDiagnostic(await pending)).toMatchObject({stage:'locate',timeoutOrigin:'provider_timeout',timeoutMs:60000});}finally{vi.useRealTimers();}});
+ it('caller abort during final is not attributed to any timer',async()=>{clock();try{const controller=new AbortController(),reason=new DOMException('','AbortError');const pending=run(slow('assess',500000),backend(),{signal:controller.signal}).then(()=>null,e=>e);await vi.advanceTimersByTimeAsync(70000);controller.abort(reason);const error=await pending;expect(purposeFailureDiagnostic(error)).toMatchObject({stage:'assess',timeoutOrigin:'external_unknown'});expect(purposeFailureDiagnostic(error)).not.toHaveProperty('timeoutMs');}finally{vi.useRealTimers();}});
+});
+
+describe('repository preparation overlaps the purpose call',()=>{
+ const purposeAnswer=()=>({goals:[{clauses:[{sourceRefs:[buildPurposeSources(input).spans[0].id],expectedObservable:'Retain pending work',conditions:['unless cancelled'],exceptions:[],obligation:'required',evidenceNeed:'behavioral'}]}],ambiguities:[]});
+ const provider=(purpose:()=>Promise<any>)=>{const p=explorer([]);return vi.fn(async(q:any)=>q.stage==='purpose'?purpose():p(q));};
+ const clock=()=>vi.useFakeTimers({toFake:['setTimeout','clearTimeout','Date','performance']});
+ const later=(ms:number,value:()=>any)=>new Promise(resolve=>setTimeout(()=>resolve(value()),ms));
+ it('reads manifests while the purpose model is still generating and returns the same report shape',async()=>{clock();try{
+  const b=backend(),t0=Date.now(),manifestAt:number[]=[];const manifest=b.manifest;b.manifest=async(...a:any[])=>{manifestAt.push(Date.now()-t0);return (manifest as any)(...a);};
+  const pending=run(provider(()=>later(1000,purposeAnswer)),b,{frozenSpec:undefined}).then(r=>r,e=>e);await vi.advanceTimersByTimeAsync(1001);const r=await pending;expect(r).not.toBeInstanceOf(Error);
+  expect(manifestAt[0]).toBe(0);expect(manifestAt).toHaveLength(2);expect(r.spec.goals[0].clauses[0].id).toBe(clauseId);expect(r.report).toBeTruthy();
+ }finally{vi.useRealTimers();}});
+ it('a purpose failure wins over a later repository result and aborts the overlapped preparation',async()=>{clock();try{
+  const b:any=backend();let seen:AbortSignal|undefined;b.manifest=async(_s:any,_r:string,signal:AbortSignal)=>{seen=signal;return new Promise((_,reject)=>signal.addEventListener('abort',()=>reject(signal.reason),{once:true}));};
+  const pending=run(provider(()=>later(500,()=>({goals:[],ambiguities:[]}))),b,{frozenSpec:undefined}).then(()=>null,e=>e);await vi.advanceTimersByTimeAsync(501);
+  expect((await pending)?.message).toBe('purpose_no_core_goal');expect(seen?.aborted).toBe(true);expect(b.readBlob).not.toHaveBeenCalled();
+ }finally{vi.useRealTimers();}});
+ it('a repository failure is reported at the locate/source stage only after the purpose result',async()=>{clock();try{
+  const b=backend();b.manifest=async()=>{throw new Error('localization_manifest_invalid');};const call=provider(()=>later(500,purposeAnswer));
+  const pending=run(call,b,{frozenSpec:undefined}).then(()=>null,e=>e);await vi.advanceTimersByTimeAsync(501);const error=await pending;
+  expect(error?.message).toBe('localization_manifest_invalid');expect(purposeFailureDiagnostic(error)).toMatchObject({stage:'locate',phase:'source'});expect(call.mock.calls.map(c=>c[0].stage)).toEqual(['purpose']);
+ }finally{vi.useRealTimers();}});
+});
+
+describe('final input carries the collected changed-file inventory as metadata only',()=>{
+ const variant=(provenance:any,changedFiles:any[]=input.changedFiles)=>{const v:any={...input,changedFiles,sourceProvenance:{...input.sourceProvenance,...provenance}};capturePurposeDiffIndex(v,changedFiles.filter(f=>f.patch).map(f=>({filename:f.path,patch:f.patch})),{baseRefSha:base,diffBaseSha:base,headSha:head});return v;};
+ const complete={changedFileInventory:{version:1,completeness:'complete',headSha:head}};
+ it('sends a complete exact-head path/status list to the final call without patches, and refs stay evidence-only',async()=>{
+  const v=variant(complete),seen:any[]=[],src=buildPurposeSources(v);
+  const specV=compilePurposeSpec(v,{goals:[{sourceRefs:[src.spans[0].id],clauses:[{sourceRefs:[src.spans[0].id],expectedObservable:'Retain pending work',conditions:['unless cancelled'],exceptions:[],obligation:'required',evidenceNeed:'behavioral'}]}],contextRefs:src.spans.slice(1).map(x=>x.id),unprocessedSourceRefs:[],ambiguities:[]}),cid=specV.goals[0].clauses[0].id;
+  const provider=vi.fn(async(q:any)=>{seen.push(structuredClone(q));if(q.stage==='locate'){const l=q.localization;if(l.round===0)return {actions:[{targetId:l.initial.changed.find((e:any)=>e.side==='head').id,startLine:1,endLine:2,clauseId:cid}],clauses:[],stopReason:'continue'};return {actions:[],clauses:[{clauseId:cid,evidenceRefs:l.selectionSources.map((e:any)=>e.id),counterEvidenceRefs:[]}],stopReason:'selected'};}const f:any=final(q);f.clauses[0].clauseId=cid;return f;});
+  const r=await assessPurpose(v,generateVerificationReportV2FromInput(v),{mode:'advisory',flow:'explore_final_v1',frozenSpec:specV,provider,readCurrentInput:async()=>v,localization:{mode:'ai',backend:backend()}} as any);
+  const q=seen.find(x=>x.stage==='assess');expect(q.coverage.changeInventory).toEqual({completeness:'complete',headSha:head,baseSha:base,files:[{path:'queue.py',status:'modified'}]});
+  expect(JSON.stringify(q.coverage.changeInventory)).not.toMatch(/patch|@@|old|retain/);expect(q.evidence.every((e:any)=>/^pe_/.test(e.id))).toBe(true);
+  expect(JSON.stringify(r.report)).not.toContain('changeInventory');
+ });
+ it.each([
+  ['no inventory record',{changedFileInventory:undefined}],
+  ['an incomplete inventory',{changedFileInventory:{version:1,completeness:'incomplete',headSha:head}}],
+  ['a different head SHA',{changedFileInventory:{version:1,completeness:'complete',headSha:'c'.repeat(40)}}],
+  ['pasted evidence',{origin:'pasted_evidence',changedFileInventory:{version:1,completeness:'complete',headSha:head}}],
+ ] as const)('never marks %s as complete',(_label,provenance)=>{
+  expect(finalChangeInventory(variant(provenance as any)).completeness).toBe('incomplete');
+ });
+ it('keeps rename origins, marks a truncated or redacted list incomplete and never copies patches',()=>{
+  const renamed=finalChangeInventory(variant(complete,[{path:'b.py',previousPath:'a.py',status:'renamed',patch:'@@ -1 +1 @@\n-x\n+y'}]));
+  expect(renamed).toMatchObject({completeness:'complete',files:[{path:'b.py',previousPath:'a.py',status:'renamed'}]});expect(JSON.stringify(renamed)).not.toContain('@@');
+  const many=finalChangeInventory(variant(complete,Array.from({length:301},(_,i)=>({path:`f${i}.py`,status:'added'}))));
+  expect(many.files).toHaveLength(300);expect(many.completeness).toBe('incomplete');
+  const secret=finalChangeInventory(variant(complete,[{path:'keys/sk-abcdefghijklmnop.txt',status:'added'}]));
+  expect(secret.files[0].path).not.toContain('sk-abcdefghijklmnop');expect(secret.completeness).toBe('incomplete');
+ });
+});
+
+describe('purpose extraction uses the remaining absolute analysis deadline',()=>{
+ const answer=()=>({goals:[{clauses:[{sourceRefs:[buildPurposeSources(input).spans[0].id],expectedObservable:'Retain pending work',conditions:['unless cancelled'],exceptions:[],obligation:'required',evidenceNeed:'behavioral'}]}],ambiguities:[]});
+ const slowPurpose=(ms:number)=>{const p=explorer([]);return vi.fn(async(q:any,signal:AbortSignal)=>{if(q.stage!=='purpose')return p(q);await new Promise<void>((resolve,reject)=>{const t=setTimeout(resolve,ms);signal.addEventListener('abort',()=>{clearTimeout(t);reject(signal.reason);},{once:true});});return answer();});};
+ const clock=()=>vi.useFakeTimers({toFake:['setTimeout','clearTimeout','Date','performance']});
+ it('completes a purpose call longer than 60s inside the 300s analysis deadline',async()=>{clock();try{const pending=run(slowPurpose(120000),backend(),{frozenSpec:undefined}).then(r=>r,e=>e);await vi.advanceTimersByTimeAsync(120001);const r=await pending;expect(r).not.toBeInstanceOf(Error);expect(r.report).toBeTruthy();}finally{vi.useRealTimers();}});
+ it('aborts a hanging purpose call at the absolute 300s deadline, not after a fresh per-call 60s',async()=>{clock();try{const pending=run(slowPurpose(900000),backend(),{frozenSpec:undefined}).then(()=>null,e=>e);let done=false;void pending.then(()=>{done=true;});await vi.advanceTimersByTimeAsync(299000);expect(done).toBe(false);await vi.advanceTimersByTimeAsync(1001);expect(purposeFailureDiagnostic(await pending)).toMatchObject({stage:'purpose',code:'purpose_timeout',timeoutOrigin:'analysis_deadline',timeoutMs:300000});}finally{vi.useRealTimers();}});
+ it('caller abort during purpose is not attributed to a timer and aborts the overlapped repository preparation',async()=>{clock();try{const controller=new AbortController(),b:any=backend();let seen:AbortSignal|undefined;const manifest=b.manifest;b.manifest=async(s:any,r:string,signal:AbortSignal)=>{seen=signal;return manifest(s,r,signal);};
+  const pending=run(slowPurpose(900000),b,{frozenSpec:undefined,signal:controller.signal}).then(()=>null,e=>e);await vi.advanceTimersByTimeAsync(70000);controller.abort(new DOMException('','AbortError'));const error=await pending;
+  expect(purposeFailureDiagnostic(error)).toMatchObject({stage:'purpose',timeoutOrigin:'external_unknown'});expect(seen?.aborted).toBe(true);}finally{vi.useRealTimers();}});
 });

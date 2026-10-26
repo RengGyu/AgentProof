@@ -95,7 +95,7 @@ it.each(['web','mobile','public'] as const)('accepts %s without a model call, su
  expect(detail.id).toBe(state.job.reportId);expect(detail.report.purposeReview.locale).toBe('ko');expect(detail.headSha).toBe(head);expect(detail.report.purposeReview.clauses[0].changeDescriptions).toHaveLength(1);
  expect(requests.every(r=>!r.count&&r.b.model==='deepseek-flash'&&r.b.reasoning.effort==='high')).toBe(true);expect(requests.filter(r=>!r.count).map(r=>JSON.parse(r.b.input[1].content).stage)).toEqual(['purpose','locate','locate','assess']);
  const timings=timingLog.mock.calls.filter(c=>c[0]==='agentproof_locate_timing').map(c=>JSON.parse(String(c[1])));expect(timings).toHaveLength(1);expect(timings[0]).toMatchObject({requestCorrelation:body.job.id,pullRequestNumber:45,outcome:'success'});expect(timings[0].operations).toEqual(expect.arrayContaining([expect.objectContaining({round:0,operation:'provider_transport',completed:1}),expect.objectContaining({round:0,operation:'source_read'}),expect.objectContaining({round:1,operation:'provider_parse',completed:1})]));if(privateRepo)expect(timings[0].operations.some((m:any)=>m.operation==='private_grant')).toBe(true);expect(JSON.stringify(timings)).not.toMatch(/fixture-installation-token|fixture-deepseek|owner\/repo|queue.py|source_text/);timingLog.mockRestore();
- expect(budget.filter(p=>p.p_action==='close')).toHaveLength(1);expect(budget.filter(p=>p.p_action==='settle')).toHaveLength(4);
+ expect(budget).toHaveLength(0);
  expect(JSON.stringify(state)).not.toMatch(/fixture-model|fixture-installation|error_summary|source_text|pending =/);
 });
 it.each(['save','grant','consent','installation','tenant','control'] as const)('rejects %s OFF before queue/model, and rechecks it after acceptance',async(kind)=>{

@@ -2,12 +2,16 @@ import type { PurposeReview } from './purpose-contract';
 import { reportCopy } from '@/components/report-copy';
 import { isPurposeReview, purposeClauseHasInterpretation, purposeClauseReferences, purposeVisibleClauses } from './purpose-summary';
 
+/** Preserve each original qualifier's owner; legacy flat fields remain unchanged. */
+export function purposeIntentDetails(clause: PurposeReview['clauses'][number]) {
+  return clause.intentMembers ?? [{purpose:'', conditions:clause.conditions??[], exceptions:clause.exceptions??[]}];
+}
 /** Shared display contract. Missing legacy fields stay missing; titles never synthesize claims. */
 export function purposeClauseDisplay(clause: PurposeReview['clauses'][number]) {
   const primaryDescriptions=clause.changeDescriptions.length?clause.changeDescriptions:clause.testDescriptions;
   const primaryTests=clause.changeDescriptions.length&&(clause.implementation==='contradicts'||clause.counterEvidenceRefs?.length)?clause.testDescriptions:[];
   const cited=new Set([...primaryDescriptions.flatMap(d=>d.evidenceRefs),...primaryTests.flatMap(d=>d.evidenceRefs),...(clause.counterEvidenceRefs??[])]);
-  return {title: clause.changeSummary?.text ?? clause.purpose, changeSummary: clause.changeSummary,
+  return {intentDetails:purposeIntentDetails(clause), hasReferences:purposeClauseReferences(clause).length>0, title: clause.changeSummary?.text ?? clause.purpose, changeSummary: clause.changeSummary,
     primaryDescriptions, primaryTests, primaryKind:clause.changeDescriptions.length?'change' as const:'test' as const,
     summaryRefs:(clause.changeSummary?.evidenceRefs??[]).filter(id=>!cited.has(id)),
     detailTests:clause.changeDescriptions.length&&!primaryTests.length?clause.testDescriptions:[],
@@ -19,7 +23,7 @@ export function purposeClauseDisplay(clause: PurposeReview['clauses'][number]) {
 export function purposeReviewSections(review:PurposeReview) {
   const visible=purposeVisibleClauses(review);
   const primary=visible;
-  const details=visible.filter(c=>c.scopeNotes?.length||c.conditions?.length||c.exceptions?.length||purposeClauseDisplay(c).detailTests.length);
+  const details=visible.filter(c=>c.intentMembers?.length||c.scopeNotes?.length||c.conditions?.length||c.exceptions?.length||purposeClauseDisplay(c).detailTests.length);
   return {primary,details};
 }
 
@@ -68,7 +72,7 @@ export function formatPurposeReview(review: PurposeReview, options: {
     if(d.summaryRefs.length)lines.push(...cite(d.summaryRefs),'');
     const unbound=purposeUnboundReferences(clause);if(unbound.length)lines.push(heading(t.selectedLocations,4),'',...cite(unbound),'');
     if(clause.counterEvidenceRefs?.length)lines.push(heading(t.counterEvidence,4),'',...cite(clause.counterEvidenceRefs),'');
-    lines.push(d.hasInterpretation?t.fit[clause.implementation]:t.locatedOnly,'');
+    lines.push(d.hasInterpretation||!d.hasReferences?t.fit[clause.implementation]:t.locatedOnly,'');
   };
   if(options.part!=='details'){lines.push(heading(t.changeSummary+' · '+t.fitLabel,2),'');primary.forEach(main);}
   if(options.part!=='main'&&details.length){
@@ -77,7 +81,10 @@ export function formatPurposeReview(review: PurposeReview, options: {
       const d=purposeClauseDisplay(clause);
       if(!primary.includes(clause))main(clause);else if(review.clauses.length>1)lines.push(heading(d.title),'');
       if(d.scopeNotes.length){lines.push(heading(t.scopeLabel,4),'');d.scopeNotes.forEach(description);}
-      for(const [label,values]of [[t.conditions,clause.conditions],[t.exceptions,clause.exceptions]] as const)if(values?.length)lines.push(heading(label,4),'',...values.map(v=>(markdown?'- ':'')+escape(v)),'');
+      for(const member of d.intentDetails){
+        if(member.purpose)lines.push(heading(member.purpose,4),'');
+        for(const [label,values]of [[t.conditions,member.conditions],[t.exceptions,member.exceptions]] as const)if(values.length)lines.push(heading(label,member.purpose?5:4),'',...values.map(v=>(markdown?'- ':'')+escape(v)),'');
+      }
       if(d.detailTests.length){lines.push(heading(t.relatedTests,4),'');d.detailTests.forEach(description);}
     }
   }

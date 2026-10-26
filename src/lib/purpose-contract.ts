@@ -73,6 +73,11 @@ export interface PurposeFinalProposal {
         remainingQuestions: {text: string; evidenceRefs: string[]}[];
     }>;
 }
+export interface PurposeIntentMember { clauseId: string; purpose: string; conditions: string[]; exceptions: string[]; }
+export interface PurposeUnitProposal {
+    units: Array<Omit<PurposeFinalProposal['clauses'][number], 'clauseId'> & {candidateClauseIds: string[]; purpose: string}>;
+    contextClauseIds: string[];
+}
 export interface PurposeCoverage {
     readQuestions?: Array<{round: number; clauseId: string; targetId: string; question: string; knownRefs: string[]; reportImpact: string}>;
     diffCoverage?: {comparison: {baseRefSha: string; diffBaseSha: string; headSha: string} | null; files: Array<{path: string; previousPath: string; state: 'provided' | 'partial' | 'unavailable'}>; hunks: Array<{id: string; complete: boolean; evidenceRefs: string[]}>};
@@ -90,7 +95,7 @@ export interface PurposeCoverage {
 /** Request-local private detail only. Portable/persisted summary never contains these observations. */
 export interface PurposeFacts {
     version: 1;
-    clauses: Array<PurposeFinalProposal['clauses'][number] & {purpose: string}>;
+    clauses: Array<PurposeFinalProposal['clauses'][number] & {purpose: string; intentMembers?: PurposeIntentMember[]}>;
     coverage: PurposeCoverage;
 }
 export interface PurposeAssessment {
@@ -120,7 +125,7 @@ export interface PurposeReview {
     headSha: string;
     baseSha: string;
     // Reference revisions: baseSha is the verified PR diff base, not necessarily the branch tip.
-    clauses: {changeSummary?: PurposeCitedDescription; scopeNotes?: PurposeCitedDescription[]; clauseId: string; goalId: string; purpose: string; conditions?: string[]; exceptions?: string[]; evidenceRefs?: string[]; counterEvidenceRefs?: string[]; implementation: PurposeClauseResult['implementation']; changeDescriptions: {text: string; evidenceRefs: string[]}[]; testDescriptions: {text: string; evidenceRefs: string[]}[]}[];
+    clauses: {intentMembers?: PurposeIntentMember[]; changeSummary?: PurposeCitedDescription; scopeNotes?: PurposeCitedDescription[]; clauseId: string; goalId: string; purpose: string; conditions?: string[]; exceptions?: string[]; evidenceRefs?: string[]; counterEvidenceRefs?: string[]; implementation: PurposeClauseResult['implementation']; changeDescriptions: {text: string; evidenceRefs: string[]}[]; testDescriptions: {text: string; evidenceRefs: string[]}[]}[];
     references: Pick<PurposeEvidence, 'id' | 'path' | 'side' | 'revision' | 'startLine' | 'endLine'>[];
 }
 /** Portable summary deliberately excludes tenant reviewer prose and locations. */
@@ -147,6 +152,19 @@ export const purposeProposalSchema = object({ goals: array(object({ sourceRefs: 
 export const purposeExploreProposalSchema = object({goals: array(object({clauses: array(purposeClauseSchema, 32)}), 16), ambiguities: strings(32)});
 export type PurposeExploreProposal = {goals: {clauses: PurposeProposal['goals'][number]['clauses']}[]; ambiguities: string[]};
 export const isPurposeExploreProposal = contract<PurposeExploreProposal>(purposeExploreProposalSchema);
+/** Purpose wire only: ignore unused keys, never fill/coerce values or repair source references. */
+export function normalizePurposeExploreWire(value: unknown): unknown {
+    const record=(v:unknown):v is Record<string,unknown>=>v!==null&&typeof v==='object'&&!Array.isArray(v);
+    const pick=(v:unknown,keys:string[]):unknown=>record(v)?Object.fromEntries(keys.filter(k=>Object.hasOwn(v,k)).map(k=>[k,v[k]])):v;
+    const root=pick(value,Object.keys(purposeExploreProposalSchema.properties));
+    if(record(root)&&Array.isArray(root.goals))root.goals=root.goals.map(value=>{
+        const goal=pick(value,['clauses']);
+        if(record(goal)&&Array.isArray(goal.clauses))goal.clauses=goal.clauses.map(c=>pick(c,Object.keys(purposeClauseSchema.properties)));
+        return goal;
+    });
+    return root;
+}
+
 export function purposeExploreRequestSchema(sources: unknown): object {
     const schema: any = structuredClone(purposeExploreProposalSchema);
     const ids = (sources as {spans?: {id: string}[]})?.spans?.map(s => s.id) ?? [];
@@ -205,21 +223,37 @@ type WireObservation = {basis: 'source_text'; text: string; evidenceId: string} 
 const legacyCompatibleWireSchema: any = structuredClone(purposeFinalWireSchema);
 legacyCompatibleWireSchema.properties.clauses.items.required = legacyCompatibleWireSchema.properties.clauses.items.required.filter((k: string) => k !== 'changeSummary' && k !== 'scopeNotes');
 const validFinalWire = contract<{clauses: Array<Omit<PurposeFinalProposal['clauses'][number], 'testRelation' | 'remainingQuestions' | 'changeObservations' | 'testObservations' | 'changeSummary'> & {changeSummary?: PurposeCitedDescription | null; changeObservations: WireObservation[]; testObservations: WireObservation[]}>}>(legacyCompatibleWireSchema);
+const {clauseId: _unitClauseId, ...unitFields} = wireClauseProperties;
+const unitWireSchema = object({units: array(object({...unitFields,
+    candidateClauseIds: {...strings(32), minItems: 1}, purpose: str,
+    changeSummary: {anyOf: [citedDescriptionSchema, {type: 'null'}]},
+    changeObservations: array(wireObservationSchema, 8), testObservations: array(wireObservationSchema, 8),
+}), 16), contextClauseIds: strings(32)});
+const validUnitWire = contract<{units: Array<Omit<PurposeUnitProposal['units'][number], 'testRelation' | 'remainingQuestions' | 'changeObservations' | 'testObservations' | 'changeSummary'> & {changeSummary: PurposeCitedDescription | null; changeObservations: WireObservation[]; testObservations: WireObservation[]}>; contextClauseIds: string[]}>(unitWireSchema);
+const parsedObservation = (o: WireObservation): PurposeObservation => 'evidenceId' in o
+    ? {basis: 'source_text', text: o.text, evidenceRefs: [o.evidenceId]} : o;
+export function parsePurposeUnitsWire(value: unknown): PurposeUnitProposal {
+    if (!validUnitWire(value)) throw new Error('purpose_final_wire_schema');
+    return {units: value.units.map(({changeSummary, ...u}) => ({...u, ...(changeSummary ? {changeSummary} : {}), testRelation: 'unknown', remainingQuestions: [], changeObservations: u.changeObservations.map(parsedObservation), testObservations: u.testObservations.map(parsedObservation)})), contextClauseIds: [...value.contextClauseIds]};
+}
 export function parsePurposeFinalWire(value: unknown): PurposeFinalProposal {
     if (!validFinalWire(value)) throw new Error('purpose_final_wire_schema');
-    const observation = (o: WireObservation): PurposeObservation => 'evidenceId' in o
-        ? {basis: 'source_text', text: o.text, evidenceRefs: [o.evidenceId]} : o;
-    return {clauses: value.clauses.map(({changeSummary, ...c}) => ({...c, ...(changeSummary ? {changeSummary} : {}), testRelation: 'unknown', remainingQuestions: [], changeObservations: c.changeObservations.map(observation), testObservations: c.testObservations.map(observation)}))};
+    return {clauses: value.clauses.map(({changeSummary, ...c}) => ({...c, ...(changeSummary ? {changeSummary} : {}), testRelation: 'unknown', remainingQuestions: [], changeObservations: c.changeObservations.map(parsedObservation), testObservations: c.testObservations.map(parsedObservation)}))};
 }
 /** Wire constraint only: local source closure remains the trust boundary. */
-export function purposeFinalRequestSchema(spec: unknown, evidence: unknown): object {
-    const schema: any = structuredClone(purposeFinalWireSchema);
+export function purposeFinalRequestSchema(spec: unknown, evidence: unknown, format?: 'purpose_units_v1'): object {
+    const schema: any = structuredClone(format ? unitWireSchema : purposeFinalWireSchema);
     const clauseIds = (spec as PurposeSpec | undefined)?.goals?.flatMap(g => g.clauses.map(c => c.id)) ?? [];
     const evidenceIds = Array.isArray(evidence) ? evidence.map(e => e.id) : [];
-    const row = schema.properties.clauses.items.properties;
-    row.clauseId = clauseIds.length ? enumeration(...clauseIds) : str;
-    schema.properties.clauses.minItems = clauseIds.length;
-    schema.properties.clauses.maxItems = clauseIds.length;
+    const row = (format ? schema.properties.units : schema.properties.clauses).items.properties;
+    if (format) {
+        row.candidateClauseIds.items = clauseIds.length ? enumeration(...clauseIds) : str;
+        schema.properties.contextClauseIds.items = clauseIds.length ? enumeration(...clauseIds) : str;
+    } else {
+        row.clauseId = clauseIds.length ? enumeration(...clauseIds) : str;
+        schema.properties.clauses.minItems = clauseIds.length;
+        schema.properties.clauses.maxItems = clauseIds.length;
+    }
     const refs = () => evidenceIds.length ? {...strings(16), items: enumeration(...evidenceIds)} : {...strings(16), maxItems: 0};
     row.evidenceRefs = refs(); row.counterEvidenceRefs = refs();
     row.changeSummary.anyOf[0].properties.evidenceRefs = {...refs(), minItems: 1};
@@ -236,13 +270,31 @@ export function purposeFinalRequestSchema(spec: unknown, evidence: unknown): obj
 export const isPurposeFinalProposal = contract<PurposeFinalProposal>(purposeFinalSchema);
 export function validatePurposeFinal(value: unknown, spec: PurposeSpec, evidence: PurposeEvidence[]): PurposeFinalProposal {
     if (!isPurposeFinalProposal(value)) throw new Error('purpose_final_schema');
-    const ids = new Set(spec.goals.flatMap(g => g.clauses.map(c => c.id))), sent = new Map(evidence.map(e => [e.id, e]));
+    const ids = new Set(spec.goals.flatMap(g => g.clauses.map(c => c.id)));
     if (value.clauses.length !== ids.size || new Set(value.clauses.map(c => c.clauseId)).size !== ids.size || value.clauses.some(c => !ids.has(c.clauseId))) throw new Error('purpose_final_clause_reference');
-    for (const c of value.clauses) {
+    validateFinalReferences(value.clauses, evidence);
+    return value;
+}
+function validateFinalReferences(clauses: PurposeFinalProposal['clauses'], evidence: PurposeEvidence[]): void {
+    const sent = new Map(evidence.map(e => [e.id, e]));
+    for (const c of clauses) {
         const observations = [...c.changeObservations, ...c.testObservations];
         const refs = [...c.evidenceRefs, ...c.counterEvidenceRefs, ...observations.flatMap(o => o.evidenceRefs), ...c.remainingQuestions.flatMap(q => q.evidenceRefs), ...(c.changeSummary?.evidenceRefs ?? []), ...(c.scopeNotes ?? []).flatMap(n => n.evidenceRefs)];
         if (refs.some(id => !sent.has(id))) throw new Error('purpose_final_reference');
         for (const o of observations) if (o.basis === 'source_text' && (o.evidenceRefs.length !== 1 || !sent.get(o.evidenceRefs[0])!.content.includes(o.text))) throw new Error('purpose_final_quote');
+    }
+}
+const {clauseId: _unitInternalClauseId, ...unitInternalFields} = finalClauseProperties;
+const unitProposalShape = contract<PurposeUnitProposal>(object({units: array({...object({...unitInternalFields, candidateClauseIds: {...strings(32),minItems:1}, purpose:str}), required: Object.keys({...unitInternalFields,candidateClauseIds:0,purpose:0}).filter(k=>k!=='changeSummary'&&k!=='scopeNotes')},16),contextClauseIds:strings(32)}));
+export function validatePurposeUnits(value: unknown, spec: PurposeSpec, evidence: PurposeEvidence[], counterByCandidate: Array<{clauseId:string;counterEvidenceRefs:string[]}> = []): PurposeUnitProposal {
+    if (!unitProposalShape(value)) throw new Error('purpose_final_schema');
+    const expected = new Set(spec.goals.flatMap(g=>g.clauses.map(c=>c.id)));
+    const assigned = [...value.units.flatMap(u=>u.candidateClauseIds),...value.contextClauseIds];
+    if (assigned.length!==expected.size || new Set(assigned).size!==expected.size || assigned.some(id=>!expected.has(id))) throw new Error('purpose_final_clause_reference');
+    validateFinalReferences(value.units.map(u=>({...u,clauseId:u.candidateClauseIds[0]})),evidence);
+    for (const link of counterByCandidate) {
+        const unit=value.units.find(u=>u.candidateClauseIds.includes(link.clauseId));
+        if (link.counterEvidenceRefs.some(id=>!unit?.counterEvidenceRefs.includes(id))) throw new Error('purpose_final_counter_reference');
     }
     return value;
 }

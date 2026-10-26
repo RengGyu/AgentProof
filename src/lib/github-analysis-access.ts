@@ -156,12 +156,15 @@ export async function resolveGitHubAnalysisCredential(input: {
 /** Uncached gate for each private model/read phase. A prior token never grants lasting authority. */
 export async function isPrivateAnalysisGrantCurrent(input: { tenantId: string; repositoryFullName: string; installationId: number; repositoryId: number; requireSave?: boolean }, env = process.env): Promise<boolean> {
   try {
-    const grants = await listTenantRepositoryGrants({ tenantId: input.tenantId }, env);
+    // Independent current reads share the wait, never a cached authorization decision.
+    const [grants, statuses] = await Promise.all([
+      listTenantRepositoryGrants({ tenantId: input.tenantId }, env),
+      listTenantGitHubInstallationStatuses({ tenantId: input.tenantId, installationIds: [input.installationId] }, env)
+    ]);
     const matches = grants.filter(grant => grant.tenantId === input.tenantId && grant.installationId === input.installationId && grant.repositoryId === input.repositoryId && grant.repositoryFullName.toLowerCase() === input.repositoryFullName.toLowerCase());
     if (matches.length !== 1) return false;
     const grant = matches[0];
     if (!grant.enabled || !grant.analysisEnabled || (input.requireSave && !grant.saveReportsEnabled) || grant.repositoryPrivate !== true || grant.privateAnalysisConsentVersion !== PRIVATE_ANALYSIS_CONSENT_VERSION) return false;
-    const statuses = await listTenantGitHubInstallationStatuses({ tenantId: input.tenantId, installationIds: [input.installationId] }, env);
     return statuses.some(status => status.installationId === input.installationId && status.status === "active");
   } catch { return false; }
 }

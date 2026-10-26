@@ -6,19 +6,21 @@ import {annotatePurposeFailure, purposeFailureDiagnostic, type PurposeFailureSta
 import { createPurposeRepository, type PurposeRepositoryBackend } from './purpose-repository';
 import { localizePurpose, type LocalizationMode } from './purpose-localization';
 import { getPurposeDiffIndex } from "./purpose-github";
-import { buildPurposeSources, compilePurposeSpec } from './purpose-spec';
+import { buildPurposeSources, compilePurposeSpec, compilePurposeUnitSpec } from './purpose-spec';
 import { createPurposeCollector, purposeBatches, type PurposeSourceReader } from './purpose-evidence';
 import { collectPurposeTestEvidence } from './purpose-test-evidence';
-import { isAssessmentProposal, isCheckerProposal, projectPurposeSummary, purposeHash, type PurposeMode, type PurposeAssessment, type PurposeClause, type PurposeClauseResult, type PurposeSpec, type Achievement, type AssessmentProposal, type PurposeFacts, validatePurposeFinal } from './purpose-contract';
+import { isAssessmentProposal, isCheckerProposal, projectPurposeSummary, purposeHash, type PurposeMode, type PurposeAssessment, type PurposeClause, type PurposeClauseResult, type PurposeSpec, type Achievement, type AssessmentProposal, type PurposeFacts, validatePurposeFinal, validatePurposeUnits } from './purpose-contract';
 import {isPurposeReview,safePurposeReviewText,purposeReviewFailure} from './purpose-summary';
 import { createStagedPurposeProvider, type PurposeProvider } from './purpose-provider';
 import type { PullRequestInput, VerificationReportV2 } from './types';
+import { redactSecrets } from './redact';
 import { validateRuntimeReportBoundary, registerPurposeValidationContext } from './report-runtime-validation';
 export interface PurposeAssessmentOptions {
     mode?: PurposeMode;
     reportLanguage?: ReportLanguage;
     variant?: 'fixed' | 'adaptive';
     flow?: 'explore_final_v1';
+    finalFormat?: 'purpose_units_v1';
     provider?: PurposeProvider;
     stageProviders?: Parameters<typeof createStagedPurposeProvider>[0];
     readSource?: PurposeSourceReader;
@@ -54,12 +56,13 @@ export async function assessPurpose(input: PullRequestInput, report: Verificatio
     if (!provider) throw new Error('purpose_provider_unavailable');
     if (input.sourceProvenance?.origin !== 'github_snapshot')
         throw new Error('purpose_snapshot_required');
-    const deadline=purposeDeadline(180000,'analysis_deadline',options.signal),signal=deadline.signal;
+    const deadline=purposeDeadline(300000,'analysis_deadline',options.signal),signal=deadline.signal;
     let disposeLocalization = () => {};
     let failureStage:PurposeFailureStage='purpose', failurePhase:PurposeFailurePhase='validation';
     const authorizePrivate = async (active=signal) => {active.throwIfAborted();if(input.repositoryPrivate===true&&!await options.authorizePrivate!(active))throw new Error('purpose_private_consent_required');active.throwIfAborted();};
     try {
-    await authorizePrivate();
+    // Normal preparation is synchronous; invoke owns the first check. Frozen specs skip invoke.
+    if (options.frozenSpec) await authorizePrivate();
     const inputHash = purposeHash(input), sources = buildPurposeSources(input), finalOnly = options.flow === 'explore_final_v1', adaptive = !finalOnly && options.variant !== "fixed";
     let calls = 0;
     const stageTimes: {
@@ -68,7 +71,9 @@ export async function assessPurpose(input: PullRequestInput, report: Verificatio
     }[] = [];
     const started = performance.now();
     const invoke = async (q: Parameters<PurposeProvider>[0], stageSignal=signal) => { failureStage=q.stage; const active=AbortSignal.any([signal,stageSignal]); await authorizePrivate(active); if (++calls > 9)
-        throw new Error('purpose_call_budget'); const callDeadline=purposeDeadline(60000,'provider_timeout',active),start = performance.now(); try {
+        throw new Error('purpose_call_budget');
+        // Purpose and final assess run within the remaining absolute analysis deadline; locate and other calls keep their own 60s.
+        const callDeadline=options.flow==='explore_final_v1'&&(q.stage==='purpose'||q.stage==='assess')?{signal:active,dispose:()=>{}}:purposeDeadline(60000,'provider_timeout',active),start = performance.now(); try {
         const proposal=await provider(structuredClone({...q, reportLanguage, ...(options.flow ? {flow: options.flow} : {})}), callDeadline.signal);
         await authorizePrivate(callDeadline.signal);
         return proposal;
@@ -78,6 +83,10 @@ export async function assessPurpose(input: PullRequestInput, report: Verificatio
         stageTimes.push({ stage: q.stage, elapsedMs: performance.now() - start });
     } };
     analysisDiagnostic('purpose','start',()=>({hashes:{source:sources.sourceBundleHash},counts:{sources:sources.spans.length}}));
+    // Repository preparation depends only on the frozen input, so it overlaps the purpose call; its outcome is awaited at the locate stage.
+    const repositoryAbort = new AbortController();
+    const pendingRepository = options.localization ? createPurposeRepository(input, options.localization.backend, {signal: AbortSignal.any([signal, repositoryAbort.signal]), authorizePrivate: options.authorizePrivate}) : undefined;
+    if (pendingRepository) { pendingRepository.catch(() => {}); disposeLocalization = () => { repositoryAbort.abort(); void pendingRepository.then(r => r.dispose(), () => {}); }; }
     const sourceSpec = options.frozenSpec ?? compilePurposeSpec(input, await invoke({ stage: 'purpose', sources }), options.flow);
     // A frozen spec must be independently source-validated; a forged accepted-looking object has no authority.
     const rebuilt = compilePurposeSpec(input, { goals: sourceSpec.goals.map(g => ({ sourceRefs: g.sourceRefs, clauses: g.clauses.map(({ id: _id, canonicalRequirementIds: _r, ...c }) => c) })), contextRefs: sources.spans.filter(s => !sourceSpec.goals.some(g => g.sourceRefs.includes(s.id)) && !sourceSpec.unprocessedSourceRefs.includes(s.id)).map(s => s.id), unprocessedSourceRefs: sourceSpec.unprocessedSourceRefs, ambiguities: sourceSpec.ambiguities.filter(a => a !== 'source_incomplete') });
@@ -91,8 +100,7 @@ export async function assessPurpose(input: PullRequestInput, report: Verificatio
     let localization: Awaited<ReturnType<typeof localizePurpose>> | undefined;
     if (options.localization) {
         failureStage='locate';failurePhase='source';
-        const repository = await createPurposeRepository(input, options.localization.backend, {signal,authorizePrivate:options.authorizePrivate});
-        disposeLocalization = () => repository.dispose();
+        const repository = await pendingRepository!;
         failurePhase='validation';
         localization = await localizePurpose(input, spec, repository, {...options.localization, flow: options.flow, invoke, signal});
         collector = localization.collector;
@@ -116,15 +124,22 @@ export async function assessPurpose(input: PullRequestInput, report: Verificatio
     const observations = new Map<string, AssessmentProposal['clauses'][number]>(), sent = new Map<string, Set<string>>();
     const limitations = [...(localization?.limitations ?? []), ...diffIndex.limitations, ...signals.limitations, ...(spec.unprocessedSourceRefs.length ? ['source_unprocessed'] : []), ...(spec.ambiguities.length ? ['source_ambiguous'] : [])];
     let facts: PurposeFacts | undefined;
+    let reportSpec=spec;
     if (finalOnly) {
         failureStage='assess';failurePhase='validation';
         const evidence = collector.evidence;
         if(!evidence.length){const error=new Error('purpose_no_citable_material');annotatePurposeFailure(error,{stage:'assess',phase:'source',counts:{clauses:clauses.length,evidence:0}});throw error;}
         if (evidence.length > 16 || Buffer.byteLength(JSON.stringify(evidence)) > 48000) throw new Error('purpose_final_packet_budget');
         analysisDiagnostic('final','start',()=>({hashes:{packet:analysisHash(evidence)},counts:{selected:evidence.length,bytes:Buffer.byteLength(JSON.stringify(evidence))}}));
-        const raw = validatePurposeFinal(await invoke({stage: 'assess', flow: 'explore_final_v1', sources, spec, evidence, limitations: [...limitations, ...collector.limitations], coverage: {omittedEvidence:localization!.coverage.omittedEvidence}}), spec, evidence);
+        const unitFormat=options.finalFormat;
+        const counterLinks=localization!.clauses.map(c=>({clauseId:c.clauseId,counterEvidenceRefs:c.counterEvidenceRefs}));
+        const value=await invoke({stage:'assess',flow:'explore_final_v1',...(unitFormat?{finalFormat:unitFormat}:{}),sources,spec,evidence,...(unitFormat?{coverage:{omittedEvidence:localization!.coverage.omittedEvidence,candidateCounterEvidence:counterLinks}}:{limitations:[...limitations,...collector.limitations],coverage:{omittedEvidence:localization!.coverage.omittedEvidence,changeInventory:finalChangeInventory(input)}})});
+        const compiled=unitFormat?compilePurposeUnitSpec(spec,validatePurposeUnits(value,spec,evidence,counterLinks),sources):undefined;
+        if(compiled&&!compiled.rows.length)throw new Error('purpose_no_core_goal');
+        if(compiled)reportSpec=compiled.spec;
+        const raw=compiled?{clauses:compiled.rows}:validatePurposeFinal(value,spec,evidence);
         analysisDiagnostic('final','success',()=>({hashes:{final:analysisHash(raw),packet:analysisHash(evidence)},counts:{clauses:raw.clauses.length},parts:raw.clauses.map(c=>({idHash:analysisHash(c.clauseId),changeHash:analysisHash(c.changeObservations.map(o=>o.text)),testHash:analysisHash(c.testObservations.map(o=>o.text)),textHash:analysisHash(c),refs:c.evidenceRefs.map(analysisHash),counterRefs:c.counterEvidenceRefs.map(analysisHash)}))}));
-        facts = {version: 1, clauses: raw.clauses.map(c => ({...c, purpose: clauses.find(s => s.id === c.clauseId)!.expectedObservable})), coverage: localization!.coverage};
+        facts = {version: 1, clauses: compiled?compiled.rows:raw.clauses.map(c => ({...c, purpose: clauses.find(s => s.id === c.clauseId)!.expectedObservable})), coverage: localization!.coverage};
         for (const row of raw.clauses) {
             const interpreted=[...row.changeObservations,...row.testObservations].some(o=>o.basis==='model_interpretation');
             if(!interpreted)limitations.push('purpose_interpretation_unavailable');
@@ -207,8 +222,8 @@ export async function assessPurpose(input: PullRequestInput, report: Verificatio
         }
     }
 
-    const results = new Map(clauses.map(c => [c.id, reduceClause(c, observations.get(c.id), disputes.has(c.id), validBase ? report : null)]));
-    const goals = spec.goals.map(g => { const required = g.clauses.filter(c => c.obligation !== 'optional'), rows = g.clauses.map(c => results.get(c.id)!); const states = required.map(c => clauseAchievement(c, results.get(c.id)!)); const limited = spec.unprocessedSourceRefs.length > 0 || spec.ambiguities.length > 0 || required.some(c => c.obligation === 'ambiguous'); let achievement = aggregate(states); if (limited && achievement === 'fulfilled')
+    const results = new Map(reportSpec.goals.flatMap(g=>g.clauses).map(c => [c.id, reduceClause(c, observations.get(c.id), disputes.has(c.id), validBase ? report : null)]));
+    const goals = reportSpec.goals.map(g => { const required = g.clauses.filter(c => c.obligation !== 'optional'), rows = g.clauses.map(c => results.get(c.id)!); const states = required.map(c => clauseAchievement(c, results.get(c.id)!)); const limited = spec.unprocessedSourceRefs.length > 0 || spec.ambiguities.length > 0 || required.some(c => c.obligation === 'ambiguous'); let achievement = aggregate(states); if (limited && achievement === 'fulfilled')
         achievement = 'partial'; return { goalId: g.id, authority: g.authority, clauseResults: rows, achievement, assurance: rows.every(r => r.reasonCodes.includes('source_owned_static_result')||r.reasonCodes.includes('source_owned_execution_result')) ? 'deterministic_checked' as const : rows.some(r => r.implementation === 'supports' && r.evidenceRefs.length && !r.reasonCodes.includes('checker_dispute')) ? 'evidence_assessed' as const : 'insufficient' as const }; });
     const uniqueLimitations = [...new Set([...limitations, ...collector.limitations, ...(goals.some(g => g.clauseResults.some(r => r.reasonCodes.includes('checker_dispute'))) ? ['checker_dispute'] : [])])];
     const closedLimitations = uniqueLimitations.length > 32 ? [...uniqueLimitations.slice(0, 31), "limitation_overflow"] : uniqueLimitations;
@@ -225,12 +240,20 @@ export async function assessPurpose(input: PullRequestInput, report: Verificatio
     if (options.mode === 'shadow')
         return { report, assessment, spec, metrics: { calls, ...collector.metrics(), stageTimes, totalMs: performance.now() - started, ...(localization ? { localization: { clauses: localization.clauses, trace: localization.trace, calls: localization.calls, elapsedMs: localization.elapsedMs, sourceSpecHash: localization.sourceSpecHash } } : {}) } };
     failurePhase='projection';
-    const summary = projectPurposeSummary(assessment), purposeReview = finalOnly ? projectReview(assessment, spec, collector.evidence, getPurposeDiffIndex(input).comparison?.diffBaseSha ?? spec.baseSha, reportLanguage) : undefined;
+    const summary = projectPurposeSummary(assessment), purposeReview = finalOnly ? projectReview(assessment, reportSpec, collector.evidence, getPurposeDiffIndex(input).comparison?.diffBaseSha ?? spec.baseSha, reportLanguage) : undefined;
     const next = { ...report, purposeAssessment: assessment, purposeAssessmentSummary: summary, ...(purposeReview ? {purposeReview} : {}) };
     contexts.set(assessment, { inputHash, reportHash: purposeHash(report), assessmentHash: purposeHash(assessment), summaryHash: purposeHash(summary), reviewHash: purposeHash(purposeReview ?? null) });
     registerPurposeValidationContext(assessment, (currentInput, currentReport) => hasPurposeContext(assessment, currentInput, currentReport));
     return { report: next, assessment, spec, metrics: { calls, ...collector.metrics(), stageTimes, totalMs: performance.now() - started, ...(localization ? { localization: { clauses: localization.clauses, trace: localization.trace, calls: localization.calls, elapsedMs: localization.elapsedMs, sourceSpecHash: localization.sourceSpecHash } } : {}) } };
     } catch(error) {annotatePurposeFailure(error,{stage:failureStage,phase:failurePhase});analysisDiagnostic(failureStage==='locate'?'selection':failureStage==='purpose'?'purpose':'final','failure',()=>({failure:purposeFailureDiagnostic(error)}));throw error;} finally { deadline.dispose(); disposeLocalization(); }
+}
+/** Request-local changed-path metadata already collected for this PR; complete only for an exact-head reconciled, unredacted list. Never citable code. */
+export function finalChangeInventory(input: PullRequestInput) {
+    const provenance = input.sourceProvenance, listed = input.changedFiles.slice(0, 300);
+    const files = listed.map(f => ({path: redactSecrets(f.path), ...(f.previousPath ? {previousPath: redactSecrets(f.previousPath)} : {}), ...(f.status ? {status: f.status} : {})}));
+    const complete = provenance?.origin === 'github_snapshot' && Boolean(provenance.headSha) && provenance.changedFileInventory?.completeness === 'complete' && provenance.changedFileInventory.headSha === provenance.headSha
+        && listed.length === input.changedFiles.length && files.every((f, i) => f.path === listed[i].path && (f.previousPath ?? null) === (listed[i].previousPath ?? null));
+    return {completeness: complete ? 'complete' as const : 'incomplete' as const, headSha: provenance?.headSha ?? null, baseSha: provenance?.baseSha ?? null, files};
 }
 function reduceClause(clause: PurposeClause, row: AssessmentProposal['clauses'][number] | undefined, dispute: boolean, report: VerificationReportV2 | null): PurposeClauseResult {
     const result: PurposeClauseResult = { clauseId: clause.id, implementation: (row?.evidenceRefs.length||row?.counterEvidenceRefs.length) ? row!.implementation : 'unknown', testRelation: row?.evidenceRefs.length ? row.testRelation : 'unknown', execution: clause.evidenceNeed === 'static' ? 'not_required' : 'not_observed', evidenceRefs: row?.evidenceRefs ?? [], counterEvidenceRefs: row?.counterEvidenceRefs ?? [], openQuestions: row?.openQuestions ?? [], criterionEvidenceRefs:[], reasonCodes: [...(dispute ? ['checker_dispute'] : [])] };
@@ -270,13 +293,13 @@ function projectReview(assessment: PurposeAssessment, spec: PurposeSpec, evidenc
  const fail=(code:string):never=>{const error=new Error(code);annotatePurposeFailure(error,{stage:'assess',phase:'projection',counts});throw error;};
  if(!facts?.clauses.length)fail('purpose_no_core_goal');
  const safe=(text:string)=>{if(!safePurposeReviewText(text))fail('purpose_projection_text');return text;};
- const clauses=facts!.clauses.map(c=>{const goal=assessment.goals.find(g=>g.clauseResults.some(r=>r.clauseId===c.clauseId))!,clause=spec.goals.flatMap(g=>g.clauses).find(s=>s.id===c.clauseId)!;
+ const clauses: import('./purpose-contract').PurposeReview['clauses']=facts!.clauses.map(c=>{const goal=assessment.goals.find(g=>g.clauseResults.some(r=>r.clauseId===c.clauseId))!,clause=spec.goals.flatMap(g=>g.clauses).find(s=>s.id===c.clauseId)!;
   const descriptions=(items:typeof c.changeObservations)=>items.filter(o=>o.basis==='model_interpretation').map(o=>({text:safe(o.text),evidenceRefs:[...o.evidenceRefs]}));
   const changeDescriptions=descriptions(c.changeObservations),testDescriptions=descriptions(c.testObservations);counts.projectedDescriptions+=changeDescriptions.length+testDescriptions.length;
-  return {...(c.changeSummary?{changeSummary:{text:safe(c.changeSummary.text),evidenceRefs:[...c.changeSummary.evidenceRefs]}}:{}),...(c.scopeNotes?{scopeNotes:c.scopeNotes.map(n=>({text:safe(n.text),evidenceRefs:[...n.evidenceRefs]}))}:{}),clauseId:c.clauseId,goalId:goal.goalId,purpose:safe(c.purpose),conditions:clause.conditions.map(safe),exceptions:clause.exceptions.map(safe),implementation:changeDescriptions.length||testDescriptions.length?goal.clauseResults.find(r=>r.clauseId===c.clauseId)!.implementation:'unknown' as const,changeDescriptions,testDescriptions,evidenceRefs:[...new Set([...c.evidenceRefs,...[...c.changeObservations,...c.testObservations].flatMap(o=>o.evidenceRefs)])],counterEvidenceRefs:[...c.counterEvidenceRefs]};});
- const used=new Set(clauses.flatMap(c=>[...c.evidenceRefs,...c.counterEvidenceRefs,...(c.changeSummary?.evidenceRefs??[]),...(c.scopeNotes??[]).flatMap(n=>n.evidenceRefs)]));counts.projectedRefs=used.size;
+  return {...(c.changeSummary?{changeSummary:{text:safe(c.changeSummary.text),evidenceRefs:[...c.changeSummary.evidenceRefs]}}:{}),...(c.scopeNotes?{scopeNotes:c.scopeNotes.map(n=>({text:safe(n.text),evidenceRefs:[...n.evidenceRefs]}))}:{}),clauseId:c.clauseId,goalId:goal.goalId,purpose:safe(c.purpose),...(c.intentMembers?{intentMembers:c.intentMembers.map(m=>({clauseId:m.clauseId,purpose:safe(m.purpose),conditions:m.conditions.map(safe),exceptions:m.exceptions.map(safe)}))}:{conditions:clause.conditions.map(safe),exceptions:clause.exceptions.map(safe)}),implementation:changeDescriptions.length||testDescriptions.length?goal.clauseResults.find(r=>r.clauseId===c.clauseId)!.implementation:'unknown' as const,changeDescriptions,testDescriptions,evidenceRefs:[...new Set([...c.evidenceRefs,...[...c.changeObservations,...c.testObservations].flatMap(o=>o.evidenceRefs)])],counterEvidenceRefs:[...c.counterEvidenceRefs]};});
+ const used=new Set(clauses.flatMap(c=>[...(c.evidenceRefs??[]),...(c.counterEvidenceRefs??[]),...(c.changeSummary?.evidenceRefs??[]),...(c.scopeNotes??[]).flatMap(n=>n.evidenceRefs)]));counts.projectedRefs=used.size;
  if([...used].some(id=>!evidence.some(e=>e.id===id)))fail('purpose_projection_refs');
  const review:import('./purpose-contract').PurposeReview={version:1,flow:'explore_final_v1',locale,headSha:spec.headSha,baseSha:diffBaseSha,clauses,references:evidence.filter(e=>used.has(e.id)).map(({id,path,side,revision,startLine,endLine})=>({id,path,side,revision,startLine,endLine}))};
  const rejected=purposeReviewFailure(review);if(rejected)fail(rejected);
- analysisDiagnostic('projection','success',()=>({hashes:{projection:analysisHash(review)},counts:{clauses:clauses.length,changes:counts.changeInterpretations,tests:counts.testInterpretations,refs:used.size},parts:clauses.map(c=>({idHash:analysisHash(c.clauseId),changeHash:analysisHash(c.changeDescriptions.map(o=>o.text)),testHash:analysisHash(c.testDescriptions.map(o=>o.text)),textHash:analysisHash(c),conditions:c.conditions.map(analysisHash),exceptions:c.exceptions.map(analysisHash),refs:c.evidenceRefs.map(analysisHash),counterRefs:c.counterEvidenceRefs.map(analysisHash)}))}));return review;
+ analysisDiagnostic('projection','success',()=>({hashes:{projection:analysisHash(review)},counts:{clauses:clauses.length,changes:counts.changeInterpretations,tests:counts.testInterpretations,refs:used.size},parts:clauses.map(c=>({idHash:analysisHash(c.clauseId),changeHash:analysisHash(c.changeDescriptions.map(o=>o.text)),testHash:analysisHash(c.testDescriptions.map(o=>o.text)),textHash:analysisHash(c),conditions:(c.conditions??c.intentMembers?.flatMap(m=>m.conditions)??[]).map(analysisHash),exceptions:(c.exceptions??c.intentMembers?.flatMap(m=>m.exceptions)??[]).map(analysisHash),refs:(c.evidenceRefs??[]).map(analysisHash),counterRefs:(c.counterEvidenceRefs??[]).map(analysisHash)}))}));return review;
 }

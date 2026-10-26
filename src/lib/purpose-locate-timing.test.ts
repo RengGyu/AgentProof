@@ -25,7 +25,8 @@ it('times the real private runtime grant/visibility checks with the same signal 
  const opts=createRuntimePurposeOptions(input,{env:{DEEPSEEK_API_KEY:'KEY_CANARY'},token:'TOKEN_CANARY',requestCorrelation:anchor.requestCorrelation,privateGrant:{tenantId:'TENANT_CANARY',repositoryFullName:'owner/repo',installationId:3,repositoryId:4},readCurrentInput:async()=>input});
  const result=withLocateTimings(anchor,controller.signal,async()=>{setLocateTimingRound(0);return opts.authorizePrivate!(controller.signal);});
  await vi.advanceTimersByTimeAsync(100);expect(await result).toBe(true);const event=events()[0];
- expect(event.totalMs).toBe(100);expect(event.operations).toEqual(expect.arrayContaining([expect.objectContaining({operation:'authorization',inclusiveMs:100,exclusiveMs:0,completed:1}),expect.objectContaining({operation:'private_grant',completed:2,inclusiveMs:60}),expect.objectContaining({operation:'repository_visibility',completed:1,inclusiveMs:40})]));
+ // First grant (30ms) overlaps visibility (40ms); the post-visibility grant recheck still follows.
+ expect(event.totalMs).toBe(70);expect(event.operations).toEqual(expect.arrayContaining([expect.objectContaining({operation:'authorization',inclusiveMs:70,exclusiveMs:0,completed:1}),expect.objectContaining({operation:'private_grant',completed:2,inclusiveMs:60}),expect.objectContaining({operation:'repository_visibility',completed:1,inclusiveMs:40})]));
  expect(seen).toHaveBeenCalledOnce();expect(network).not.toHaveBeenCalled();expect(JSON.stringify(event)).not.toMatch(/CANARY|owner\/repo/);
 });
 

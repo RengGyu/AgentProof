@@ -5,6 +5,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { safePurposePath } from './purpose-evidence';
 import { getPurposeDiffIndex } from './purpose-github';
+import { hasMatchingPrivateReadGuards } from './purpose-repository-github';
 import { redactSecretsPreservingLines } from './redact';
 import { purposeHash, purposeContentHash, type PurposeEvidence, type PurposeReadRequest } from './purpose-contract';
 import type { PullRequestInput } from './types';
@@ -84,7 +85,6 @@ export async function createPurposeRepository(input: PullRequestInput, backend: 
     if (input.repositoryPrivate !== false && (input.repositoryPrivate !== true || !options.authorizePrivate))
         throw new Error('purpose_private_consent_required');
     const authorize = async (active=options.signal) => {active.throwIfAborted();if(input.repositoryPrivate===true&&!await options.authorizePrivate!(active))throw new Error('purpose_private_consent_required');active.throwIfAborted();};
-    await authorize();
     const match = /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+)\/pull\/\d+$/.exec(input.url ?? '');
     if (!match || input.sourceProvenance?.origin !== 'github_snapshot')
         throw new Error('localization_manifest_invalid');
@@ -112,9 +112,11 @@ export async function createPurposeRepository(input: PullRequestInput, backend: 
         const revision = side === 'head' ? input.sourceProvenance.headSha : getPurposeDiffIndex(input).comparison?.diffBaseSha ?? input.sourceProvenance.baseSha;
         if (!revision || !/^[a-f0-9]{40}$/.test(revision))
             throw new Error('localization_manifest_invalid');
-        await authorize();
-        const m = await backend.manifest(side, revision, signal);
-        await authorize();
+        const manifest=backend.manifest;
+        const backendGuardsManifest=hasMatchingPrivateReadGuards(backend,input,options.authorizePrivate,'manifest');
+        if (!backendGuardsManifest) await authorize();
+        const m = await manifest.call(backend,side,revision,signal);
+        if (!backendGuardsManifest) await authorize();
         guard();
         if (m.repository !== repository || m.revision !== revision || !/^[a-f0-9]{40}$/.test(m.treeSha) || typeof m.complete !== 'boolean' || !Array.isArray(m.entries) || m.entries.length > 20000 || new Set(m.entries.map(e => e.path)).size !== m.entries.length || m.entries.some(e => !safePurposePath(e.path) || !/^[a-f0-9]{40}$/.test(e.blobSha) || !['100644', '100755'].includes(e.mode) || !Number.isSafeInteger(e.size) || e.size < 0))
             throw new Error('localization_manifest_invalid');
@@ -147,7 +149,10 @@ export async function createPurposeRepository(input: PullRequestInput, backend: 
     async function load(f: File, endLine: number, active=signal): Promise<Loaded | null> {
         active.throwIfAborted();
         guard();
-        await authorize(active);
+        const readBlob=backend.readBlob;
+        const backendGuardsPrivateBlobs=hasMatchingPrivateReadGuards(backend,input,options.authorizePrivate,'readBlob');
+        // Cached content has no backend boundary; fresh, matching GitHub reads own both guards.
+        if (!backendGuardsPrivateBlobs || cache.has(f.id)) await authorize(active);
         if (cache.has(f.id)) {
             const previous = await cache.get(f.id)!;
             await authorize(active);
@@ -168,9 +173,9 @@ export async function createPurposeRepository(input: PullRequestInput, backend: 
         attempts++;
         const promise = (async () => {
             const readDeadline=purposeDeadline(8000,'source_read_deadline',active);
-            let blob;try {blob=await backend.readBlob(f,f.revision,endLine,readDeadline.signal);}finally{readDeadline.dispose();}
+            let blob;try {blob=await readBlob.call(backend,f,f.revision,endLine,readDeadline.signal);}finally{readDeadline.dispose();}
             active.throwIfAborted();
-            await authorize(active);
+            if (!backendGuardsPrivateBlobs || !blob) await authorize(active);
             guard();
             if (!blob) {
                 const reason = backend.readFailureReason?.(f, f.revision) ?? 'source_unavailable';

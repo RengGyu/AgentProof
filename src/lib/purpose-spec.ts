@@ -38,3 +38,23 @@ export function compilePurposeSpec(input: PullRequestInput, value: unknown, flow
         throw new Error('purpose_duplicate_clause');
     return { version: 1, sourceBundleHash: source.sourceBundleHash, headSha: source.headSha, baseSha: source.baseSha, goals, unprocessedSourceRefs: proposal.unprocessedSourceRefs, ambiguities: [...proposal.ambiguities, ...(!source.complete ? ['source_incomplete'] : [])] };
 }
+
+/** Final units retain original member qualifiers; membership is provenance, not a semantic correctness proof. */
+export function compilePurposeUnitSpec(original: PurposeSpec, proposal: import('./purpose-contract').PurposeUnitProposal, source: ReturnType<typeof buildPurposeSources>) {
+    const candidates=new Map(original.goals.flatMap(g=>g.clauses.map(c=>[c.id,c] as const)));
+    const spans=new Map(source.spans.map(s=>[s.id,s]));
+    const rows: import('./purpose-contract').PurposeFacts['clauses']=[];
+    const goals=proposal.units.map(unit=>{
+        const members=unit.candidateClauseIds.map(id=>candidates.get(id)!);
+        const sourceRefs=[...new Set(members.flatMap(c=>c.sourceRefs))];
+        if(sourceRefs.length>32 || sourceRefs.some(id=>!spans.has(id)))throw new Error('purpose_source_closure');
+        const identity=[original.sourceBundleHash,[...unit.candidateClauseIds].sort(),unit.purpose];
+        const clauseId='pc_'+purposeHash(identity).slice(0,24), goalId='pg_'+purposeHash(identity).slice(0,24);
+        const exact=members.length===1&&members[0].expectedObservable===unit.purpose;
+        const clause: import('./purpose-contract').PurposeClause={id:clauseId,sourceRefs,canonicalRequirementIds:exact?[...members[0].canonicalRequirementIds]:[],expectedObservable:unit.purpose,conditions:[],exceptions:[],obligation:members.some(c=>c.obligation==='ambiguous')?'ambiguous':members.some(c=>c.obligation==='required')?'required':'optional',evidenceNeed:exact?members[0].evidenceNeed:members.every(c=>c.evidenceNeed==='static')?'static':'behavioral'};
+        const {candidateClauseIds:_ids,purpose,...row}=unit;
+        rows.push({...row,clauseId,purpose,intentMembers:members.map(m=>({clauseId:m.id,purpose:m.expectedObservable,conditions:[...m.conditions],exceptions:[...m.exceptions]}))});
+        return {id:goalId,sourceRefs,authority:sourceRefs.every(r=>spans.get(r)!.authority==='authoritative')?'authoritative' as const:'author_claim' as const,clauses:[clause]};
+    });
+    return {spec:{...original,goals},rows};
+}

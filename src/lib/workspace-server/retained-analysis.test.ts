@@ -150,7 +150,7 @@ it('does not widen detailed operator diagnostics to a consented private dashboar
   expect(JSON.stringify(rows)).not.toMatch(/operatorMeasurements|provider_transport/);
 });
 
-it('runs mandatory DeepSeek purpose from the real entry, settles each call, and reopens the same safe explanation in the authenticated API/UI',async()=>{
+it('runs mandatory DeepSeek purpose from the real entry with no per-call budget RPC, and reopens the same safe explanation in the authenticated API/UI',async()=>{
  vi.stubEnv('AGENTPROOF_GENERAL_PR_OBSERVATION_MODE','advisory');vi.stubEnv('OPENAI_API_KEY','fixture-model-secret');vi.stubEnv('DEEPSEEK_API_KEY','fixture-deepseek-secret');vi.stubEnv('OPENAI_MODEL','unrelated-legacy-model');
  enablePurposeBudgetFixture();
  const requests:any[]=[],actions:any[]=[];vi.stubGlobal('fetch',purposeRuntimeFetch(fetch,'owner/repo','queue.py',{onRequest:(body,count)=>requests.push({body,count}),onBudget:p=>actions.push(p)}));
@@ -158,14 +158,14 @@ it('runs mandatory DeepSeek purpose from the real entry, settles each call, and 
  const generations=requests.filter(r=>!r.count);expect(generations.map(r=>JSON.parse(r.body.input[1].content).stage)).toEqual(['purpose','locate','locate','assess']);
  expect(generations.map(r=>r.body.reasoning.effort)).toEqual(['high','high','high','high']);expect(generations.every(r=>r.body.model==='deepseek-flash')).toBe(true);
  expect(requests.every(r=>!r.count)).toBe(true);expect(requests.every(r=>r.body.text.format.type==='json_schema')).toBe(true);
- expect(actions.filter(p=>p.p_action==='reserve')).toHaveLength(4);expect(actions.filter(p=>p.p_action==='settle')).toHaveLength(4);expect(actions.at(-1).p_action).toBe('close');
+ expect(actions).toHaveLength(0);
  const reopened=await (await GET(new Request(`http://localhost/api/dashboard/reports?id=${body.persistence.id}`,{headers:{cookie}}))).json();expect(reopened.report.purposeReview).toEqual(body.report.purposeReview);
  const {buildDashboardPrEvidenceReview}=await import('../pr-evidence-review');const {PrEvidenceReview}=await import('../../components/PrEvidenceReview');const {renderToStaticMarkup}=await import('react-dom/server');const {createElement}=await import('react');
  const html=renderToStaticMarkup(createElement(PrEvidenceReview,{review:buildDashboardPrEvidenceReview(reopened)!}));expect(html).toContain('Retain pending work');expect(html).toContain('The changed source retains pending work.');expect(JSON.stringify(reopened.report.purposeReview)).toContain(head);expect(html).not.toContain('pending = retain()');expect(html).not.toContain('Only the saved summary');
  expect(JSON.stringify(rows)).not.toMatch(/pending = retain|fixture-model-secret|fixture-ledger-secret|"facts"|readOutcomes/);
  expect((await GET(new Request(`http://localhost/api/dashboard/reports?id=${body.persistence.id}`))).status).toBe(401);
 });
-it.each(['price','model','quote','usage','sha','locate'] as const)('does not persist a blank success or retry when purpose %s fails',async failure=>{
+it.each(['model','quote','usage','sha','locate'] as const)('does not persist a blank success or retry when purpose %s fails',async failure=>{
  vi.stubEnv('AGENTPROOF_GENERAL_PR_OBSERVATION_MODE','advisory');vi.stubEnv('OPENAI_API_KEY','fixture-model-secret');vi.stubEnv('DEEPSEEK_API_KEY','fixture-deepseek-secret');enablePurposeBudgetFixture();
  const diagnostic=vi.spyOn(console,'warn').mockImplementation(()=>{});
  const requests:any[]=[];vi.stubGlobal('fetch',purposeRuntimeFetch(fetch,'owner/repo','queue.py',{failure,onRequest:(body,count)=>requests.push({body,count})}));const response=await generate();const body=await response.json();expect(response.status,JSON.stringify(body)).toBe(503);expect(rows).toHaveLength(0);expect(body.persistence).toBeUndefined();
@@ -237,7 +237,7 @@ it.each(['implicit','partial'] as const)('completes normal DeepSeek entry with r
  expect(body.report.purposeAssessmentSummary.limitations).toContain(finish==='implicit'?'localization_finish_implicit':'localization_selection_partial');
  expect(requests.filter(r=>!r.count).map(r=>JSON.parse(r.body.input[1].content).stage)).toEqual(['purpose','locate','locate','assess']);
  expect(requests.every(r=>!r.count)).toBe(true);expect(requests.every(r=>r.body.text.format.type==='json_schema')).toBe(true);
- expect(actions.filter(p=>p.p_action==='reserve')).toHaveLength(4);expect(actions.filter(p=>p.p_action==='settle')).toHaveLength(4);expect(actions.at(-1).p_action).toBe('close');
+ expect(actions).toHaveLength(0);
  const reopened=await(await GET(new Request(`http://localhost/api/dashboard/reports?id=${body.persistence.id}`,{headers:{cookie}}))).json();expect(reopened.report.purposeReview).toEqual(body.report.purposeReview);expect(JSON.stringify(rows)).not.toMatch(/pending = retain|fixture-model-secret|"facts"/);
 });
 
@@ -255,7 +255,7 @@ it.each(['test_only','quote_only','ref_only','observation_refs','partial_hunk'] 
  if(variant==='observation_refs')expect(body.report.purposeAssessmentSummary.goals[0].implementation).toBe('supports');
  if(variant==='partial_hunk')expect(body.report.purposeAssessmentSummary.limitations).toContain('patch_hunk_partial');
  for(const text of [JSON.stringify(rows),html,copied,markdown,JSON.stringify(json)])expect(text).not.toMatch(/pending = retain|fixture-model-secret|"facts"|"rawHash"/);
- expect(requests.filter(r=>!r.count).map(r=>JSON.parse(r.body.input[1].content).stage)).toEqual(['purpose','locate','locate','assess']);expect(actions.filter(p=>p.p_action==='settle')).toHaveLength(4);expect(actions.at(-1).p_action).toBe('close');
+ expect(requests.filter(r=>!r.count).map(r=>JSON.parse(r.body.input[1].content).stage)).toEqual(['purpose','locate','locate','assess']);expect(actions).toHaveLength(0);
  expect(requests.every(r=>!r.count)).toBe(true);expect(requests.every(r=>r.body.text.format.type==='json_schema')).toBe(true);
  expect((await GET(new Request(`http://localhost/api/dashboard/reports?id=${body.persistence.id}`))).status).toBe(401);
 });
@@ -270,7 +270,7 @@ it('stores and reopens model execution prose without turning it into a server ex
  const {buildDashboardPrEvidenceReview}=await import('../pr-evidence-review'),{PrEvidenceReview}=await import('../../components/PrEvidenceReview'),{renderToStaticMarkup}=await import('react-dom/server'),{createElement}=await import('react');
  const html=renderToStaticMarkup(createElement(PrEvidenceReview,{review:buildDashboardPrEvidenceReview({...reopened,repositoryFullName:'owner/repo'})!}));
  expect(html).toContain('Model interpretation');expect(html).toContain('Tests passed.');expect(html).toContain('Execution records');expect(html).toContain('Checks not recorded'); const {formatPurposeReview}=await import('../shared-report-copy');expect(formatPurposeReview(reopened.report.purposeReview)).toContain('not verified behavior or test execution');
- expect(actions.filter(p=>p.p_action==='settle')).toHaveLength(4);expect(actions.at(-1).p_action).toBe('close');
+ expect(actions).toHaveLength(0);
  expect(requests.every(r=>!r.count)).toBe(true);expect(requests.every(r=>r.body.text.format.type==='json_schema')).toBe(true);
  expect((await GET(new Request(`http://localhost/api/dashboard/reports?id=${body.persistence.id}`))).status).toBe(401);
 });
@@ -310,14 +310,16 @@ it('reuses persisted private consent for two purpose analyses and owner-only sto
   expect(await getSavedReport(body.persistence.id,{tenantId:'other'})).toBeNull();
  }
  expect(requests.filter(r=>!r.count).map(r=>JSON.parse(r.body.input[1].content).stage)).toEqual(['purpose','locate','locate','assess','purpose','locate','locate','assess']);
- expect(actions.filter(p=>p.p_action==='reserve')).toHaveLength(8);expect(actions.filter(p=>p.p_action==='settle')).toHaveLength(8);expect(actions.filter(p=>p.p_action==='close')).toHaveLength(2);
+ expect(actions).toHaveLength(0);
  expect(JSON.stringify(rows)).not.toMatch(/pending = retain|fixture-model-secret|fixture-installation-token|"facts"|readOutcomes/);
 });
 it.each(['admission','final','save'] as const)('denies private grant revocation at %s without retry or saving',async point=>{
  await enablePrivatePurposeFixture();const requests:any[]=[],actions:any[]=[];vi.spyOn(console,'warn').mockImplementation(()=>{});
- vi.stubGlobal('fetch',purposeRuntimeFetch(fetch,'owner/repo','queue.py',{privateRepository:true,onRequest:(body,count)=>{requests.push({body,count});const q=JSON.parse(body.input[1].content);if(point==='final'&&q.stage==='assess'&&!count)grantRevoked=true;},onBudget:p=>{actions.push(p);if(point==='save'&&p.p_action==='close')saveDisabled=true;if(point==='admission'&&p.p_action==='reserve')grantRevoked=true;}}));
+ vi.stubGlobal('fetch',purposeRuntimeFetch(fetch,'owner/repo','queue.py',{privateRepository:true,onRequest:(body,count)=>{requests.push({body,count});const q=JSON.parse(body.input[1].content);if(point==='final'&&q.stage==='assess'&&!count)grantRevoked=true;if(point==='admission'&&q.stage==='purpose'&&!count)grantRevoked=true;},onBudget:p=>actions.push(p),afterFinal:()=>{if(point==='save')saveDisabled=true;}}));
  const response=await generate();expect(response.status,JSON.stringify(await response.json())).toBe(503);expect(rows).toHaveLength(0);
- if(point==='admission'){expect(requests.filter(r=>!r.count)).toHaveLength(0);expect(actions.filter(p=>p.p_action==='reserve')).toHaveLength(1);expect(actions.find(p=>p.p_action==='settle').p_charge).toBeNull();}
+ expect(actions).toHaveLength(0);
+ // Revoked during the first model call: the post-call check rejects its result before any further call.
+ if(point==='admission')expect(requests.filter(r=>!r.count)).toHaveLength(1);
  else expect(requests.filter(r=>!r.count)).toHaveLength(4);
 });
 it('does not use request consent booleans as server authority for unconsented private purpose',async()=>{
@@ -386,7 +388,7 @@ it('diagnostic flag connects private analysis to store without logging source or
  expect(events.find(e=>e.stage==='response'&&e.outcome==='start').counts.bytes).toBeGreaterThan(0);
  expect(response.headers.get('x-agentproof-diagnostic-bytes')).toBe(String(Buffer.byteLength(JSON.stringify(body))));
  expect(new Set(events.map(e=>e.correlation)).size).toBe(1);
- expect(events.filter(e=>e.stage==='provider_count')).toHaveLength(0);for(const gen of events.filter(e=>e.stage==='provider_generate'&&e.outcome==='start')){const admission=events.find(e=>e.stage==='provider_budget'&&e.outcome==='start'&&e.counts.call===gen.counts.call);expect(gen.hashes.common).toBe(admission.hashes.common);expect(gen.model).toBe('deepseek-flash');expect(gen.effort).toBe('high');}
+ expect(events.filter(e=>e.stage==='provider_count')).toHaveLength(0);expect(events.filter(e=>e.stage==='provider_budget'&&e.outcome==='start')).toHaveLength(0);for(const gen of events.filter(e=>e.stage==='provider_generate'&&e.outcome==='start')){expect(gen.hashes.common).toMatch(/^[a-f0-9]{64}$/);expect(gen.hashes.schema).toMatch(/^[a-f0-9]{64}$/);expect(gen.model).toBe('deepseek-flash');expect(gen.effort).toBe('high');}
  expect(JSON.stringify(events)).not.toMatch(/private-canary-path|pending = retain|Internal maintenance|fixture-model-secret|fixture-installation-token|fixture-ledger-secret|Tests passed/);
  expect(requests.every(r=>!r.count)).toBe(true);expect(requests.every(r=>r.body.text.format.type==='json_schema')).toBe(true);
 });
@@ -395,13 +397,12 @@ it('private diagnostic OFF preserves saved payload and emits no developer trace'
  vi.stubGlobal('fetch',purposeRuntimeFetch(fetch,'owner/repo','queue.py',{privateRepository:true}));
  const response=await generate(),body=await response.json();expect(body.persistence.status).toBe('saved');expect(body.report.purposeReview).toBeDefined();expect(response.headers.get('x-agentproof-diagnostic-request')).toBeNull();expect(info).not.toHaveBeenCalled();
 });
-it.each(['price','quote','usage'] as const)('closed diagnostic preserves %s failure and never reports store success',async failure=>{
+it.each(['quote','usage'] as const)('closed diagnostic preserves %s failure and never reports store success',async failure=>{
  await enablePrivatePurposeFixture();vi.stubEnv('AGENTPROOF_ANALYSIS_DIAGNOSTICS','1');const info=vi.spyOn(console,'info').mockImplementation(()=>{});
  vi.stubGlobal('fetch',purposeRuntimeFetch(fetch,'owner/repo','queue.py',{privateRepository:true,failure}));
- const response=await generate();expect(response.status).toBe(503);expect((await response.json()).code).toBe(failure==='usage'?'purpose_usage_unconfirmed':failure==='price'?'budget_price_unconfigured':'purpose_unavailable');expect(rows).toHaveLength(0);
+ const response=await generate();expect(response.status).toBe(503);expect((await response.json()).code).toBe(failure==='usage'?'purpose_usage_unconfirmed':'purpose_unavailable');expect(rows).toHaveLength(0);
  const events=info.mock.calls.filter(c=>c[0]==='agentproof_analysis_diagnostic').map(c=>JSON.parse(String(c[1])));
  expect(events.some(e=>e.stage==='store')).toBe(false);expect(events.some(e=>e.outcome==='failure'&&e.failure?.code!=='unknown')).toBe(true);
- if(failure==='price')expect(events.some(e=>e.outcome==='success'&&['purpose','read','selection','final','projection'].includes(e.stage))).toBe(false);
 });
 it('records store failure distinctly from HTTP200 and its response payload',async()=>{
  await enablePrivatePurposeFixture();vi.stubEnv('AGENTPROOF_ANALYSIS_DIAGNOSTICS','1');failSave=true;const info=vi.spyOn(console,'info').mockImplementation(()=>{});
@@ -453,10 +454,10 @@ it.each([[false,'save_off'],[false,'revoked'],[true,'save_off'],[true,'revoked']
  if(privateRepo)await enablePrivatePurposeFixture();
  else{vi.stubEnv('AGENTPROOF_GENERAL_PR_OBSERVATION_MODE','advisory');vi.stubEnv('OPENAI_API_KEY','fixture-model-secret');vi.stubEnv('DEEPSEEK_API_KEY','fixture-deepseek-secret');enablePurposeBudgetFixture();}
  const requests:any[]=[],actions:any[]=[];vi.spyOn(console,'warn').mockImplementation(()=>{});
- vi.stubGlobal('fetch',purposeRuntimeFetch(fetch,'owner/repo','queue.py',{privateRepository:privateRepo,onRequest:(body,count)=>requests.push({body,count}),onBudget:p=>{actions.push(p);if(p.p_action==='close'){if(change==='save_off')saveDisabled=true;else grantRevoked=true;}}}));
+ vi.stubGlobal('fetch',purposeRuntimeFetch(fetch,'owner/repo','queue.py',{privateRepository:privateRepo,onRequest:(body,count)=>requests.push({body,count}),onBudget:p=>actions.push(p),afterFinal:()=>{if(change==='save_off')saveDisabled=true;else grantRevoked=true;}}));
  const response=await generate(),body=await response.json();
  expect(response.status).toBe(privateRepo?503:409);expect(body.report).toBeUndefined();expect(rows).toHaveLength(0);
- expect(requests.filter(r=>!r.count)).toHaveLength(4);expect(actions.filter(p=>p.p_action==='settle')).toHaveLength(4);
+ expect(requests.filter(r=>!r.count)).toHaveLength(4);expect(actions).toHaveLength(0);
  expect(calls.some(u=>u.includes('/rpc/agentproof_store_tenant_report'))).toBe(false);
 });
 it.each([false,true])('keeps non-retained purpose analysis separate from Saved reports OFF (private=%s)',async privateRepo=>{
@@ -479,7 +480,7 @@ it.each(['en','ko'] as const)('retains cited hierarchy from actual entry to sign
   const request=JSON.parse(init.body),q=JSON.parse(request.input[1].content);
   if(q.stage!=='assess')return response;
   const body=await response.json(),text=body.output[0].content[0],proposal=JSON.parse(text.text);
-  for(const c of proposal.clauses){c.changeSummary={text:locale==='ko'?'대기 작업 보존':'Retain pending work',evidenceRefs:[q.evidence[0].id]};c.scopeNotes=[{text:locale==='ko'?'인용된 변경 범위의 해석입니다.':'This interpretation covers the cited change.',evidenceRefs:[q.evidence[0].id]}];}
+  for(const c of proposal.units??proposal.clauses){c.changeSummary={text:locale==='ko'?'대기 작업 보존':'Retain pending work',evidenceRefs:[q.evidence[0].id]};c.scopeNotes=[{text:locale==='ko'?'인용된 변경 범위의 해석입니다.':'This interpretation covers the cited change.',evidenceRefs:[q.evidence[0].id]}];}
   text.text=JSON.stringify(proposal);return Response.json(body);
  });
  const response=await generate(),body=await response.json();expect(response.status,JSON.stringify(body)).toBe(200);expect(body.persistence.status).toBe('saved');

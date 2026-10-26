@@ -3,7 +3,7 @@ import { ExternalLink } from 'lucide-react';
 import { presentEvidenceLimitation } from '@/lib/tenant-report-language';
 import type { DashboardReportDetail } from '@/lib/github-dashboard-view-model';
 import type { ExecutionEvidenceItem } from '@/lib/execution-evidence';
-import {purposeClauseHasInterpretation, purposeVisibleClauses} from '@/lib/purpose-summary';
+import {purposeClauseReferences, purposeClauseHasInterpretation, purposeVisibleClauses} from '@/lib/purpose-summary';
 import {purposeClauseDisplay, purposeReferenceLabel, purposeUnboundReferences,purposeReviewSections} from '@/lib/shared-report-copy';
 import {purposeReferenceUrl, type PrEvidenceReview} from '@/lib/pr-evidence-review';
 import {reportCopy, type ReportCopy} from './report-copy';
@@ -11,7 +11,7 @@ type PurposeReview = NonNullable<NonNullable<DashboardReportDetail['report']>['p
 type PurposeClause = PurposeReview['clauses'][number];
 type PurposeReference = PurposeReview['references'][number];
 export function purposeFitLabel(clause: PurposeClause, t: ReportCopy): ['fit'|'conflict'|'none',string] {
-  if (!purposeClauseHasInterpretation(clause)) return ['none', t.locatedOnly];
+  if (!purposeClauseHasInterpretation(clause)) return ['none', clause.intentMembers&&!purposeClauseReferences(clause).length?t.fit.unknown:t.locatedOnly];
   return clause.implementation==='supports'?['fit',t.fit.supports]:clause.implementation==='contradicts'?['conflict',t.fit.contradicts]:['none',t.fit.unknown];
 }
 /** Which description (clause + original array kind/index) a code request came from; UI state only, never stored. */
@@ -70,7 +70,7 @@ export function ReportTopSummary({report,review,executionItems=[],actions,readCo
       const d=purposeClauseDisplay(c);return <section className="report-purpose-body" key={c.clauseId}>
         {!primary.includes(c)?main(c):visible.length>1?<h3>{d.title}</h3>:null}
         {d.scopeNotes.length?<section className="report-scope-notes"><h4>{t.scopeLabel}</h4>{d.scopeNotes.map((item,i)=>description(c,item,'scope',i))}</section>:null}
-        {c.conditions?.length||c.exceptions?.length?<dl className="report-intent-scope">{c.conditions?.length?<div><dt>{t.conditions}</dt><dd><ul>{c.conditions.map((v,i)=><li key={i}>{v}</li>)}</ul></dd></div>:null}{c.exceptions?.length?<div><dt>{t.exceptions}</dt><dd><ul>{c.exceptions.map((v,i)=><li key={i}>{v}</li>)}</ul></dd></div>:null}</dl>:null}
+        {d.intentDetails.map((member,index)=><div key={index}>{member.purpose?<h4>{member.purpose}</h4>:null}{member.conditions.length||member.exceptions.length?<dl className="report-intent-scope">{member.conditions.length?<div><dt>{t.conditions}</dt><dd><ul>{member.conditions.map((v,i)=><li key={i}>{v}</li>)}</ul></dd></div>:null}{member.exceptions.length?<div><dt>{t.exceptions}</dt><dd><ul>{member.exceptions.map((v,i)=><li key={i}>{v}</li>)}</ul></dd></div>:null}</dl>:null}</div>)}
         {d.detailTests.length?<section><h4>{t.relatedTests}</h4>{d.detailTests.map((item,i)=>description(c,item,'test',i))}</section>:null}
       </section>;
     })}</div></details>:null}

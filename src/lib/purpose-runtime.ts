@@ -20,13 +20,17 @@ export function createRuntimePurposeOptions(input:PullRequestInput,options:{env:
  if(input.repositoryPrivate!==false && (input.repositoryPrivate!==true||!grant||!options.token||!repo||repo.toLowerCase()!==grant.repositoryFullName.toLowerCase()||!Number.isSafeInteger(grant.repositoryId)||grant.repositoryId<=0||!Number.isSafeInteger(grant.installationId)||grant.installationId<=0))throw new PurposeAnalysisError(new Error('purpose_private_consent_required'));
  const authorizePrivate=input.repositoryPrivate===true?async(signal?:AbortSignal)=>timeLocate('authorization',async()=>{
   signal?.throwIfAborted();
-  if(!await timeLocate('private_grant',()=>isPrivateAnalysisGrantCurrent(grant!,options.env as NodeJS.ProcessEnv)))return false;
-  const privateNow=await timeLocate('repository_visibility',()=>readGitHubRepositoryPrivate(grant!.repositoryFullName,options.token!,{repositoryId:grant!.repositoryId,signal}));
+  // The metadata-only visibility read is independent of the first grant read; a denied grant still wins first.
+  const granted=timeLocate('private_grant',()=>isPrivateAnalysisGrantCurrent(grant!,options.env as NodeJS.ProcessEnv));
+  const visibility=timeLocate('repository_visibility',()=>readGitHubRepositoryPrivate(grant!.repositoryFullName,options.token!,{repositoryId:grant!.repositoryId,signal}));
+  visibility.catch(()=>{});
+  if(!await granted)return false;
+  const privateNow=await visibility;
   signal?.throwIfAborted();
   return privateNow===true&&await timeLocate('private_grant',()=>isPrivateAnalysisGrantCurrent(grant!,options.env as NodeJS.ProcessEnv));
  }):undefined;
  if(!options.env.DEEPSEEK_API_KEY?.trim())throw new PurposeAnalysisError(new Error('purpose_key_missing'));
- return {mode:'advisory',flow:'explore_final_v1',reportLanguage:resolveReportLanguage(options.reportLanguage),provider:createDeepSeekPurposeProvider({apiKey:options.env.DEEPSEEK_API_KEY.trim(),authorizePrivate}),signal:options.signal,authorizePrivate,readCurrentInput:async()=>{
+ return {mode:'advisory',flow:'explore_final_v1',finalFormat:'purpose_units_v1',reportLanguage:resolveReportLanguage(options.reportLanguage),provider:createDeepSeekPurposeProvider({apiKey:options.env.DEEPSEEK_API_KEY.trim(),authorizePrivate,callerAuthorizesAround:true}),signal:options.signal,authorizePrivate,readCurrentInput:async()=>{
    if(authorizePrivate&&!await authorizePrivate(options.signal))throw new Error('purpose_private_consent_required');
    const current=await options.readCurrentInput();
    if(authorizePrivate&&!await authorizePrivate(options.signal))throw new Error('purpose_private_consent_required');

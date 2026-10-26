@@ -1,6 +1,7 @@
 import { it, expect, vi, afterEach } from 'vitest';
 import { createPurposeProvider, createStagedPurposeProvider, purposeProviderInput, purposeWireSchema } from './purpose-provider';
 import { withPaidAnalysis } from './paid-budget';
+import { purposeExploreRequestSchema, purposeFinalRequestSchema } from './purpose-contract';
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 it('routes each stage once to its assigned provider without retry or fallback', async () => {
  const purpose=vi.fn(async()=>({purpose:true})), exploration=vi.fn(async()=>({source:true})), final=vi.fn(async()=>({report:true}));
@@ -89,6 +90,15 @@ it.each(['refusal','unsupported','two_json'])('rejects %s rather than selecting 
 const phaseMessage = (phase: string | null | undefined, text: string, status = 'completed') => ({
  type: 'message', role: 'assistant', phase, status, content: [{type: 'output_text', text}],
 });
+it('normalizes only explore purpose extras through the common adapter with count/generate input unchanged',async()=>{
+ const clause={sourceRefs:['gpsp_fixture'],expectedObservable:'Retain pending work',conditions:[],exceptions:[],obligation:'required',evidenceNeed:'behavioral'};
+ const raw={goals:[{clauses:[{...clause,authority:'FORGED_CANARY'}],id:'FORGED_CANARY'}],ambiguities:[],metadata:'DROP_CANARY'};
+ const output=[phaseMessage('final_answer',JSON.stringify(raw))];
+ const {result,requests}=await protocolCall(output,{stage:'purpose',flow:'explore_final_v1',sources:{spans:[{id:'gpsp_fixture'}]}});
+ expect(result).toEqual({goals:[{clauses:[clause]}],ambiguities:[]});
+ expect(requests[0].input).toEqual(requests[1].input);expect(requests[0].text).toEqual(requests[1].text);
+ const legacy=await protocolCall(output,{stage:'purpose'});expect(legacy.result).toEqual(raw);
+});
 it('returns only the completed final answer, never commentary text or action proposals',async()=>{
  const {result,requests}=await protocolCall([
   {type:'reasoning'},
@@ -145,7 +155,7 @@ it('final interpretation count/generate share a strict no-tool schema and explic
  expect(requests[0].input).toEqual(requests[1].input);expect(requests[0].text).toEqual(requests[1].text);
  expect(requests[1].text.format.name).toBe('purpose_final_v1');expect(Object.keys(requests[1].text.format.schema.properties)).toEqual(['clauses']);
  expect(JSON.stringify(requests[1].text.format.schema)).not.toMatch(/readRequests|searchRequests|execution/);
- expect(JSON.stringify(requests[1].input)).toContain('no readRequests, searchRequests');
+ expect(JSON.stringify(requests[1].input)).toContain('Exploration is over');expect(JSON.stringify(requests[1].input)).toContain('Do not write testRelation, remainingQuestions or tool requests');
 });
 it.each([[['pe_sent']],[[]]])('final wire restricts every ID namespace and remains satisfiable without evidence %j',async(ids)=>{
  const {requests}=await protocolCall([{type:'message',content:[{type:'output_text',text:'{"clauses":[]}'}]}],{stage:'assess',flow:'explore_final_v1',spec:{goals:[{clauses:[{id:'pc_one'}]}]},evidence:ids.map(id=>({id})),sources:{spans:[{id:'gpsp_author'}]},coverage:{omittedEvidence:[{id:'pe_omitted'}]}});
@@ -176,27 +186,19 @@ it('keeps purpose, diff-first and final instructions on the narrow purpose-fit c
  expect(purpose).toContain('reverting code to watch a test fail and other negative controls');
  expect(purpose).toContain('author context described below is not a condition');
  const commonPurpose=text({stage:'purpose',flow:'explore_final_v1',sources:{}});
- expect(commonPurpose).toContain('Stated changes are purposes even when phrased as completed work');
- expect(commonPurpose).toContain('necessary conditions, exceptions and uncertainty without strengthening their scope');
- // Author emphasis orders direct changes; context cannot replace a required observable boundary.
- expect(commonPurpose).toContain('Write each intended change as a direct action or outcome');
- expect(commonPurpose).toContain('Order separately requested changes by the author\'s emphasis');
- expect(commonPurpose).toContain('Background is context unless it defines a required observable boundary');
- expect(commonPurpose).toContain('do not restate PR-wide context on every clause');
+ // One rule with its input variants and preserved behavior stays one clause; independent purposes split.
+ for(const rule of ['Keep explicit changes even when phrased as completed work','Use one clause for one intended rule or outcome','Repeated statements, input variants and behavior explicitly preserved with that change belong together, with all their sourceRefs','Split independent purposes, not each condition, exception or implementation step','Preserve necessary qualifiers and uncertainty without strengthening the claim','Background is not a separate purpose unless it is itself the requested change','keep any boundary that changes the core meaning beside that purpose','Do not infer intent from code'])expect(commonPurpose).toContain(rule);
  expect(commonPurpose).not.toContain('expectedObservable states the intended change');
+ // Only schema fields may be requested as output: authority/source IDs are server-owned, and scopeNotes carry refs.
+ expect(commonPurpose).toContain('Copy supplied span IDs in sourceRefs; do not generate IDs, authority, parent sourceRefs or other fields');expect(commonPurpose).not.toContain('Preserve source authority');
+ const clauseFields=Object.keys((purposeExploreRequestSchema({spans:[{id:'gpsp_one'}]}) as any).properties.goals.items.properties.clauses.items.properties);
+ expect(clauseFields).not.toContain('authority');for(const field of ['obligation','evidenceNeed','sourceRefs','expectedObservable','conditions','exceptions'])expect(clauseFields).toContain(field);
  const final=text({stage:'assess',flow:'explore_final_v1',spec:{},evidence:[]});
- expect(final).toContain('supports means the cited change fits that scope');
- expect(final).toContain('Do not infer all/always guarantees from broad wording or weaken explicit necessary conditions and exceptions');
- expect(final).toContain('Preserve counterevidence, including relevant unchanged context');
- expect(final).toContain('Missing auxiliary material or unread external code alone is not a conflict');
- expect(final).toContain('Do not write testRelation or remainingQuestions');
- expect(final).toContain('do not claim the removal');
- expect(final).toContain('describe the important action and result briefly and directly');
- expect(final).toContain('state what its assertions expect without claiming execution');
- expect(final).toContain('Keep conditions, exceptions and counterevidence that alter a claim beside that claim');
- expect(final).toContain('Do not restate scope across the title, changes and tests or add routine disclaimers');
- expect(final).toContain('Put independent changes in separate items with each item\'s actual refs');
+ for(const rule of ['supports means the cited change fits','One supported subcase does not settle necessary conditions or exceptions','Preserve actual counterevidence','unrelated background is not a failed purpose','Do not write testRelation, remainingQuestions or tool requests','Use before evidence for transition claims','Write changeObservations for a developer new to this PR: what changes, when, and what result follows','Separate independent effects using the existing array; keep branches of one rule together','give the case and distinguishing assertion rather than narrating the implementation','Do not repeat routine disclaimers','Never infer execution','A complete, SHA-matched changeInventory describes changed paths and statuses only','Never manufacture a source citation for an inventory-only claim'])expect(final).toContain(rule);
  expect(final).not.toContain('Avoid repeating the same scope note');
+ expect(final).toContain('Put useful background once in scopeNotes; otherwise use []');
+ const note=(purposeFinalRequestSchema({goals:[{clauses:[{id:'pc_one'}]}]},[{id:'pe_one'}]) as any).properties.clauses.items.properties.scopeNotes.items;
+ expect(note.required).toContain('evidenceRefs');expect(note.properties.evidenceRefs.minItems).toBe(1);
  // Guidance stays general: no case names, licenses or fixture wording from any one evaluated PR.
  for(const prompt of [commonPurpose,final]) expect(prompt).not.toMatch(/npmscan|\bMIT\b|warning-only|fixture/i);
  for(const removed of ['Generate current remainingQuestions','If an unresolved question directly affects','Qualify observations to the inspected paths','Omitted/failed scope in coverage remains unknown']) expect(final).not.toContain(removed);
@@ -285,21 +287,21 @@ it('hierarchy wire constrains cited fields while legacy omissions stay readable 
 it('sends the same accessible core-writing rules in en/ko without adding a semantic gate or case answers',()=>{
  for(const stage of ['purpose','assess'] as const){
   const [en,ko]=(['en','ko'] as const).map(reportLanguage=>String(purposeProviderInput({stage,flow:'explore_final_v1',reportLanguage,spec:{},evidence:[],sources:{}} as any)[0].content));
-  expect(en).toContain('unfamiliar concepts');
-  expect(en).toContain(stage==='purpose'?'Keep terms needed to identify the behavior':'preserve exact identifiers, values and quotes');
+  expect(en).toContain(stage==='purpose'?'Do not infer intent from code':'Never translate or alter literal quotes, source code excerpts, paths, protocol IDs or enum values');
   expect(ko.replace('in Korean.','in English.')).toBe(en);
  }
  const final=String(purposeProviderInput({stage:'assess',flow:'explore_final_v1',spec:{},evidence:[]} as any)[0].content);
- expect(final).toContain('describe the important action and result briefly and directly');
- expect(final).toContain('Do not omit an independent required change or turn uncertain evidence into a positive claim to shorten the report');
- expect(final).toContain('preserve exact identifiers, values and quotes when their identity matters');
+ expect(final).toContain('Describe the role of a code element before using its name');
+ expect(final).toContain('Leave unsupported observation arrays empty; never invent content to fill them');
+ expect(final).toContain('Never translate or alter literal quotes, source code excerpts, paths, protocol IDs or enum values');
  expect(final).not.toMatch(/PR48|envvar|npmscan/);
 });
 it('requests a concrete behavior headline and keeps actual behavioral constraints in the change, with background in details',()=>{
  const purpose=String(purposeProviderInput({stage:'purpose',flow:'explore_final_v1',sources:{}})[0].content),final=String(purposeProviderInput({stage:'assess',flow:'explore_final_v1',spec:{},evidence:[]})[0].content);
- expect(purpose).toContain('Background is context');
- expect(final).toContain('short neutral title naming the cited change');
- expect(final).toContain('Keep conditions, exceptions and counterevidence that alter a claim beside that claim');
- expect(final).toContain('Put useful general provenance and background in scopeNotes for details');
+ expect(purpose).toContain('Background is not a separate purpose');
+ expect(final).toContain('short, cited description of the actual change');
+ expect(final).toContain('Keep necessary qualifiers with their action');
+ expect(final).toContain('Put useful background once in scopeNotes');
+ expect(final).toContain('A limitation that changes the judgment belongs with the affected action');
  expect(final).not.toContain('do not restate purpose conditions or exceptions already given except');
 });

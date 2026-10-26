@@ -3,6 +3,14 @@ import type { PullRequestInput } from './types';
 import type { PurposeRepositoryBackend, RepositoryManifest } from './purpose-repository';
 import { safePurposePath } from './purpose-evidence';
 import { getPurposeDiffIndex } from './purpose-github';
+type PrivateAuthorizer = (signal?: AbortSignal) => Promise<boolean>;
+// Describes this factory's guard ownership, never a retained permission result.
+const privateReadGuards = new WeakMap<PurposeRepositoryBackend, { subject: string; authorize: PrivateAuthorizer; readBlob: PurposeRepositoryBackend['readBlob']; manifest: PurposeRepositoryBackend['manifest'] }>();
+const privateSubject = (input: PullRequestInput) => JSON.stringify([input.url,input.repositoryPrivate,input.sourceProvenance?.headSha,input.sourceProvenance?.baseSha,getPurposeDiffIndex(input).comparison?.diffBaseSha]);
+export function hasMatchingPrivateReadGuards(backend: PurposeRepositoryBackend, input: PullRequestInput, authorize: PrivateAuthorizer | undefined, operation: 'manifest' | 'readBlob'): boolean {
+    const owner = privateReadGuards.get(backend);
+    return !!owner && input.repositoryPrivate === true && owner.authorize === authorize && owner[operation] === backend[operation] && owner.subject === privateSubject(input);
+}
 /** Fixed official endpoints only. Server credential is never returned. Metadata/raw transport budgets are request-local. */
 export function createGitHubPurposeRepositoryBackend(input: PullRequestInput, options: {
     token?: string;
@@ -11,6 +19,7 @@ export function createGitHubPurposeRepositoryBackend(input: PullRequestInput, op
 } = {}): PurposeRepositoryBackend {
     if (input.repositoryPrivate !== false && (input.repositoryPrivate !== true || !options.token || !options.privateAccess || !Number.isSafeInteger(options.privateAccess.repositoryId) || options.privateAccess.repositoryId<=0))
         throw new Error('purpose_private_consent_required');
+    const repositoryPrivate=input.repositoryPrivate, privateAuthorize=options.privateAccess?.authorize;
     const parsed = /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+)\/pull\/\d+$/.exec(input.url ?? '');
     if (!parsed)
         throw new Error('localization_manifest_invalid');
@@ -19,7 +28,7 @@ export function createGitHubPurposeRepositoryBackend(input: PullRequestInput, op
     let metadataCalls = 0, metadataBytes = 0, rawBytes = 0, largeRead: string | undefined;
     const failures = new Map<string, string>();
     let publicCheck: Promise<void> | undefined;
-    const authorize = async (signal:AbortSignal) => {signal.throwIfAborted();if(input.repositoryPrivate===true&&!await options.privateAccess!.authorize(signal))throw new Error('purpose_private_consent_required');signal.throwIfAborted();};
+    const authorize = async (signal:AbortSignal) => {signal.throwIfAborted();if(repositoryPrivate===true&&!await privateAuthorize!(signal))throw new Error('purpose_private_consent_required');signal.throwIfAborted();};
     async function requestJson(url: string, signal: AbortSignal) {
         signal.throwIfAborted();
         if (++metadataCalls > 8)
@@ -48,7 +57,7 @@ export function createGitHubPurposeRepositoryBackend(input: PullRequestInput, op
             await body.cancel().catch(() => { });
         }
     }
-    return {
+    const backend: PurposeRepositoryBackend = {
         readFailureReason: (entry, revision) => failures.get(revision + ':' + entry.blobSha),
         async manifest(side, revision, parent) {
             const expected = side === 'head' ? input.sourceProvenance?.headSha : getPurposeDiffIndex(input).comparison?.diffBaseSha ?? input.sourceProvenance?.baseSha;
@@ -122,12 +131,15 @@ export function createGitHubPurposeRepositoryBackend(input: PullRequestInput, op
                         break;
                     }
                 }
-                await authorize(signal);
-                return { path: entry.path, revision, blobSha: entry.blobSha, content, complete, bytesRead };
             }
             finally {
                 await reader.cancel().catch(() => { });
             }
+            // Keep the return guard after asynchronous cleanup as well as the raw read.
+            await authorize(signal);
+            return { path: entry.path, revision, blobSha: entry.blobSha, content, complete, bytesRead };
         }
     };
+    if (repositoryPrivate === true && privateAuthorize) privateReadGuards.set(backend,{subject:privateSubject(input),authorize:privateAuthorize,readBlob:backend.readBlob,manifest:backend.manifest});
+    return backend;
 }

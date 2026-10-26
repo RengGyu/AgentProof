@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
 /** Remote fixtures only; the entry, compiler, source validator, ledger and storage remain real. */
-export function purposeRuntimeFetch(original:typeof fetch,repo:string,path:string,options:{privateRepository?:boolean;variant?:'test_only'|'quote_only'|'ref_only'|'observation_refs'|'partial_hunk';freshness?:'ci'|'body';finish?:'implicit'|'partial';failure?:'count'|'price'|'model'|'quote'|'usage'|'empty'|'sha'|'execution'|'locate';onRequest?:(body:any,count:boolean)=>void;onBudget?:(body:any)=>void}={}) : typeof fetch {
+export function purposeRuntimeFetch(original:typeof fetch,repo:string,path:string,options:{privateRepository?:boolean;variant?:'test_only'|'quote_only'|'ref_only'|'observation_refs'|'partial_hunk';freshness?:'ci'|'body';finish?:'implicit'|'partial';failure?:'count'|'price'|'model'|'quote'|'usage'|'empty'|'sha'|'execution'|'locate';onRequest?:(body:any,count:boolean)=>void;onBudget?:(body:any)=>void;afterFinal?:()=>void}={}) : typeof fetch {
  let finalDone=false;
  const head='a'.repeat(40),base='b'.repeat(40),tree='d'.repeat(40);
  const content='pending = retain()\n';const blob=createHash('sha1').update(`blob ${Buffer.byteLength(content)}\0${content}`).digest('hex');
@@ -19,9 +19,12 @@ export function purposeRuntimeFetch(original:typeof fetch,repo:string,path:strin
    }else proposal={clauses:q.spec.goals.flatMap((g:any)=>g.clauses.map((c:any)=>({changeSummary:null,scopeNotes:[],clauseId:c.id,implementation:'supports',evidenceRefs:q.evidence.map((e:any)=>e.id),counterEvidenceRefs:[],changeObservations:options.failure==='empty'?[]:[{basis:'source_text',text:options.failure==='quote'?'unseen code':'pending = retain()',evidenceId:q.evidence[0].id},{basis:'model_interpretation',text:options.failure==='execution'?'Tests passed.':q.reportLanguage==='ko'?'변경된 소스는 대기 중인 작업을 유지합니다.':'The changed source retains pending work.',evidenceRefs:[q.evidence[0].id]}],testObservations:[]})))};
    if(q.stage==='assess'){
     finalDone=true;for(const c of proposal.clauses){if(options.variant==='test_only'){c.testObservations=[{basis:'model_interpretation',text:'The static assertion checks retained work; execution is not established.',evidenceRefs:c.evidenceRefs}];c.changeObservations=[];}if(options.variant==='quote_only')c.changeObservations=c.changeObservations.filter((o:any)=>o.basis==='source_text');if(options.variant==='ref_only'){c.changeObservations=[];c.testObservations=[];}if(options.variant==='observation_refs')c.evidenceRefs=[];}
+    if(q.finalFormat==='purpose_units_v1')proposal={units:proposal.clauses.map(({clauseId,...c}:any)=>({...c,candidateClauseIds:[clauseId],purpose:q.spec.goals.flatMap((g:any)=>g.clauses).find((s:any)=>s.id===clauseId).expectedObservable})),contextClauseIds:[]};
    }
    return Response.json({model:options.failure==='model'?'gpt-6.1-sol':u.includes('deepseek.com')?'deepseek-flash':'gpt-6-luna',status:'completed',usage:options.failure==='usage'?undefined:{input_tokens:100,output_tokens:2,total_tokens:102,output_tokens_details:{reasoning_tokens:1},input_tokens_details:{cached_tokens:0,cache_write_tokens:0}},output:[{type:'message',content:[{type:'output_text',text:JSON.stringify(proposal)}]}]});
   }
+  // First GitHub read after the final response: a point after generation and before persistence.
+  if(finalDone&&options.afterFinal&&u.startsWith('https://api.github.com/')){const hook=options.afterFinal;options.afterFinal=undefined;hook();}
   const root='https://api.github.com/repos/'+repo;
   if(u===root)return Response.json({id:9,private:options.privateRepository??false,full_name:repo});
   if(u===root+'/compare/'+base+'...'+head+'?per_page=1')return Response.json({base_commit:{sha:base},merge_base_commit:{sha:base}});

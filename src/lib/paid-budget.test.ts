@@ -166,6 +166,21 @@ describe('real adapter budget wiring',()=>{
    expect(actions.find(a=>a.p_action==='settle')).toMatchObject({p_charge:null});
   } finally { vi.useRealTimers(); }
  });
+ it('caller-owned absolute deadline replaces only the fixed call timer and keeps its abort reason',async()=>{
+  vi.useFakeTimers();
+  try {
+   const {purposeDeadline,purposeTimeoutMetadata}=await import('./purpose-timeout');
+   let actions=storeMock();const late=purposeDeadline(180_000,'analysis_deadline');
+   const done=withPaidAnalysis('long',()=>paidProviderCall({provider:'google',model:'gemini-3.8-flash',deadlineSignal:late.signal,invoke:()=>new Promise(resolve=>setTimeout(()=>resolve('ok'),70_000)),usage:()=>({input:100,output:50})}));
+   await vi.advanceTimersByTimeAsync(70_000);expect(await done).toBe('ok');expect(actions.filter(a=>a.p_action==='settle')).toEqual([expect.objectContaining({p_charge:263})]);late.dispose();
+   actions=storeMock();const d=purposeDeadline(90_000,'analysis_deadline');let settled=false;
+   const result=withPaidAnalysis('deadline',()=>paidProviderCall({provider:'google',model:'gemini-3.8-flash',deadlineSignal:d.signal,invoke:async()=>new Promise(()=>{}),usage:()=>null})).catch(error=>error).finally(()=>{settled=true;});
+   await vi.advanceTimersByTimeAsync(60_001);expect(settled).toBe(false);
+   await vi.advanceTimersByTimeAsync(30_000);const error=await result;
+   expect(error).toBe(d.signal.reason);expect(purposeTimeoutMetadata(error)?.timeoutOrigin).toBe('analysis_deadline');expect(error).not.toMatchObject({code:'budget_call_timeout'});
+   expect(actions.filter(a=>a.p_action==='settle')).toEqual([expect.objectContaining({p_charge:null})]);expect(vi.getTimerCount()).toBe(0);
+  } finally { vi.useRealTimers(); }
+ });
  it('does not call a provider when the durable store is unreachable',async()=>{
   storeMock();vi.stubGlobal('fetch',vi.fn(async()=>{throw Error('private store details');}));const invoke=vi.fn();
   const error=await withPaidAnalysis('store-down',()=>paidProviderCall({provider:'google',model:'gemini-3.8-flash',invoke,usage:()=>null})).catch(e=>e);

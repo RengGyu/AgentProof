@@ -103,7 +103,7 @@ function validateConfig(raw:unknown):BudgetConfig {
   return c;
 }
 
-export async function paidProviderCall<T>(options:{provider:'google'|'openai'|'typesafe'|'deepseek';model:string;invoke:(signal:AbortSignal)=>Promise<T>;usage:(result:T)=>PaidUsage|null;admission?:PaidUsage;measurements?:ReviewMeasurementContext}):Promise<T> {
+export async function paidProviderCall<T>(options:{provider:'google'|'openai'|'typesafe'|'deepseek';model:string;invoke:(signal:AbortSignal)=>Promise<T>;usage:(result:T)=>PaidUsage|null;admission?:PaidUsage;measurements?:ReviewMeasurementContext;deadlineSignal?:AbortSignal}):Promise<T> {
   const scope=scopes.getStore();
   if(!scope || scope.closed)throw new PaidBudgetError('budget_scope_required');
   if(scope.failure)throw scope.failure;
@@ -141,7 +141,10 @@ export async function paidProviderCall<T>(options:{provider:'google'|'openai'|'t
   let timer:ReturnType<typeof setTimeout>|undefined;
   let done=false;
   const timeoutStarted=performance.now();
-  const timeout=setTimeout(()=>controller.abort(recordPurposeTimeout(new PaidBudgetError('budget_call_timeout'),'budget_call_timeout',CALL_TIMEOUT_MS,timeoutStarted)),CALL_TIMEOUT_MS);
+  // A caller-owned absolute deadline replaces the fixed call timer; its abort reason is kept as the cause.
+  const deadlineSignal=options.deadlineSignal,onDeadline=()=>controller.abort(deadlineSignal!.reason);
+  const timeout=deadlineSignal?undefined:setTimeout(()=>controller.abort(recordPurposeTimeout(new PaidBudgetError('budget_call_timeout'),'budget_call_timeout',CALL_TIMEOUT_MS,timeoutStarted)),CALL_TIMEOUT_MS);
+  if(deadlineSignal?.aborted)onDeadline();else deadlineSignal?.addEventListener('abort',onDeadline,{once:true});
   const poll=async()=>{
     try { await rpc({p_action:'check',p_run:scope.key,p_owner:scope.owner,p_call:callId}); }
     catch(error) { if(!done){scope.failure=error instanceof PaidBudgetError?error:new PaidBudgetError('budget_unavailable');controller.abort(scope.failure);} }
@@ -158,7 +161,7 @@ export async function paidProviderCall<T>(options:{provider:'google'|'openai'|'t
     charge=usage?calculateUsageMilliKrw(usage,price,scope.config!.krwPerUsd):null;
     return result;
   } finally {
-    done=true;clearTimeout(timeout);if(timer)clearTimeout(timer);
+    done=true;clearTimeout(timeout);deadlineSignal?.removeEventListener('abort',onDeadline);if(timer)clearTimeout(timer);
     // Missing usage, cancellation and provider/network failure retain the reservation.
     // A failed settlement also leaves the durable pending reservation in place.
     try { await timeLocate('budget_settle',()=>measureReviewAsync(measurements,'budget_settle',()=>rpc({p_action:'settle',p_run:scope.key,p_owner:scope.owner,p_call:callId,p_charge:charge}))); }

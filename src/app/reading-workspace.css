@@ -377,6 +377,8 @@
 .github-dashboard .dashboard-workspace:not(.settings-panel) { margin-top: 8px; padding-top: 12px; }
 /* Wide split: the report pane shares the PR list box's top offset and height (both var(--pane-height)), so their edges line up. */
 @media (min-width: 1180px) { .github-dashboard .is-split .dashboard-report-reader { margin-top: 24px; padding-top: 0; } }
+/* Wide desktop: room for status, version count and PR state on one row; the report keeps its reading width. */
+@media (min-width: 1180px) { .github-dashboard .dashboard-history-layout.is-split:not(.is-code-open) { grid-template-columns: 19rem minmax(0, 1fr); } }
 .github-dashboard .dashboard-report-layout { margin-top: 16px; }
 .github-dashboard .report-row { min-height: 0; padding: 10px 12px; border-color: transparent; border-bottom-color: var(--ui-line); border-radius: 8px; background: transparent; }
 .github-dashboard .report-row:hover:not(:disabled) { background: var(--ui-hover); }
@@ -429,7 +431,7 @@
 .report-hierarchy h4 { margin: 0 0 6px; font-size: 14px; font-weight: 600; line-height: 1.5; }
 .report-hierarchy p, .report-hierarchy li { max-width: 70ch; font-size: 16px; font-weight: 400; line-height: 1.6; overflow-wrap: anywhere; }
 .report-hierarchy .report-section-label { margin-bottom: 6px; font-size: 12px; font-weight: 600; color: var(--workspace-muted, #5c5a56); }
-.report-hierarchy .report-overview-purpose + .report-overview-purpose { margin-top: 28px; padding-top: 28px; border-top: 1px solid var(--workspace-line, #e2e1de); }
+.report-hierarchy .report-overview-purpose + .report-overview-purpose { margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--workspace-line, #e2e1de); }
 .report-hierarchy .report-overview-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .report-hierarchy .report-summary-evidence { margin-top: 4px; }
 .report-hierarchy :is(.report-scope-notes, .report-execution-records) { margin-top: 24px; }
