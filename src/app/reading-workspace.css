@@ -848,3 +848,20 @@
 .github-front .front-code-body { font-family: var(--ws-mono); }
 .github-front .front-code-n { box-shadow: inset -1px 0 0 var(--front-code-line); margin-right: 12px; }
 .github-front .front-step-number { font-family: var(--ws-mono); font-size: 13px; }
+
+/* 2026-10-26 scroll density: a reference's file chip, GitHub link and full-path toggle share one row; a long label
+   wraps inside its chip instead of pushing the 44px controls onto a second row. The full path still opens below. */
+.report-hierarchy .report-cited-refs > li { display: grid; grid-template-columns: minmax(0, max-content) auto auto; justify-content: start; align-items: center; column-gap: 4px; }
+.report-hierarchy .report-cited-refs > li > :first-child { min-width: 0; }
+.report-hierarchy .report-ref-full[open] { grid-column: 1 / -1; }
+/* A purpose heading sits directly on its first section; the lead purpose keeps its toolbar spacing. */
+.report-hierarchy .report-overview-head + .report-primary-changes { margin-top: 4px; }
+/* Short side labels ("after change", "변경 후") never break inside a cited-code chip. */
+.github-dashboard .report-code-ref span { white-space: nowrap; }
+@media (max-width: 700px) {
+  /* The repository name wraps beside its label; the chevron stays on the same row. */
+  .github-dashboard .dashboard-topbar > .dashboard-repository-strip > summary { flex-wrap: nowrap; }
+  .github-dashboard .dashboard-topbar > .dashboard-repository-strip > summary > :not(strong) { flex: none; }
+  /* Actions share one row when they fit and wrap otherwise; each keeps its 44px height. */
+  .github-dashboard .compact-report .summary-actions > :is(.dashboard-primary-action, .dashboard-secondary-action) { flex: 1 1 auto; min-width: max-content; padding-inline: 12px; }
+}
